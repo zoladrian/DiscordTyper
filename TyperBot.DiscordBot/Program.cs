@@ -52,6 +52,9 @@ builder.Services.AddSingleton(discordConfig);
 builder.Services.AddSingleton<DiscordSocketClient>();
 builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()));
 
+// Register Discord services
+builder.Services.AddSingleton<DiscordLookupService>();
+
 // Add Discord bot service
 builder.Services.AddHostedService<DiscordBotService>();
 

@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddScoped<RoundManager>();
         services.AddScoped<TableGenerator>();
         services.AddScoped<ExportService>();
+        services.AddScoped<MatchManagementService>();
 
         return services;
     }

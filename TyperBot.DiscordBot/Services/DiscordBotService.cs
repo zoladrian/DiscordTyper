@@ -15,19 +15,22 @@ public class DiscordBotService : IHostedService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DiscordBotService> _logger;
     private readonly DiscordSettings _settings;
+    private readonly DiscordLookupService _lookupService;
 
     public DiscordBotService(
         DiscordSocketClient client,
         InteractionService interactionService,
         IServiceProvider serviceProvider,
         ILogger<DiscordBotService> logger,
-        IOptions<DiscordSettings> settings)
+        IOptions<DiscordSettings> settings,
+        DiscordLookupService lookupService)
     {
         _client = client;
         _interactionService = interactionService;
         _serviceProvider = serviceProvider;
         _logger = logger;
         _settings = settings.Value;
+        _lookupService = lookupService;
 
         _client.Log += LogAsync;
         _client.Ready += ReadyAsync;
@@ -75,6 +78,46 @@ public class DiscordBotService : IHostedService
         _logger.LogInformation("Bot connected as {Username}#{Discriminator}", 
             _client.CurrentUser.Username, 
             _client.CurrentUser.Discriminator);
+
+        // Resolve and log guild, channels, and roles
+        var guild = await _lookupService.GetGuildAsync();
+        if (guild != null)
+        {
+            _logger.LogInformation("Connected to guild: {GuildName} (ID: {GuildId})", guild.Name, guild.Id);
+        }
+
+        var adminChannel = await _lookupService.GetAdminChannelAsync();
+        if (adminChannel != null)
+        {
+            _logger.LogInformation("Admin channel found: #{ChannelName}", adminChannel.Name);
+        }
+
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel != null)
+        {
+            _logger.LogInformation("Predictions channel found: #{ChannelName}", predictionsChannel.Name);
+        }
+
+        var resultsChannel = await _lookupService.GetResultsChannelAsync();
+        if (resultsChannel != null)
+        {
+            _logger.LogInformation("Results channel found: #{ChannelName}", resultsChannel.Name);
+        }
+
+        if (guild != null)
+        {
+            var playerRole = _lookupService.GetPlayerRole(guild);
+            if (playerRole != null)
+            {
+                _logger.LogInformation("Player role found: {RoleName}", playerRole.Name);
+            }
+
+            var adminRole = _lookupService.GetAdminRole(guild);
+            if (adminRole != null)
+            {
+                _logger.LogInformation("Admin role found: {RoleName}", adminRole.Name);
+            }
+        }
 
         // Register commands to guild (not global)
         if (_settings.GuildId != 0)
