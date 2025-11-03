@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TyperBot.Domain", "TyperBot.Domain\TyperBot.Domain.csproj", "{BD475059-7EBA-4EDF-BD1E-505F9B2E1C2F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TyperBot.Application", "TyperBot.Application\TyperBot.Application.csproj", "{7FB3FB5C-17A8-4AF6-837D-60A75CAD24FE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TyperBot.Infrastructure", "TyperBot.Infrastructure\TyperBot.Infrastructure.csproj", "{C0F55FA5-012A-4D77-A22E-A9078F542685}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TyperBot.DiscordBot", "TyperBot.DiscordBot\TyperBot.DiscordBot.csproj", "{4C06AE44-6705-4D2D-8091-82E9049B0459}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TyperBot.Tests", "TyperBot.Tests\TyperBot.Tests.csproj", "{8B3C1668-299F-4DC5-A074-32EDBBDEB15E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BD475059-7EBA-4EDF-BD1E-505F9B2E1C2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD475059-7EBA-4EDF-BD1E-505F9B2E1C2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD475059-7EBA-4EDF-BD1E-505F9B2E1C2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD475059-7EBA-4EDF-BD1E-505F9B2E1C2F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7FB3FB5C-17A8-4AF6-837D-60A75CAD24FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7FB3FB5C-17A8-4AF6-837D-60A75CAD24FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7FB3FB5C-17A8-4AF6-837D-60A75CAD24FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7FB3FB5C-17A8-4AF6-837D-60A75CAD24FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0F55FA5-012A-4D77-A22E-A9078F542685}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0F55FA5-012A-4D77-A22E-A9078F542685}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0F55FA5-012A-4D77-A22E-A9078F542685}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0F55FA5-012A-4D77-A22E-A9078F542685}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C06AE44-6705-4D2D-8091-82E9049B0459}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C06AE44-6705-4D2D-8091-82E9049B0459}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C06AE44-6705-4D2D-8091-82E9049B0459}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C06AE44-6705-4D2D-8091-82E9049B0459}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B3C1668-299F-4DC5-A074-32EDBBDEB15E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B3C1668-299F-4DC5-A074-32EDBBDEB15E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B3C1668-299F-4DC5-A074-32EDBBDEB15E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B3C1668-299F-4DC5-A074-32EDBBDEB15E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
