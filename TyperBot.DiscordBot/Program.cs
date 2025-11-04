@@ -15,8 +15,36 @@ using TyperBot.Infrastructure.Data;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Load configuration first
+// Find appsettings.json in multiple possible locations
+var basePath = AppContext.BaseDirectory;
+
+// Try to find project directory (go up from bin/Debug/net9.0 to project root)
+var searchPaths = new[]
+{
+    basePath, // Output directory
+    Path.GetFullPath(Path.Combine(basePath, "..", "..", "..")), // Project directory (from bin/Debug/net9.0)
+    Directory.GetCurrentDirectory(), // Current working directory
+    Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "TyperBot.DiscordBot")) // Project directory from solution root
+};
+
+string? appsettingsPath = null;
+foreach (var path in searchPaths)
+{
+    var testPath = Path.Combine(path, "appsettings.json");
+    if (File.Exists(testPath))
+    {
+        appsettingsPath = path;
+        break;
+    }
+}
+
+if (appsettingsPath == null)
+{
+    throw new FileNotFoundException("appsettings.json not found in any of the expected locations.");
+}
+
 builder.Configuration
-    .SetBasePath(Directory.GetCurrentDirectory())
+    .SetBasePath(appsettingsPath)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddEnvironmentVariables();
 
@@ -54,6 +82,7 @@ builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<D
 
 // Register Discord services
 builder.Services.AddSingleton<DiscordLookupService>();
+builder.Services.AddSingleton<AdminMatchCreationStateService>();
 
 // Add Discord bot service
 builder.Services.AddHostedService<DiscordBotService>();

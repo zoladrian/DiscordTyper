@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<TableGenerator>();
         services.AddScoped<ExportService>();
         services.AddScoped<MatchManagementService>();
+        services.AddScoped<DemoDataSeeder>();
 
         return services;
     }
