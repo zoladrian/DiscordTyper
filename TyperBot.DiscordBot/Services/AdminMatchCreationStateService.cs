@@ -8,6 +8,14 @@ public class AdminMatchCreationState
     public int CurrentCalendarYear { get; set; }
     public int CurrentCalendarMonth { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    // For kolejka creation flow
+    public bool IsKolejkaCreation { get; set; }
+    public int TotalMatchesInKolejka { get; set; }
+    public int CurrentMatchIndex { get; set; }
+    public string? SelectedHomeTeam { get; set; }
+    public string? SelectedAwayTeam { get; set; }
+    public List<(string homeTeam, string awayTeam, string date, string time)> CollectedMatches { get; set; } = new();
 }
 
 public class AdminMatchCreationStateService
@@ -66,6 +74,35 @@ public class AdminMatchCreationStateService
         var state = GetOrCreateState(guildId, userId);
         state.CurrentCalendarYear = year;
         state.CurrentCalendarMonth = month;
+    }
+
+    public void UpdateHomeTeam(ulong guildId, ulong userId, string homeTeam)
+    {
+        var state = GetOrCreateState(guildId, userId);
+        state.SelectedHomeTeam = homeTeam;
+    }
+
+    public void UpdateAwayTeam(ulong guildId, ulong userId, string awayTeam)
+    {
+        var state = GetOrCreateState(guildId, userId);
+        state.SelectedAwayTeam = awayTeam;
+    }
+
+    public void InitializeKolejkaCreation(ulong guildId, ulong userId, int roundNumber, int totalMatches)
+    {
+        var state = GetOrCreateState(guildId, userId);
+        state.IsKolejkaCreation = true;
+        state.SelectedRound = roundNumber;
+        state.TotalMatchesInKolejka = totalMatches;
+        state.CurrentMatchIndex = 0;
+        state.CollectedMatches.Clear();
+    }
+
+    public void AddMatchToKolejka(ulong guildId, ulong userId, string homeTeam, string awayTeam, string date, string time)
+    {
+        var state = GetOrCreateState(guildId, userId);
+        state.CollectedMatches.Add((homeTeam, awayTeam, date, time));
+        state.CurrentMatchIndex++;
     }
 
     private AdminMatchCreationState GetOrCreateState(ulong guildId, ulong userId)

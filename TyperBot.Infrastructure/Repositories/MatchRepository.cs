@@ -38,6 +38,11 @@ public class MatchRepository : IMatchRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Match>> GetAllAsync()
+    {
+        return await _context.Matches.ToListAsync();
+    }
+
     public async Task<Match> AddAsync(Match match)
     {
         await _context.Matches.AddAsync(match);

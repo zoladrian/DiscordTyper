@@ -53,6 +53,11 @@ public class PredictionRepository : IPredictionRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Prediction>> GetAllAsync()
+    {
+        return await _context.Predictions.ToListAsync();
+    }
+
     public async Task<Prediction> AddAsync(Prediction prediction)
     {
         await _context.Predictions.AddAsync(prediction);

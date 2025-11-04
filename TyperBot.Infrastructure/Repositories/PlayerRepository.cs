@@ -37,6 +37,11 @@ public class PlayerRepository : IPlayerRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Player>> GetAllAsync()
+    {
+        return await _context.Players.ToListAsync();
+    }
+
     public async Task<Player> AddAsync(Player player)
     {
         await _context.Players.AddAsync(player);

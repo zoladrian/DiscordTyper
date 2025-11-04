@@ -42,12 +42,59 @@ public class DemoDataSeeder
 
         var result = new SeedResult();
 
-        // Check if demo season already exists
-        var existingSeason = await _seasonRepository.GetActiveSeasonAsync();
-        if (existingSeason != null && existingSeason.Name.Contains("Demo Season"))
+        // CRITICAL FIX: Delete ALL existing data to prevent conflicts
+        _logger.LogInformation("Usuwam wszystkie istniejące dane...");
+        
+        try
         {
-            _logger.LogInformation("Sezon testowy już istnieje, pomijam tworzenie danych");
-            return result;
+            // Delete in correct order (respecting foreign key constraints)
+            var allScores = await _playerScoreRepository.GetAllAsync();
+            foreach (var score in allScores)
+            {
+                await _playerScoreRepository.DeleteAsync(score.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} wyników punktowych", allScores.Count());
+            
+            var allPredictions = await _predictionRepository.GetAllAsync();
+            foreach (var pred in allPredictions)
+            {
+                await _predictionRepository.DeleteAsync(pred.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} typów", allPredictions.Count());
+            
+            var allMatches = await _matchRepository.GetAllAsync();
+            foreach (var match in allMatches)
+            {
+                await _matchRepository.DeleteAsync(match.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} meczów", allMatches.Count());
+            
+            var allRounds = await _roundRepository.GetAllAsync();
+            foreach (var round in allRounds)
+            {
+                await _roundRepository.DeleteAsync(round.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} kolejek", allRounds.Count());
+            
+            var allPlayers = await _playerRepository.GetAllAsync();
+            foreach (var player in allPlayers)
+            {
+                await _playerRepository.DeleteAsync(player.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} graczy", allPlayers.Count());
+            
+            var allSeasons = await _seasonRepository.GetAllAsync();
+            foreach (var season in allSeasons)
+            {
+                await _seasonRepository.DeleteAsync(season.Id);
+            }
+            _logger.LogInformation("Usunięto {Count} sezonów", allSeasons.Count());
+            
+            _logger.LogInformation("Wszystkie stare dane zostały usunięte");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Błąd podczas usuwania starych danych - kontynuuję tworzenie nowych");
         }
 
         // Create demo season
@@ -116,13 +163,19 @@ public class DemoDataSeeder
                     Status = matchIndex < 8 ? MatchStatus.Finished : MatchStatus.Scheduled // First 8 matches finished
                 };
 
-                // Set results for finished matches
+                // Set results for finished matches (ensuring sum = 90)
                 if (match.Status == MatchStatus.Finished)
                 {
-                    var homeScore = random.Next(40, 51);
-                    var awayScore = 90 - homeScore;
+                    var homeScore = random.Next(40, 51); // Random between 40-50
+                    var awayScore = 90 - homeScore; // Ensures sum = 90
                     match.HomeScore = homeScore;
                     match.AwayScore = awayScore;
+                    
+                    // Verify sum = 90
+                    if (homeScore + awayScore != 90)
+                    {
+                        throw new InvalidOperationException($"Demo data: Match result sum is not 90: {homeScore} + {awayScore} = {homeScore + awayScore}");
+                    }
                 }
 
                 match = await _matchRepository.AddAsync(match);
@@ -164,11 +217,17 @@ public class DemoDataSeeder
 
         foreach (var player in players)
         {
-            // Predict for all finished matches
+            // Predict for all finished matches (ensuring sum = 90)
             foreach (var match in finishedMatches)
             {
-                var homeTip = random.Next(40, 51);
-                var awayTip = 90 - homeTip;
+                var homeTip = random.Next(40, 51); // Random between 40-50
+                var awayTip = 90 - homeTip; // Ensures sum = 90
+                
+                // Verify sum = 90
+                if (homeTip + awayTip != 90)
+                {
+                    throw new InvalidOperationException($"Demo data: Prediction sum is not 90: {homeTip} + {awayTip} = {homeTip + awayTip}");
+                }
                 
                 var prediction = new Prediction
                 {
@@ -195,6 +254,7 @@ public class DemoDataSeeder
                     var playerScore = new PlayerScore
                     {
                         PredictionId = prediction.Id,
+                        PlayerId = player.Id, // ← CRITICAL FIX: Set PlayerId for direct relationship
                         Points = points,
                         Bucket = bucket
                     };
@@ -203,13 +263,19 @@ public class DemoDataSeeder
                 }
             }
 
-            // Predict for some scheduled matches (not all players predict for all)
+            // Predict for some scheduled matches (not all players predict for all, ensuring sum = 90)
             foreach (var match in scheduledMatches)
             {
                 if (random.Next(100) < 70) // 70% chance to predict
                 {
-                    var homeTip = random.Next(40, 51);
-                    var awayTip = 90 - homeTip;
+                    var homeTip = random.Next(40, 51); // Random between 40-50
+                    var awayTip = 90 - homeTip; // Ensures sum = 90
+                    
+                    // Verify sum = 90
+                    if (homeTip + awayTip != 90)
+                    {
+                        throw new InvalidOperationException($"Demo data: Prediction sum is not 90: {homeTip} + {awayTip} = {homeTip + awayTip}");
+                    }
                     
                     var prediction = new Prediction
                     {

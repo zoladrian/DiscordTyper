@@ -7,6 +7,7 @@ public interface IRoundRepository
     Task<Round?> GetByIdAsync(int id);
     Task<Round?> GetByNumberAsync(int seasonId, int number);
     Task<IEnumerable<Round>> GetBySeasonIdAsync(int seasonId);
+    Task<IEnumerable<Round>> GetAllAsync(); // ← For demo data cleanup
     Task<Round> AddAsync(Round round);
     Task UpdateAsync(Round round);
     Task DeleteAsync(int id);

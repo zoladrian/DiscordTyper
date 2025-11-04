@@ -63,7 +63,8 @@ public class TableGenerator
         canvas.Clear(new SKColor(0x1E, 0x1E, 0x1E));
 
         // Draw header with gradient
-        DrawHeader(canvas, $"🏁 {season.Name} - Round {round.Number}", TableWidth, HeaderHeight);
+        var roundLabel = RoundHelper.GetRoundLabel(round.Number);
+        DrawHeader(canvas, $"🏁 {season.Name} - {roundLabel}", TableWidth, HeaderHeight);
 
         // Draw table content
         int yPos = HeaderHeight;

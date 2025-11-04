@@ -140,11 +140,31 @@ public class DiscordBotService : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling interaction");
+            _logger.LogError(ex, "Error handling interaction of type {InteractionType}", interaction.Type);
 
-            if (interaction.Type == InteractionType.ApplicationCommand)
+            if (!interaction.HasResponded)
             {
-                await interaction.RespondAsync("An error occurred while processing your command.", ephemeral: true);
+                try
+                {
+                    var errorMessage = "❌ Wystąpił błąd. Spróbuj ponownie.";
+                    switch (interaction)
+                    {
+                        case SocketModal modalInteraction:
+                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania formularza. Spróbuj ponownie.";
+                            break;
+                        case SocketMessageComponent:
+                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania przycisku. Spróbuj ponownie.";
+                            break;
+                        case IApplicationCommandInteraction:
+                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania komendy. Spróbuj ponownie.";
+                            break;
+                    }
+                    await interaction.RespondAsync(errorMessage, ephemeral: true);
+                }
+                catch (Exception respondEx)
+                {
+                    _logger.LogError(respondEx, "Failed to send error response to user");
+                }
             }
         }
     }

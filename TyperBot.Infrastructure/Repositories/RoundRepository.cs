@@ -36,6 +36,11 @@ public class RoundRepository : IRoundRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Round>> GetAllAsync()
+    {
+        return await _context.Rounds.ToListAsync();
+    }
+
     public async Task<Round> AddAsync(Round round)
     {
         await _context.Rounds.AddAsync(round);

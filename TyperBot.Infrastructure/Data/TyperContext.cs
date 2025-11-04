@@ -96,6 +96,12 @@ public class TyperContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Points).IsRequired();
             entity.Property(e => e.Bucket).HasConversion<int>();
+            
+            // CRITICAL FIX: Direct relationship to Player for season standings calculation
+            entity.HasOne(e => e.Player)
+                .WithMany(p => p.PlayerScores)
+                .HasForeignKey(e => e.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -127,6 +127,7 @@ public class PredictionService
                 var playerScore = new PlayerScore
                 {
                     PredictionId = prediction.Id,
+                    PlayerId = prediction.PlayerId, // ← CRITICAL FIX: Set PlayerId for direct relationship
                     Points = points,
                     Bucket = bucket
                 };
@@ -136,6 +137,7 @@ public class PredictionService
             {
                 prediction.PlayerScore.Points = points;
                 prediction.PlayerScore.Bucket = bucket;
+                prediction.PlayerScore.PlayerId = prediction.PlayerId; // ← Ensure consistency
                 await _playerScoreRepository.UpdateAsync(prediction.PlayerScore);
             }
         }

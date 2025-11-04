@@ -25,6 +25,13 @@ public class SeasonRepository : ISeasonRepository
             .FirstOrDefaultAsync(s => s.IsActive);
     }
 
+    public async Task<IEnumerable<Season>> GetAllActiveSeasonsAsync()
+    {
+        return await _context.Seasons
+            .Where(s => s.IsActive)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Season>> GetAllAsync()
     {
         return await _context.Seasons.ToListAsync();

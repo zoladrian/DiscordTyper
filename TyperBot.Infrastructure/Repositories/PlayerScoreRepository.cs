@@ -24,8 +24,13 @@ public class PlayerScoreRepository : IPlayerScoreRepository
     {
         return await _context.PlayerScores
             .Include(ps => ps.Prediction)
-            .Where(ps => ps.Prediction.PlayerId == playerId)
+            .Where(ps => ps.PlayerId == playerId) // ← Use direct PlayerId relationship
             .ToListAsync();
+    }
+
+    public async Task<IEnumerable<PlayerScore>> GetAllAsync()
+    {
+        return await _context.PlayerScores.ToListAsync();
     }
 
     public async Task<PlayerScore> AddAsync(PlayerScore score)
