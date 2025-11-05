@@ -89,12 +89,31 @@ builder.Services.AddHostedService<DiscordBotService>();
 
 var app = builder.Build();
 
-// Ensure database is created
+// Ensure database is created and migrated
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<TyperContext>();
-    context.Database.Migrate();
-    Log.Information("Database migrated successfully");
+    try
+    {
+        // Apply migrations
+        var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+        if (pendingMigrations.Any())
+        {
+            Log.Information("Applying {Count} pending migration(s): {Migrations}", 
+                pendingMigrations.Count, string.Join(", ", pendingMigrations));
+            context.Database.Migrate();
+            Log.Information("Database migrated successfully");
+        }
+        else
+        {
+            Log.Information("Database is up to date");
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Database migration failed");
+        throw; // Re-throw to prevent starting with invalid database state
+    }
 }
 
 Log.Information("Starting TyperBot application");

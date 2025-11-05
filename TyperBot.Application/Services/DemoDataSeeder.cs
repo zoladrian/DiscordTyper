@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
@@ -62,12 +62,12 @@ public class DemoDataSeeder
             }
             _logger.LogInformation("Usunięto {Count} typów", allPredictions.Count());
             
-            var allMatches = await _matchRepository.GetAllAsync();
-            foreach (var match in allMatches)
+            var existingMatches = await _matchRepository.GetAllAsync();
+            foreach (var match in existingMatches)
             {
                 await _matchRepository.DeleteAsync(match.Id);
             }
-            _logger.LogInformation("Usunięto {Count} meczów", allMatches.Count());
+            _logger.LogInformation("Usunięto {Count} meczów", existingMatches.Count());
             
             var allRounds = await _roundRepository.GetAllAsync();
             foreach (var round in allRounds)
@@ -83,12 +83,12 @@ public class DemoDataSeeder
             }
             _logger.LogInformation("Usunięto {Count} graczy", allPlayers.Count());
             
-            var allSeasons = await _seasonRepository.GetAllAsync();
-            foreach (var season in allSeasons)
+            var existingSeasons = await _seasonRepository.GetAllAsync();
+            foreach (var existingSeason in existingSeasons)
             {
-                await _seasonRepository.DeleteAsync(season.Id);
+                await _seasonRepository.DeleteAsync(existingSeason.Id);
             }
-            _logger.LogInformation("Usunięto {Count} sezonów", allSeasons.Count());
+            _logger.LogInformation("Usunięto {Count} sezonów", existingSeasons.Count());
             
             _logger.LogInformation("Wszystkie stare dane zostały usunięte");
         }

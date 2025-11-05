@@ -42,7 +42,29 @@ public class DiscordLookupService
         
         if (channel == null)
         {
-            _logger.LogWarning("Admin channel '{ChannelName}' not found in guild", _settings.Channels.AdminChannel);
+            _logger.LogWarning("Admin channel '{ChannelName}' not found in guild, creating it...", _settings.Channels.AdminChannel);
+            
+            try
+            {
+                var restChannel = await guild.CreateTextChannelAsync(_settings.Channels.AdminChannel);
+                // Wait a moment for Socket client to update cache, then get SocketTextChannel
+                await Task.Delay(100);
+                channel = _client.GetChannel(restChannel.Id) as SocketTextChannel;
+                
+                if (channel == null)
+                {
+                    // Fallback: try to get from guild cache
+                    channel = guild.TextChannels.FirstOrDefault(c => c.Id == restChannel.Id);
+                }
+                
+                _logger.LogInformation("Admin channel '{ChannelName}' created successfully (ID: {ChannelId})", 
+                    _settings.Channels.AdminChannel, restChannel.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create admin channel '{ChannelName}'", _settings.Channels.AdminChannel);
+                return null;
+            }
         }
         
         return channel;
@@ -57,7 +79,29 @@ public class DiscordLookupService
         
         if (channel == null)
         {
-            _logger.LogWarning("Predictions channel '{ChannelName}' not found in guild", _settings.Channels.PredictionsChannel);
+            _logger.LogWarning("Predictions channel '{ChannelName}' not found in guild, creating it...", _settings.Channels.PredictionsChannel);
+            
+            try
+            {
+                var restChannel = await guild.CreateTextChannelAsync(_settings.Channels.PredictionsChannel);
+                // Wait a moment for Socket client to update cache, then get SocketTextChannel
+                await Task.Delay(100);
+                channel = _client.GetChannel(restChannel.Id) as SocketTextChannel;
+                
+                if (channel == null)
+                {
+                    // Fallback: try to get from guild cache
+                    channel = guild.TextChannels.FirstOrDefault(c => c.Id == restChannel.Id);
+                }
+                
+                _logger.LogInformation("Predictions channel '{ChannelName}' created successfully (ID: {ChannelId})", 
+                    _settings.Channels.PredictionsChannel, restChannel.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create predictions channel '{ChannelName}'", _settings.Channels.PredictionsChannel);
+                return null;
+            }
         }
         
         return channel;
@@ -72,7 +116,29 @@ public class DiscordLookupService
         
         if (channel == null)
         {
-            _logger.LogWarning("Results channel '{ChannelName}' not found in guild", _settings.Channels.ResultsChannel);
+            _logger.LogWarning("Results channel '{ChannelName}' not found in guild, creating it...", _settings.Channels.ResultsChannel);
+            
+            try
+            {
+                var restChannel = await guild.CreateTextChannelAsync(_settings.Channels.ResultsChannel);
+                // Wait a moment for Socket client to update cache, then get SocketTextChannel
+                await Task.Delay(100);
+                channel = _client.GetChannel(restChannel.Id) as SocketTextChannel;
+                
+                if (channel == null)
+                {
+                    // Fallback: try to get from guild cache
+                    channel = guild.TextChannels.FirstOrDefault(c => c.Id == restChannel.Id);
+                }
+                
+                _logger.LogInformation("Results channel '{ChannelName}' created successfully (ID: {ChannelId})", 
+                    _settings.Channels.ResultsChannel, restChannel.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create results channel '{ChannelName}'", _settings.Channels.ResultsChannel);
+                return null;
+            }
         }
         
         return channel;

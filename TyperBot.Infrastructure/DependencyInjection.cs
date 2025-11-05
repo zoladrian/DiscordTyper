@@ -10,7 +10,9 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<TyperContext>(options =>
-            options.UseSqlite(connectionString));
+            options.UseSqlite(connectionString)
+                .ConfigureWarnings(warnings => 
+                    warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         // Register repositories
         services.AddScoped<ISeasonRepository, SeasonRepository>();

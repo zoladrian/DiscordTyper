@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TyperBot.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using TyperBot.Infrastructure.Data;
 namespace TyperBot.Infrastructure.Migrations
 {
     [DbContext(typeof(TyperContext))]
-    partial class TyperContextModelSnapshot : ModelSnapshot
+    [Migration("20251104205803_FixModelChanges")]
+    partial class FixModelChanges
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.10");

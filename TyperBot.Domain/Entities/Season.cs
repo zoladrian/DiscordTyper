@@ -8,6 +8,5 @@ public class Season
 
     // Navigation properties
     public ICollection<Round> Rounds { get; set; } = new List<Round>();
-    public ICollection<Player> Players { get; set; } = new List<Player>();
 }
 

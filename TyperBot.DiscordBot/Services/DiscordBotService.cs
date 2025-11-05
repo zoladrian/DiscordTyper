@@ -140,30 +140,81 @@ public class DiscordBotService : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling interaction of type {InteractionType}", interaction.Type);
+            _logger.LogError(ex, 
+                "Error handling interaction - Type: {InteractionType}, User: {Username} (ID: {UserId}), Guild: {GuildId}, Channel: {ChannelId}, CustomId: {CustomId}",
+                interaction.Type,
+                interaction.User.Username,
+                interaction.User.Id,
+                (interaction as SocketGuildCommand)?.GuildId ?? (interaction as SocketMessageComponent)?.Guild?.Id ?? 0,
+                (interaction as SocketGuildCommand)?.ChannelId ?? (interaction as SocketMessageComponent)?.Channel?.Id ?? 0,
+                (interaction as SocketMessageComponent)?.Data?.CustomId ?? (interaction as SocketModal)?.Data?.CustomId ?? "N/A");
 
             if (!interaction.HasResponded)
             {
                 try
                 {
-                    var errorMessage = "❌ Wystąpił błąd. Spróbuj ponownie.";
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ Błąd")
+                        .WithColor(Color.Red);
+
+                    string errorMessage = "Wystąpił nieoczekiwany błąd podczas przetwarzania żądania.";
+                    string? details = null;
+
                     switch (interaction)
                     {
                         case SocketModal modalInteraction:
-                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania formularza. Spróbuj ponownie.";
+                            errorMessage = "Wystąpił błąd podczas przetwarzania formularza.";
+                            details = "Sprawdź czy wszystkie pola zostały wypełnione poprawnie i spróbuj ponownie.";
                             break;
-                        case SocketMessageComponent:
-                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania przycisku. Spróbuj ponownie.";
+                        case SocketMessageComponent componentInteraction:
+                            errorMessage = "Wystąpił błąd podczas przetwarzania akcji.";
+                            details = "Spróbuj ponownie lub użyj komendy /panel-admina.";
                             break;
-                        case IApplicationCommandInteraction:
-                            errorMessage = "❌ Wystąpił błąd podczas przetwarzania komendy. Spróbuj ponownie.";
+                        case IApplicationCommandInteraction commandInteraction:
+                            errorMessage = "Wystąpił błąd podczas wykonywania komendy.";
+                            details = "Sprawdź logi lub skontaktuj się z administratorem.";
                             break;
                     }
-                    await interaction.RespondAsync(errorMessage, ephemeral: true);
+
+                    // Add exception message if it's user-friendly (not stack trace)
+                    if (!string.IsNullOrEmpty(ex.Message) && !ex.Message.Contains("at ") && ex.Message.Length < 200)
+                    {
+                        details = details != null ? $"{details}\n\nSzczegóły: {ex.Message}" : ex.Message;
+                    }
+
+                    errorEmbed.WithDescription(errorMessage);
+                    if (details != null)
+                    {
+                        errorEmbed.AddField("Szczegóły", details, false);
+                    }
+
+                    await interaction.RespondAsync(embed: errorEmbed.Build(), ephemeral: true);
                 }
                 catch (Exception respondEx)
                 {
-                    _logger.LogError(respondEx, "Failed to send error response to user");
+                    _logger.LogError(respondEx, 
+                        "Failed to send error response to user - InteractionType: {Type}, UserId: {UserId}",
+                        interaction.Type, interaction.User.Id);
+                }
+            }
+            else
+            {
+                // Try to send followup if already responded
+                try
+                {
+                    if (interaction is SocketInteraction socketInteraction)
+                    {
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("❌ Błąd")
+                            .WithDescription("Wystąpił błąd podczas przetwarzania żądania.")
+                            .WithColor(Color.Red)
+                            .Build();
+                        await socketInteraction.FollowupAsync(embed: errorEmbed, ephemeral: true);
+                    }
+                }
+                catch (Exception followupEx)
+                {
+                    _logger.LogError(followupEx, "Failed to send error followup");
                 }
             }
         }

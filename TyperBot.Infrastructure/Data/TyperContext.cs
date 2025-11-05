@@ -32,7 +32,7 @@ public class TyperContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Number).IsRequired();
-            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Description).HasMaxLength(500).IsRequired(false);
 
             entity.HasOne(e => e.Season)
                 .WithMany(s => s.Rounds)
@@ -96,12 +96,14 @@ public class TyperContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Points).IsRequired();
             entity.Property(e => e.Bucket).HasConversion<int>();
+            entity.Property(e => e.PlayerId).IsRequired(); // Explicitly mark as required
             
             // CRITICAL FIX: Direct relationship to Player for season standings calculation
             entity.HasOne(e => e.Player)
                 .WithMany(p => p.PlayerScores)
                 .HasForeignKey(e => e.PlayerId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
         });
     }
 }
