@@ -78,7 +78,14 @@ var discordConfig = new DiscordSocketConfig
 
 builder.Services.AddSingleton(discordConfig);
 builder.Services.AddSingleton<DiscordSocketClient>();
-builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()));
+
+// Configure InteractionService with proper config to enable modal detection
+var interactionServiceConfig = new InteractionServiceConfig
+{
+    DefaultRunMode = RunMode.Async,
+    UseCompiledLambda = true
+};
+builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>(), interactionServiceConfig));
 
 // Register Discord services
 builder.Services.AddSingleton<DiscordLookupService>();

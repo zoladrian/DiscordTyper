@@ -4,6 +4,8 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Linq;
+using System.Reflection;
 using TyperBot.DiscordBot.Models;
 
 namespace TyperBot.DiscordBot.Services;
@@ -35,6 +37,9 @@ public class DiscordBotService : IHostedService
         _client.Log += LogAsync;
         _client.Ready += ReadyAsync;
         _client.InteractionCreated += HandleInteractionAsync;
+        
+        // Hook up InteractionService command executed event for better error handling
+        _interactionService.InteractionExecuted += InteractionExecutedAsync;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -42,7 +47,55 @@ public class DiscordBotService : IHostedService
         _logger.LogInformation("Starting Discord Bot Service...");
 
         // Load interaction modules
-        await _interactionService.AddModulesAsync(typeof(DiscordBotService).Assembly, _serviceProvider);
+        var modules = await _interactionService.AddModulesAsync(typeof(DiscordBotService).Assembly, _serviceProvider);
+        var moduleList = modules.ToList();
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("Loaded {Count} interaction module(s):", moduleList.Count);
+        foreach (var module in moduleList)
+        {
+            _logger.LogInformation("   - {ModuleName} ({CommandCount} commands, {ModalCount} modals, {ComponentCount} components)",
+                module.Name,
+                module.SlashCommands.Count,
+                module.ModalCommands.Count,
+                module.ComponentCommands.Count
+            );
+        }
+        
+        // Log all registered modal handlers
+        var modalCommands = _interactionService.Modules
+            .SelectMany(m => m.ModalCommands)
+            .ToList();
+        
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("📋 Registered {Count} modal handler(s):", modalCommands.Count);
+        foreach (var modalCmd in modalCommands)
+        {
+            // Get CustomId from ModalInteraction attribute
+            var modalAttr = modalCmd.Attributes.OfType<ModalInteractionAttribute>().FirstOrDefault();
+            var customId = modalAttr?.CustomId ?? "N/A";
+            // Get method name - try to get it from the command info's underlying method via reflection
+            var methodName = "Unknown";
+            try
+            {
+                // ModalCommandInfo has a CommandInfo property that might have the method
+                var commandInfoType = modalCmd.GetType();
+                var methodProperty = commandInfoType.GetProperty("Method", BindingFlags.Public | BindingFlags.Instance);
+                if (methodProperty != null)
+                {
+                    var method = methodProperty.GetValue(modalCmd) as MethodInfo;
+                    methodName = method?.Name ?? "Unknown";
+                }
+            }
+            catch
+            {
+                // Fallback to module name if we can't get method name
+                methodName = modalCmd.Module.Name;
+            }
+            
+            _logger.LogInformation("   ✅ Modal: '{CustomId}' → {MethodName} in {ModuleName}", 
+                customId, methodName, modalCmd.Module.Name);
+        }
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
 
         // Login and start
         await _client.LoginAsync(TokenType.Bot, _settings.Token);
@@ -54,6 +107,15 @@ public class DiscordBotService : IHostedService
         _logger.LogInformation("Stopping Discord Bot Service...");
         await _client.StopAsync();
         await _client.LogoutAsync();
+    }
+
+    private Task InteractionExecutedAsync(ICommandInfo commandInfo, IInteractionContext context, IResult result)
+    {
+        if (!result.IsSuccess)
+        {
+            _logger.LogError("InteractionExecuted failed: {Error} - {ErrorReason}", result.Error, result.ErrorReason);
+        }
+        return Task.CompletedTask;
     }
 
     private Task LogAsync(LogMessage log)
