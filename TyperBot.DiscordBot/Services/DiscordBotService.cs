@@ -133,21 +133,92 @@ public class DiscordBotService : IHostedService
 
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
-        try
+        // Log all interactions for debugging
+        if (interaction is SocketModal modal)
         {
-            var context = new SocketInteractionContext(_client, interaction);
-            await _interactionService.ExecuteCommandAsync(context, _serviceProvider);
+            _logger.LogInformation(
+                "Modal interaction received - CustomId: '{CustomId}', User: {Username} (ID: {UserId}), Guild: {GuildId}, Channel: {ChannelId}",
+                modal.Data.CustomId,
+                interaction.User.Username,
+                interaction.User.Id,
+                modal.GuildId ?? 0,
+                modal.ChannelId ?? 0);
+            
+            // Log all modal components
+            foreach (var component in modal.Data.Components)
+            {
+                _logger.LogInformation(
+                    "Modal component - CustomId: '{CustomId}', Value: '{Value}'",
+                    component.CustomId,
+                    component.Value);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, 
-                "Error handling interaction - Type: {InteractionType}, User: {Username} (ID: {UserId}), Guild: {GuildId}, Channel: {ChannelId}, CustomId: {CustomId}",
+            _logger.LogInformation(
+                "Interaction received - Type: {Type}, User: {Username} (ID: {UserId}), CustomId: {CustomId}",
                 interaction.Type,
                 interaction.User.Username,
                 interaction.User.Id,
-                (interaction as SocketGuildCommand)?.GuildId ?? (interaction as SocketMessageComponent)?.Guild?.Id ?? 0,
-                (interaction as SocketGuildCommand)?.ChannelId ?? (interaction as SocketMessageComponent)?.Channel?.Id ?? 0,
                 (interaction as SocketMessageComponent)?.Data?.CustomId ?? (interaction as SocketModal)?.Data?.CustomId ?? "N/A");
+        }
+
+        try
+        {
+            var context = new SocketInteractionContext(_client, interaction);
+            
+            if (interaction is SocketModal modalInteraction)
+            {
+                _logger.LogInformation(
+                    "🔄 Executing ExecuteCommandAsync for modal '{CustomId}'...",
+                    modalInteraction.Data.CustomId);
+            }
+            
+            var result = await _interactionService.ExecuteCommandAsync(context, _serviceProvider);
+            
+            if (!result.IsSuccess)
+            {
+                _logger.LogError(
+                    "❌❌❌ ExecuteCommandAsync FAILED!");
+                _logger.LogError("   Error: {Error}", result.Error);
+                _logger.LogError("   ErrorReason: {Reason}", result.ErrorReason);
+                
+                if (result.Error == InteractionCommandError.UnmetPrecondition)
+                {
+                    _logger.LogError("   → UnmetPrecondition - Handler may not be found or parameter binding failed!");
+                }
+                else if (result.Error == InteractionCommandError.Exception)
+                {
+                    _logger.LogError("   → Exception in handler!");
+                    if (result.ErrorReason != null)
+                    {
+                        _logger.LogError("   → Exception details: {Details}", result.ErrorReason);
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogInformation("✅ ExecuteCommandAsync SUCCESS");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌❌❌ CRITICAL ERROR handling interaction");
+            _logger.LogError("═══════════════════════════════════════════════════════════");
+            _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
+            _logger.LogError("Exception Message: {Message}", ex.Message);
+            _logger.LogError("Interaction Type: {InteractionType}", interaction.Type);
+            _logger.LogError("User: {Username} (ID: {UserId})", interaction.User.Username, interaction.User.Id);
+            _logger.LogError("Guild: {GuildId}, Channel: {ChannelId}",
+                (interaction as SocketSlashCommand)?.GuildId ?? (interaction as SocketMessageComponent)?.GuildId ?? (interaction as SocketModal)?.GuildId ?? 0,
+                (interaction as SocketSlashCommand)?.ChannelId ?? (interaction as SocketMessageComponent)?.ChannelId ?? (interaction as SocketModal)?.ChannelId ?? 0);
+            _logger.LogError("CustomId: {CustomId}",
+                (interaction as SocketMessageComponent)?.Data?.CustomId ?? (interaction as SocketModal)?.Data?.CustomId ?? "N/A");
+            _logger.LogError("HasResponded: {HasResponded}", interaction.HasResponded);
+            _logger.LogError("═══════════════════════════════════════════════════════════");
+            _logger.LogError("Stack Trace:");
+            _logger.LogError("{StackTrace}", ex.StackTrace);
+            _logger.LogError("═══════════════════════════════════════════════════════════");
 
             if (!interaction.HasResponded)
             {

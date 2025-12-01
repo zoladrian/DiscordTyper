@@ -51,14 +51,12 @@ public class ModalBindingTests : IDisposable
             _predictionRepository,
             _matchRepository,
             _playerRepository,
-            _playerScoreRepository,
             _scoreCalculator,
-            NullLogger<PredictionService>.Instance);
+            _playerScoreRepository);
         _matchService = new MatchManagementService(
-            _matchRepository,
-            _roundRepository,
             _seasonRepository,
-            NullLogger<MatchManagementService>.Instance);
+            _roundRepository,
+            _matchRepository);
     }
 
     [Fact]
@@ -72,8 +70,9 @@ public class ModalBindingTests : IDisposable
         string liczba_meczow = "4";  // ← Must match modal input ID exactly
 
         // Act: Parse as the handler would
-        var parseSuccess = int.TryParse(kolejka_number, out var roundNumber) && 
-                          int.TryParse(liczba_meczow, out var matchCount);
+        var roundParseSuccess = int.TryParse(kolejka_number, out var roundNumber);
+        var matchCountParseSuccess = int.TryParse(liczba_meczow, out var matchCount);
+        var parseSuccess = roundParseSuccess && matchCountParseSuccess;
 
         // Assert
         Assert.True(parseSuccess, "Parameters should parse successfully when names match modal input IDs");
@@ -95,7 +94,10 @@ public class ModalBindingTests : IDisposable
 
         // Act: Create match as the handler would
         var startTime = DateTimeOffset.UtcNow.AddHours(24);
-        var (success, error, match) = await _matchService.CreateMatchAsync(1, home_team, away_team, startTime);
+        var createResult = await _matchService.CreateMatchAsync(1, home_team, away_team, startTime);
+        var success = createResult.success;
+        var error = createResult.error;
+        var match = createResult.match;
 
         // Assert
         Assert.True(success, $"Match creation should succeed when parameter names match: {error}");
@@ -126,13 +128,20 @@ public class ModalBindingTests : IDisposable
         string away_score = "40";  // ← Must match modal input ID exactly
 
         // Act: Parse and validate as the handler would
-        var parseSuccess = int.TryParse(home_score, out var home) && 
-                          int.TryParse(away_score, out var away);
-        var sumIsValid = home + away == 90;
-        var (isValid, errorMessage) = _matchService.ValidateMatchResult(home, away);
-
-        // Assert
+        var homeParseSuccess = int.TryParse(home_score, out var home);
+        var awayParseSuccess = int.TryParse(away_score, out var away);
+        var parseSuccess = homeParseSuccess && awayParseSuccess;
+        
+        // Assert parsing
         Assert.True(parseSuccess, "Parameters should parse successfully when names match modal input IDs");
+        
+        // Now validate the parsed values
+        var sumIsValid = home + away == 90;
+        var validationResult = _matchService.ValidateMatchResult(home, away);
+        var isValid = validationResult.isValid;
+        var errorMessage = validationResult.errorMessage;
+
+        // Assert validation
         Assert.True(sumIsValid, "Sum should equal 90");
         Assert.True(isValid, $"Validation should pass: {errorMessage}");
     }
@@ -208,7 +217,9 @@ public class ModalBindingTests : IDisposable
         // Act & Assert
         foreach (var (home, away, shouldPass) in testCases)
         {
-            var (isValid, error) = _matchService.ValidateMatchResult(home, away);
+            var validationResult = _matchService.ValidateMatchResult(home, away);
+            var isValid = validationResult.isValid;
+            var error = validationResult.errorMessage;
             if (shouldPass)
             {
                 Assert.True(isValid, $"Expected {home}:{away} (sum={home + away}) to be valid");

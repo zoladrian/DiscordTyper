@@ -1,13 +1,4 @@
 using Xunit;
-using Microsoft.Extensions.Logging;
-using Moq;
-using TyperBot.DiscordBot.Modules;
-using TyperBot.DiscordBot.Services;
-using TyperBot.Application.Services;
-using TyperBot.Infrastructure.Repositories;
-using TyperBot.Application.Services;
-using TyperBot.DiscordBot.Models;
-using Microsoft.Extensions.Options;
 
 namespace TyperBot.Tests.Integration;
 

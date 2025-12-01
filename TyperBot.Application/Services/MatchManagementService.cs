@@ -65,5 +65,21 @@ public class MatchManagementService
 
         return (true, null, match);
     }
+
+    public (bool isValid, string? errorMessage) ValidateMatchResult(int homeScore, int awayScore)
+    {
+        if (homeScore < 0 || awayScore < 0)
+        {
+            return (false, "Wyniki nie mogą być ujemne.");
+        }
+
+        var sum = homeScore + awayScore;
+        if (sum != 90)
+        {
+            return (false, $"Suma wyników musi wynosić 90, a nie {sum}.");
+        }
+
+        return (true, null);
+    }
 }
 

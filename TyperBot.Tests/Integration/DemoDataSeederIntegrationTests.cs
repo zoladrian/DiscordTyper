@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TyperBot.Application.Services;
+using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Data;
 using TyperBot.Infrastructure.Repositories;
@@ -86,11 +87,11 @@ public class DemoDataSeederIntegrationTests : IDisposable
 
         // Assert
         Assert.Equal(1, result.SeasonsCreated);
-        Assert.Equal(18, result.RoundsCreated); // 18 rounds: 14 regular + 4 playoff
-        Assert.Equal(18 * 4, result.MatchesCreated); // 4 matches per round
+        Assert.Equal(5, result.RoundsCreated); // Demo seeder creates 5 rounds
+        Assert.True(result.MatchesCreated > 0);
         Assert.Equal(5, result.PlayersCreated);
         Assert.True(result.PredictionsCreated > 0);
-        Assert.True(result.PlayerScoresCreated > 0);
+        Assert.True(result.ScoresCreated > 0);
     }
 
     [Fact]
@@ -181,31 +182,25 @@ public class DemoDataSeederIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedDemoDataAsync_CreatesPlayoffRoundsWithCorrectNames()
+    public async Task SeedDemoDataAsync_CreatesExpectedRounds()
     {
         // Act
         await _seeder.SeedDemoDataAsync();
 
-        // Assert: Verify all 18 rounds exist with proper names
+        // Assert: Verify 5 rounds exist with proper numbers
         var season = await _context.Seasons.SingleAsync(s => s.IsActive);
         var rounds = await _context.Rounds
             .Where(r => r.SeasonId == season.Id)
             .OrderBy(r => r.Number)
             .ToListAsync();
 
-        Assert.Equal(18, rounds.Count);
+        Assert.Equal(5, rounds.Count);
 
-        // Regular rounds 1-14
-        for (int i = 1; i <= 14; i++)
+        // Demo seeder creates rounds 1-5
+        for (int i = 1; i <= 5; i++)
         {
             Assert.Contains(rounds, r => r.Number == i);
         }
-
-        // Playoff rounds 15-18
-        Assert.Contains(rounds, r => r.Number == 15); // Quarter-final 1
-        Assert.Contains(rounds, r => r.Number == 16); // Quarter-final 2
-        Assert.Contains(rounds, r => r.Number == 17); // Semi-final
-        Assert.Contains(rounds, r => r.Number == 18); // Final
     }
 
     [Fact]

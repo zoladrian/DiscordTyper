@@ -83,14 +83,20 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     {
         if (channel == null) return true; // Allow in DMs for testing
         
+        var user = Context.User as SocketGuildUser;
+        // Administrators can use commands anywhere
+        if (IsAdmin(user))
+        {
+            return true;
+        }
+        
         var allowedChannels = new[] 
         { 
             _settings.Channels.AdminChannel,
             _settings.Channels.PredictionsChannel 
         };
         
-        return allowedChannels.Contains(channel.Name) || 
-               channel.Guild.GetUser(Context.User.Id)?.GuildPermissions.Administrator == true;
+        return allowedChannels.Contains(channel.Name);
     }
 
     private async Task RespondWithErrorAsync(string message, string? details = null)
@@ -132,6 +138,144 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [SlashCommand("test-modal", "Testowy modal do debugowania - SUPER SZCZEGÓŁOWE LOGOWANIE")]
+    public async Task TestModalAsync()
+    {
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("🔵 TEST MODAL COMMAND START");
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("User: {Username} (ID: {UserId})", Context.User.Username, Context.User.Id);
+        _logger.LogInformation("Guild: {GuildId}, Channel: {ChannelId}", Context.Guild?.Id, Context.Channel?.Id);
+        _logger.LogInformation("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
+        _logger.LogInformation("Interaction Type: {Type}", Context.Interaction.Type);
+        
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            _logger.LogWarning("❌ User {Username} is not admin", Context.User.Username);
+            await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true);
+            return;
+        }
+
+        try
+        {
+            var modalBuilder = new ModalBuilder()
+                .WithTitle("🔬 Test Modal - Ultra Debug")
+                .WithCustomId("test_modal_ultra_debug")
+                .AddTextInput("Test Field 1", "test_field_1", TextInputStyle.Short, placeholder: "Wpisz coś", required: true)
+                .AddTextInput("Test Field 2", "test_field_2", TextInputStyle.Short, placeholder: "Opcjonalne", required: false);
+            
+            var modal = modalBuilder.Build();
+            _logger.LogInformation("✅ Modal created:");
+            _logger.LogInformation("   - CustomId: '{CustomId}'", modal.CustomId);
+            _logger.LogInformation("   - Title: '{Title}'", modal.Title);
+
+            _logger.LogInformation("📤 Sending modal...");
+            await RespondWithModalAsync(modal);
+            _logger.LogInformation("✅ Modal sent successfully!");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌❌❌ CRITICAL ERROR sending modal");
+            _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
+            _logger.LogError("Exception Message: {Message}", ex.Message);
+            _logger.LogError("Stack Trace: {StackTrace}", ex.StackTrace);
+            
+            if (!Context.Interaction.HasResponded)
+            {
+                await RespondAsync($"❌ Błąd podczas wyświetlania modala: {ex.GetType().Name} - {ex.Message}", ephemeral: true);
+            }
+        }
+        
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("🔵 TEST MODAL COMMAND END");
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+    }
+
+    [ModalInteraction("test_modal_ultra_debug")]
+    public async Task HandleTestModalUltraDebugAsync(TestUltraDebugModal modal)
+    {
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("🟢 TEST MODAL HANDLER START - HANDLER JEST WYWOŁYWANY!");
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("User: {Username} (ID: {UserId})", Context.User.Username, Context.User.Id);
+        _logger.LogInformation("Guild: {GuildId}, Channel: {ChannelId}", Context.Guild?.Id, Context.Channel?.Id);
+        _logger.LogInformation("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
+        _logger.LogInformation("Interaction Type: {Type}", Context.Interaction.Type);
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("📥 MODAL DATA RECEIVED:");
+        _logger.LogInformation("   - TestField1: '{Field1}'", modal.TestField1 ?? "NULL");
+        _logger.LogInformation("   - TestField2: '{Field2}'", modal.TestField2 ?? "NULL");
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+
+        try
+        {
+            var responseText = $"✅ **Test modal działa!**\n\n" +
+                             $"🔹 Field 1: **{modal.TestField1 ?? "NULL"}**\n" +
+                             $"🔹 Field 2: **{modal.TestField2 ?? "brak"}**\n\n" +
+                             $"📊 Status: Handler został poprawnie wywołany!";
+            
+            if (Context.Interaction.HasResponded)
+            {
+                _logger.LogWarning("⚠️ Interaction already responded, using FollowupAsync");
+                await FollowupAsync(responseText, ephemeral: true);
+                _logger.LogInformation("✅ FollowupAsync sent");
+            }
+            else
+            {
+                _logger.LogInformation("✅ Using RespondAsync");
+                await RespondAsync(responseText, ephemeral: true);
+                _logger.LogInformation("✅ RespondAsync sent");
+            }
+            
+            _logger.LogInformation("═══════════════════════════════════════════════════════════");
+            _logger.LogInformation("✅✅✅ RESPONSE SENT SUCCESSFULLY!");
+            _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌❌❌ CRITICAL ERROR in modal handler");
+            _logger.LogError("═══════════════════════════════════════════════════════════");
+            _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
+            _logger.LogError("Exception Message: {Message}", ex.Message);
+            _logger.LogError("Exception Source: {Source}", ex.Source);
+            _logger.LogError("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
+            _logger.LogError("═══════════════════════════════════════════════════════════");
+            _logger.LogError("Stack Trace:");
+            _logger.LogError("{StackTrace}", ex.StackTrace);
+            _logger.LogError("═══════════════════════════════════════════════════════════");
+            
+            try
+            {
+                var errorMsg = $"❌ **Błąd w handlerze:**\n" +
+                             $"Typ: `{ex.GetType().Name}`\n" +
+                             $"Wiadomość: `{ex.Message}`\n\n" +
+                             $"Szczegóły w logach serwera.";
+                
+                if (!Context.Interaction.HasResponded)
+                {
+                    _logger.LogInformation("Trying RespondAsync with error message");
+                    await RespondAsync(errorMsg, ephemeral: true);
+                }
+                else
+                {
+                    _logger.LogInformation("Trying FollowupAsync with error message");
+                    await FollowupAsync(errorMsg, ephemeral: true);
+                }
+            }
+            catch (Exception respondEx)
+            {
+                _logger.LogError(respondEx, "❌❌❌ FAILED to send error response");
+                _logger.LogError("Response exception type: {Type}", respondEx.GetType().FullName);
+                _logger.LogError("Response exception message: {Message}", respondEx.Message);
+            }
+        }
+        
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        _logger.LogInformation("🟢 TEST MODAL HANDLER END");
+        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+    }
+
     [SlashCommand("panel-admina", "Otwórz panel administracyjny Typera.")]
     public async Task AdminPanelAsync()
     {
@@ -156,8 +300,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             "Panel admina otwarty - Komenda: panel-admina, Użytkownik: {Username} (ID: {UserId}), Kanał: {ChannelName} (ID: {ChannelId}), Serwer: {GuildId}",
             Context.User.Username,
             Context.User.Id,
-            Context.Channel.Name,
-            Context.Channel.Id,
+            (Context.Channel as SocketTextChannel)?.Name ?? "DM",
+            Context.Channel?.Id ?? 0,
             Context.Guild?.Id);
 
         var embed = new EmbedBuilder()
@@ -1363,6 +1507,188 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [ModalInteraction("admin_add_match_modal")]
+    public async Task HandleAddMatchModalAsync(string homeTeam, string awayTeam) // ← CRITICAL FIX: Discord.NET converts snake_case to camelCase!
+    {
+        _logger.LogInformation(
+            "Modal admin_add_match_modal otrzymany - Użytkownik: {Username} (ID: {UserId}), HomeTeam: '{HomeTeam}', AwayTeam: '{AwayTeam}', Guild: {GuildId}, Channel: {ChannelId}",
+            Context.User.Username, Context.User.Id, homeTeam, awayTeam, Context.Guild?.Id, Context.Channel?.Id);
+        
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        // Retrieve cached state
+        var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+        if (state == null || !state.SelectedRound.HasValue || string.IsNullOrEmpty(state.SelectedDate) || string.IsNullOrEmpty(state.SelectedTime))
+        {
+            _logger.LogWarning(
+                "Modal tworzenia meczu przesłany, ale stan wygasł/brak - Użytkownik: {Username} (ID: {UserId}), Serwer: {GuildId}, Kanał: {ChannelId}",
+                Context.User.Username,
+                Context.User.Id,
+                Context.Guild?.Id ?? 0,
+                Context.Channel?.Id ?? 0);
+            await RespondAsync("❌ Twój formularz dodawania meczu wygasł, otwórz ponownie /panel-admina i spróbuj ponownie.", ephemeral: true);
+            return;
+        }
+
+        var roundNum = state.SelectedRound.Value;
+        var dateStr = state.SelectedDate;
+        var timeStr = state.SelectedTime;
+
+        _logger.LogInformation(
+            "Modal dodaj mecz przesłany - Użytkownik: {Username} (ID: {UserId}), Runda: {Round}, Data: {Date}, Godzina: {Time}, Drużyna domowa: {HomeTeam}, Drużyna wyjazdowa: {AwayTeam}, Serwer: {GuildId}, Kanał: {ChannelId}",
+            Context.User.Username,
+            Context.User.Id,
+            roundNum,
+            dateStr,
+            timeStr,
+            homeTeam,
+            awayTeam,
+            Context.Guild?.Id ?? 0,
+            Context.Channel?.Id ?? 0);
+
+        // Parse date/time
+        DateTimeOffset startTime;
+        try
+        {
+            if (!DateTime.TryParse($"{dateStr} {timeStr}", out var localTime))
+            {
+                _logger.LogError(
+                    "Nie udało się sparsować daty/godziny - Użytkownik: {Username} (ID: {UserId}), Data: {Date}, Godzina: {Time}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                    Context.User.Username,
+                    Context.User.Id,
+                    dateStr,
+                    timeStr,
+                    Context.Guild.Id,
+                    Context.Channel.Id);
+                await RespondAsync("❌ Nie udało się sparsować daty/godziny meczu. Spróbuj ponownie.", ephemeral: true);
+                return;
+            }
+
+            // Convert to configured timezone, then to UTC for storage
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
+            startTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
+            
+            _logger.LogInformation(
+                "Data/godzina sparsowana - Data lokalna: {LocalTime}, UTC: {UtcTime}, Strefa czasowa: {Timezone}",
+                localDateTime,
+                startTime,
+                _settings.Timezone);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Wyjątek podczas parsowania daty/godziny - Użytkownik: {Username} (ID: {UserId}), Data: {Date}, Godzina: {Time}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                Context.User.Username,
+                Context.User.Id,
+                dateStr,
+                timeStr,
+                Context.Guild.Id,
+                Context.Channel.Id);
+            await RespondAsync("❌ Nie udało się sparsować daty/godziny meczu. Spróbuj ponownie.", ephemeral: true);
+            return;
+        }
+
+        // Validate start time is in the future
+        if (startTime <= DateTimeOffset.UtcNow)
+        {
+            _logger.LogWarning(
+                "Data rozpoczęcia meczu w przeszłości - Użytkownik: {Username} (ID: {UserId}), StartTime UTC: {StartTimeUtc}, StartTime Local: {StartTimeLocal}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                Context.User.Username,
+                Context.User.Id,
+                startTime,
+                TimeZoneInfo.ConvertTimeFromUtc(startTime.UtcDateTime, TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone)),
+                Context.Guild.Id,
+                Context.Channel.Id);
+            await RespondAsync("❌ Data rozpoczęcia meczu musi być w przyszłości.", ephemeral: true);
+            return;
+        }
+
+        Domain.Entities.Match? match = null;
+        try
+        {
+            var (success, error, createdMatch) = await _matchService.CreateMatchAsync(roundNum, homeTeam, awayTeam, startTime);
+            
+            if (!success)
+            {
+                _logger.LogError(
+                    "Tworzenie meczu nie powiodło się - Użytkownik: {Username} (ID: {UserId}), Runda: {Round}, Data: {Date}, Godzina: {Time}, Drużyna domowa: {HomeTeam}, Drużyna wyjazdowa: {AwayTeam}, Błąd: {Error}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                    Context.User.Username,
+                    Context.User.Id,
+                    roundNum,
+                    dateStr,
+                    timeStr,
+                    homeTeam,
+                    awayTeam,
+                    error,
+                    Context.Guild.Id,
+                    Context.Channel.Id);
+                await RespondAsync($"❌ Błąd podczas tworzenia meczu: {error ?? "Nieznany błąd"}", ephemeral: true);
+                return;
+            }
+
+            match = createdMatch;
+            if (match == null)
+            {
+                _logger.LogError(
+                    "Tworzenie meczu zwróciło null - Użytkownik: {Username} (ID: {UserId}), Runda: {Round}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                    Context.User.Username,
+                    Context.User.Id,
+                    roundNum,
+                    Context.Guild.Id,
+                    Context.Channel.Id);
+                await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach. Sprawdź poprawność rundy, daty i godziny.", ephemeral: true);
+                return;
+            }
+
+            // Clear state
+            _stateService.ClearState(Context.Guild.Id, Context.User.Id);
+
+            // Post match card to predictions channel
+            var round = match.Round;
+            var roundNumForCard = round?.Number ?? roundNum;
+            await PostMatchCardAsync(match, roundNumForCard);
+
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var localStartTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
+            
+            _logger.LogInformation(
+                "Mecz utworzony pomyślnie - ID meczu: {MatchId}, Runda: {Round}, {HomeTeam} vs {AwayTeam}, StartTime UTC: {StartTimeUtc}, StartTime Local: {StartTimeLocal}, Kanał: {ChannelName}, Serwer: {GuildId}",
+                match.Id,
+                roundNum,
+                homeTeam,
+                awayTeam,
+                match.StartTime,
+                localStartTime,
+                (Context.Channel as SocketTextChannel)?.Name ?? "DM",
+                Context.Guild.Id);
+
+            await RespondAsync(
+                $"✅ Mecz utworzony: Runda {roundNum}, {homeTeam} vs {awayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.",
+                ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Wyjątek podczas tworzenia meczu - Użytkownik: {Username} (ID: {UserId}), Runda: {Round}, Data: {Date}, Godzina: {Time}, Drużyna domowa: {HomeTeam}, Drużyna wyjazdowa: {AwayTeam}, Serwer: {GuildId}, Kanał: {ChannelId}",
+                Context.User.Username,
+                Context.User.Id,
+                roundNum,
+                dateStr,
+                timeStr,
+                homeTeam,
+                awayTeam,
+                Context.Guild.Id,
+                Context.Channel.Id);
+            await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach. Sprawdź poprawność rundy, daty i godziny.", ephemeral: true);
+        }
+    }
+
     [ModalInteraction("admin_add_match_modal_v2")]
     public async Task HandleAddMatchModalV2Async(string roundNumber, string matchDate, string matchTime, string homeTeam, string awayTeam)
     {
@@ -1594,7 +1920,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     }
 
     [ModalInteraction("admin_set_result_modal_*")]
-    public async Task HandleSetResultModalAsync(string matchIdStr, string home_score, string away_score) // ← CRITICAL FIX: Match modal input IDs
+    public async Task HandleSetResultModalAsync(string matchIdStr, string homeScore, string awayScore) // ← CRITICAL FIX: Discord.NET converts snake_case to camelCase
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -1609,10 +1935,10 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (!int.TryParse(home_score, out var home) || !int.TryParse(away_score, out var away)) // ← Fixed parameter names
+        if (!int.TryParse(homeScore, out var home) || !int.TryParse(awayScore, out var away)) // ← Fixed parameter names
         {
-            _logger.LogWarning("Invalid score format - User: {User}, home_score: '{Home}', away_score: '{Away}'", 
-                Context.User.Username, home_score, away_score);
+            _logger.LogWarning("Invalid score format - User: {User}, homeScore: '{Home}', awayScore: '{Away}'", 
+                Context.User.Username, homeScore, awayScore);
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników.", ephemeral: true);
             return;
         }
@@ -2263,6 +2589,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        var channel = Context.Channel as SocketTextChannel;
+        if (!IsAllowedChannel(channel))
+        {
+            await RespondWithErrorAsync(
+                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Używasz: #{channel?.Name ?? "DM"}");
+            return;
+        }
+
         _logger.LogInformation(
             "Komenda wyniki gracza - Użytkownik wykonujący: {Username} (ID: {UserId}), Gracz: {PlayerUsername} (ID: {PlayerId}), Serwer: {GuildId}, Kanał: {ChannelId}",
             Context.User.Username,
@@ -2407,6 +2742,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        var channel = Context.Channel as SocketTextChannel;
+        if (!IsAllowedChannel(channel))
+        {
+            await RespondWithErrorAsync(
+                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Używasz: #{channel?.Name ?? "DM"}");
+            return;
+        }
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null)
         {
@@ -2452,6 +2796,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (!IsAdmin(user) || Context.Guild == null)
         {
             await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var channel = Context.Channel as SocketTextChannel;
+        if (!IsAllowedChannel(channel))
+        {
+            await RespondWithErrorAsync(
+                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
 
@@ -2512,11 +2865,20 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        var channel = Context.Channel as SocketTextChannel;
+        if (!IsAllowedChannel(channel))
+        {
+            await RespondWithErrorAsync(
+                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Używasz: #{channel?.Name ?? "DM"}");
+            return;
+        }
+
         _logger.LogInformation(
             "Komenda dane testowe wywołana - Użytkownik: {Username} (ID: {UserId}), Kanał: {ChannelName}, Serwer: {GuildId}",
             Context.User.Username,
             Context.User.Id,
-            Context.Channel.Name,
+            (Context.Channel as SocketTextChannel)?.Name ?? "DM",
             Context.Guild.Id);
 
         await DeferAsync(ephemeral: true);
@@ -2548,5 +2910,21 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             await FollowupAsync("❌ Wystąpił błąd podczas tworzenia danych testowych. Błąd został zapisany w logach.", ephemeral: true);
         }
     }
+}
+
+// Modal classes using IModal interface (REQUIRED for Discord.Net 3.x)
+public class TestUltraDebugModal : IModal
+{
+    public string Title => "🔬 Test Modal - Ultra Debug";
+
+    [InputLabel("Test Field 1")]
+    [ModalTextInput("test_field_1", TextInputStyle.Short, "Wpisz coś", maxLength: 100)]
+    [RequiredInput(true)]
+    public string TestField1 { get; set; } = string.Empty;
+
+    [InputLabel("Test Field 2")]
+    [ModalTextInput("test_field_2", TextInputStyle.Short, "Opcjonalne", maxLength: 100)]
+    [RequiredInput(false)]
+    public string? TestField2 { get; set; }
 }
 
