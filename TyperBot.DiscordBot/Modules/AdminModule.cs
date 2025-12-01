@@ -141,142 +141,67 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     [SlashCommand("test-modal", "Testowy modal do debugowania - SUPER SZCZEGÓŁOWE LOGOWANIE")]
     public async Task TestModalAsync()
     {
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("🔵 TEST MODAL COMMAND START");
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("User: {Username} (ID: {UserId})", Context.User.Username, Context.User.Id);
-        _logger.LogInformation("Guild: {GuildId}, Channel: {ChannelId}", Context.Guild?.Id, Context.Channel?.Id);
-        _logger.LogInformation("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
-        _logger.LogInformation("Interaction Type: {Type}", Context.Interaction.Type);
-        
+        await RespondAsync("❌ Komenda testowa została usunięta.", ephemeral: true);
+    }
+
+
+    [SlashCommand("start-nowego-sezonu", "Rozpocznij nowy sezon typera.")]
+    public async Task StartNewSeasonAsync()
+    {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user))
         {
-            _logger.LogWarning("❌ User {Username} is not admin", Context.User.Username);
-            await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true);
+            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
             return;
         }
 
-        try
-        {
-            var modalBuilder = new ModalBuilder()
-                .WithTitle("🔬 Test Modal - Ultra Debug")
-                .WithCustomId("test_modal_ultra_debug")
-                .AddTextInput("Test Field 1", "test_field_1", TextInputStyle.Short, placeholder: "Wpisz coś", required: true)
-                .AddTextInput("Test Field 2", "test_field_2", TextInputStyle.Short, placeholder: "Opcjonalne", required: false);
-            
-            var modal = modalBuilder.Build();
-            _logger.LogInformation("✅ Modal created:");
-            _logger.LogInformation("   - CustomId: '{CustomId}'", modal.CustomId);
-            _logger.LogInformation("   - Title: '{Title}'", modal.Title);
-
-            _logger.LogInformation("📤 Sending modal...");
-            await RespondWithModalAsync(modal);
-            _logger.LogInformation("✅ Modal sent successfully!");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "❌❌❌ CRITICAL ERROR sending modal");
-            _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
-            _logger.LogError("Exception Message: {Message}", ex.Message);
-            _logger.LogError("Stack Trace: {StackTrace}", ex.StackTrace);
-            
-            if (!Context.Interaction.HasResponded)
-            {
-                await RespondAsync($"❌ Błąd podczas wyświetlania modala: {ex.GetType().Name} - {ex.Message}", ephemeral: true);
-            }
-        }
-        
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("🔵 TEST MODAL COMMAND END");
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        await RespondWithModalAsync<StartSeasonModal>("admin_start_season_modal");
     }
 
-    [ModalInteraction("test_modal_ultra_debug")]
-    public async Task HandleTestModalUltraDebugAsync(TestUltraDebugModal modal)
+    [ModalInteraction("admin_start_season_modal")]
+    public async Task HandleStartSeasonModalAsync(StartSeasonModal modal)
     {
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("🟢 TEST MODAL HANDLER START - HANDLER JEST WYWOŁYWANY!");
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("User: {Username} (ID: {UserId})", Context.User.Username, Context.User.Id);
-        _logger.LogInformation("Guild: {GuildId}, Channel: {ChannelId}", Context.Guild?.Id, Context.Channel?.Id);
-        _logger.LogInformation("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
-        _logger.LogInformation("Interaction Type: {Type}", Context.Interaction.Type);
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("📥 MODAL DATA RECEIVED:");
-        _logger.LogInformation("   - TestField1: '{Field1}'", modal.TestField1 ?? "NULL");
-        _logger.LogInformation("   - TestField2: '{Field2}'", modal.TestField2 ?? "NULL");
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
 
-        try
+        if (string.IsNullOrWhiteSpace(modal.SeasonName))
         {
-            var responseText = $"✅ **Test modal działa!**\n\n" +
-                             $"🔹 Field 1: **{modal.TestField1 ?? "NULL"}**\n" +
-                             $"🔹 Field 2: **{modal.TestField2 ?? "brak"}**\n\n" +
-                             $"📊 Status: Handler został poprawnie wywołany!";
-            
-            if (Context.Interaction.HasResponded)
-            {
-                _logger.LogWarning("⚠️ Interaction already responded, using FollowupAsync");
-                await FollowupAsync(responseText, ephemeral: true);
-                _logger.LogInformation("✅ FollowupAsync sent");
-            }
-            else
-            {
-                _logger.LogInformation("✅ Using RespondAsync");
-                await RespondAsync(responseText, ephemeral: true);
-                _logger.LogInformation("✅ RespondAsync sent");
-            }
-            
-            _logger.LogInformation("═══════════════════════════════════════════════════════════");
-            _logger.LogInformation("✅✅✅ RESPONSE SENT SUCCESSFULLY!");
-            _logger.LogInformation("═══════════════════════════════════════════════════════════");
+            await RespondAsync("❌ Nazwa sezonu nie może być pusta.", ephemeral: true);
+            return;
         }
-        catch (Exception ex)
+
+        // Deactivate all existing seasons
+        var allSeasons = await _seasonRepository.GetAllAsync();
+        foreach (var season in allSeasons)
         {
-            _logger.LogError(ex, "❌❌❌ CRITICAL ERROR in modal handler");
-            _logger.LogError("═══════════════════════════════════════════════════════════");
-            _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
-            _logger.LogError("Exception Message: {Message}", ex.Message);
-            _logger.LogError("Exception Source: {Source}", ex.Source);
-            _logger.LogError("HasResponded: {HasResponded}", Context.Interaction.HasResponded);
-            _logger.LogError("═══════════════════════════════════════════════════════════");
-            _logger.LogError("Stack Trace:");
-            _logger.LogError("{StackTrace}", ex.StackTrace);
-            _logger.LogError("═══════════════════════════════════════════════════════════");
-            
-            try
+            if (season.IsActive)
             {
-                var errorMsg = $"❌ **Błąd w handlerze:**\n" +
-                             $"Typ: `{ex.GetType().Name}`\n" +
-                             $"Wiadomość: `{ex.Message}`\n\n" +
-                             $"Szczegóły w logach serwera.";
-                
-                if (!Context.Interaction.HasResponded)
-                {
-                    _logger.LogInformation("Trying RespondAsync with error message");
-                    await RespondAsync(errorMsg, ephemeral: true);
-                }
-                else
-                {
-                    _logger.LogInformation("Trying FollowupAsync with error message");
-                    await FollowupAsync(errorMsg, ephemeral: true);
-                }
-            }
-            catch (Exception respondEx)
-            {
-                _logger.LogError(respondEx, "❌❌❌ FAILED to send error response");
-                _logger.LogError("Response exception type: {Type}", respondEx.GetType().FullName);
-                _logger.LogError("Response exception message: {Message}", respondEx.Message);
+                season.IsActive = false;
+                await _seasonRepository.UpdateAsync(season);
             }
         }
-        
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
-        _logger.LogInformation("🟢 TEST MODAL HANDLER END");
-        _logger.LogInformation("═══════════════════════════════════════════════════════════");
+
+        // Create new season
+        var newSeason = new Domain.Entities.Season
+        {
+            Name = modal.SeasonName.Trim(),
+            IsActive = true
+        };
+
+        await _seasonRepository.AddAsync(newSeason);
+
+        _logger.LogInformation(
+            "Nowy sezon utworzony - Użytkownik: {Username} (ID: {UserId}), Nazwa: {Name}, ID: {Id}",
+            Context.User.Username, Context.User.Id, newSeason.Name, newSeason.Id);
+
+        await RespondAsync($"✅ Nowy sezon **{newSeason.Name}** został utworzony i ustawiony jako aktywny.", ephemeral: true);
     }
 
-    [SlashCommand("panel-admina", "Otwórz panel administracyjny Typera.")]
+    [SlashCommand("panel-sezonu", "Otwórz panel sezonu typera.")]
     public async Task AdminPanelAsync()
     {
         var user = Context.User as SocketGuildUser;
@@ -297,18 +222,155 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
         
         _logger.LogInformation(
-            "Panel admina otwarty - Komenda: panel-admina, Użytkownik: {Username} (ID: {UserId}), Kanał: {ChannelName} (ID: {ChannelId}), Serwer: {GuildId}",
+            "Panel sezonu otwarty - Komenda: panel-sezonu, Użytkownik: {Username} (ID: {UserId}), Kanał: {ChannelName} (ID: {ChannelId}), Serwer: {GuildId}",
             Context.User.Username,
             Context.User.Id,
             (Context.Channel as SocketTextChannel)?.Name ?? "DM",
             Context.Channel?.Id ?? 0,
             Context.Guild?.Id);
 
+        var allSeasons = (await _seasonRepository.GetAllAsync()).ToList();
+        
+        // If more than one season, show selection
+        if (allSeasons.Count > 1)
+        {
+            var seasonOptions = allSeasons.Select(s => new SelectMenuOptionBuilder()
+                .WithLabel(s.Name)
+                .WithValue(s.Id.ToString())
+                .WithDescription(s.IsActive ? "Aktywny" : "Zakończony"))
+                .ToList();
+
+            var selectMenu = new SelectMenuBuilder()
+                .WithCustomId("admin_select_season")
+                .WithPlaceholder("Wybierz sezon")
+                .WithOptions(seasonOptions)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("Panel Sezonu Typera")
+                .WithDescription("Wybierz sezon, którym chcesz zarządzać:")
+                .WithColor(Color.Gold)
+                .Build();
+
+            var component = new ComponentBuilder()
+                .WithSelectMenu(selectMenu)
+                .Build();
+
+            await RespondAsync(embed: embed, components: component, ephemeral: true);
+            return;
+        }
+
+        // Single season or no season - proceed directly
+        var season = allSeasons.FirstOrDefault(s => s.IsActive) ?? allSeasons.FirstOrDefault();
+        await ShowSeasonPanelAsync(season);
+    }
+
+    [ComponentInteraction("admin_select_season")]
+    public async Task HandleSelectSeasonAsync(string[] selectedValues)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (selectedValues.Length == 0 || !int.TryParse(selectedValues[0], out var seasonId))
+        {
+            await RespondAsync("❌ Nieprawidłowy wybór sezonu.", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetByIdAsync(seasonId);
+        if (season == null)
+        {
+            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync();
+        await ShowSeasonPanelAsync(season);
+    }
+
+    private async Task ShowSeasonPanelAsync(Domain.Entities.Season? season)
+    {
         var embed = new EmbedBuilder()
-            .WithTitle("Panel Administracyjny Typera")
-            .WithDescription("Użyj przycisków poniżej, aby zarządzać meczami i przeglądać statystyki.")
-            .WithColor(Color.Gold)
-            .Build();
+            .WithTitle("Panel Sezonu Typera")
+            .WithColor(Color.Gold);
+
+        if (season != null)
+        {
+            var rounds = (await _roundRepository.GetBySeasonIdAsync(season.Id))
+                .OrderBy(r => r.Number)
+                .ToList();
+
+            if (rounds.Any())
+            {
+                embed.WithDescription($"**Sezon: {season.Name}**\n\nPoniżej lista kolejek z meczami:");
+                
+                // Show last 5 rounds or upcoming ones
+                var displayRounds = rounds.TakeLast(5).ToList(); 
+                // Better logic: Show rounds that are not finished or just all of them if few.
+                // Let's show up to 10 rounds.
+                displayRounds = rounds.Take(10).ToList();
+
+                foreach (var round in displayRounds)
+                {
+                    var matches = (await _matchRepository.GetByRoundIdAsync(round.Id)).ToList(); // Sorted by date in repo
+
+                    if (matches.Any())
+                    {
+                        var matchList = string.Join("\n", matches.Select(m =>
+                        {
+                            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                            var localTime = TimeZoneInfo.ConvertTimeFromUtc(m.StartTime.UtcDateTime, tz);
+                            
+                            var statusEmoji = m.Status switch
+                            {
+                                MatchStatus.Scheduled => "⏰",
+                                MatchStatus.InProgress => "▶️",
+                                MatchStatus.Finished => "✅",
+                                MatchStatus.Cancelled => "❌",
+                                _ => "❓"
+                            };
+
+                            var score = "";
+                            if (m.Status == MatchStatus.Finished && m.HomeScore.HasValue && m.AwayScore.HasValue)
+                            {
+                                score = $" **({m.HomeScore.Value}:{m.AwayScore.Value})**";
+                            }
+
+                            return $"{statusEmoji} `{localTime:MM-dd HH:mm}` {m.HomeTeam} vs {m.AwayTeam}{score}";
+                        }));
+
+                        if (matchList.Length > 1024)
+                        {
+                            matchList = matchList.Substring(0, 1020) + "...";
+                        }
+                        
+                        embed.AddField($"📋 Kolejka {round.Number}", matchList, inline: false);
+                    }
+                    else
+                    {
+                        embed.AddField($"📋 Kolejka {round.Number}", "*Brak meczów*", inline: false);
+                    }
+                }
+                
+                if (rounds.Count > 10)
+                {
+                    embed.WithFooter($"Pokazano 10 z {rounds.Count} kolejek");
+                }
+            }
+            else
+            {
+                embed.WithDescription("**Sezon aktywny, ale brak kolejek.**\n\nUżyj przycisków poniżej, aby zarządzać meczami.");
+            }
+        }
+        else
+        {
+            embed.WithDescription("**Brak aktywnego sezonu.**\n\nSystem utworzy sezon automatycznie przy pierwszym dodaniu kolejki.");
+        }
 
         var addKolejkaButton = new ButtonBuilder()
             .WithCustomId("admin_add_kolejka")
@@ -335,15 +397,112 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithLabel("📊 Tabela kolejki")
             .WithStyle(ButtonStyle.Success);
 
-        var component = new ComponentBuilder()
+        var componentBuilder = new ComponentBuilder()
             .WithButton(addKolejkaButton, row: 0)
             .WithButton(manageKolejkaButton, row: 0)
             .WithButton(addMatchButton, row: 1)
             .WithButton(tableSeasonButton, row: 2)
-            .WithButton(tableRoundButton, row: 2)
-            .Build();
+            .WithButton(tableRoundButton, row: 2);
 
-        await RespondAsync(embed: embed, components: component);
+        // Add season management buttons if season exists
+        if (season != null)
+        {
+            if (season.IsActive)
+            {
+                var endSeasonButton = new ButtonBuilder()
+                    .WithCustomId($"admin_end_season_{season.Id}")
+                    .WithLabel("🏁 Zakończ sezon")
+                    .WithStyle(ButtonStyle.Danger);
+                componentBuilder.WithButton(endSeasonButton, row: 3);
+            }
+            else
+            {
+                var reactivateSeasonButton = new ButtonBuilder()
+                    .WithCustomId($"admin_reactivate_season_{season.Id}")
+                    .WithLabel("🔄 Cofnij zakończenie sezonu")
+                    .WithStyle(ButtonStyle.Secondary);
+                componentBuilder.WithButton(reactivateSeasonButton, row: 3);
+            }
+        }
+
+        await RespondAsync(embed: embed.Build(), components: componentBuilder.Build());
+    }
+
+    [ComponentInteraction("admin_end_season_*")]
+    public async Task HandleEndSeasonAsync(string seasonIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(seasonIdStr, out var seasonId))
+        {
+            await RespondAsync("❌ Nieprawidłowy sezon.", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetByIdAsync(seasonId);
+        if (season == null)
+        {
+            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        season.IsActive = false;
+        await _seasonRepository.UpdateAsync(season);
+
+        _logger.LogInformation(
+            "Sezon zakończony - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
+            Context.User.Username, Context.User.Id, season.Name, season.Id);
+
+        await RespondAsync($"✅ Sezon **{season.Name}** został oznaczony jako zakończony.", ephemeral: true);
+    }
+
+    [ComponentInteraction("admin_reactivate_season_*")]
+    public async Task HandleReactivateSeasonAsync(string seasonIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(seasonIdStr, out var seasonId))
+        {
+            await RespondAsync("❌ Nieprawidłowy sezon.", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetByIdAsync(seasonId);
+        if (season == null)
+        {
+            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        // Deactivate all other seasons
+        var allSeasons = await _seasonRepository.GetAllAsync();
+        foreach (var s in allSeasons)
+        {
+            if (s.Id != seasonId && s.IsActive)
+            {
+                s.IsActive = false;
+                await _seasonRepository.UpdateAsync(s);
+            }
+        }
+
+        season.IsActive = true;
+        await _seasonRepository.UpdateAsync(season);
+
+        _logger.LogInformation(
+            "Sezon reaktywowany - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
+            Context.User.Username, Context.User.Id, season.Name, season.Id);
+
+        await RespondAsync($"✅ Sezon **{season.Name}** został reaktywowany i ustawiony jako aktywny.", ephemeral: true);
     }
 
     [ComponentInteraction("admin_add_kolejka")]
@@ -363,19 +522,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild.Id,
             Context.Channel.Id);
 
-        var modal = new ModalBuilder()
-            .WithTitle("Dodaj kolejkę")
-            .WithCustomId("admin_add_kolejka_modal")
-            .AddTextInput("Numer kolejki (1-18)", "kolejka_number", TextInputStyle.Short, placeholder: "1", required: true, minLength: 1, maxLength: 2)
-            .AddTextInput("Liczba meczów w kolejce", "liczba_meczow", TextInputStyle.Short, placeholder: "4", required: true, minLength: 1, maxLength: 1)
-            .Build();
-
-        await RespondWithModalAsync(modal);
+        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
-    public async Task HandleAddKolejkaModalAsync(string kolejkaNumber, string liczbaMeczow) // ← CRITICAL FIX: Discord.NET converts underscores to camelCase
+    public async Task HandleAddKolejkaModalAsync(AddKolejkaModal modal)
     {
+        var kolejkaNumber = modal.KolejkaNumber;
+        var liczbaMeczow = modal.LiczbaMeczow;
+
         _logger.LogInformation(
             "Modal admin_add_kolejka_modal otrzymany - Użytkownik: {Username} (ID: {UserId}), KolejkaNum: '{Num}', MatchCount: '{Count}', Guild: {GuildId}, Channel: {ChannelId}",
             Context.User.Username, Context.User.Id, kolejkaNumber, liczbaMeczow, Context.Guild?.Id, Context.Channel?.Id);
@@ -657,25 +812,18 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var defaultTime = "18:00";
         var defaultRound = rounds.OrderBy(r => r.Number).First().Number;
 
-        // Create single modal with all fields
-        var modal = new ModalBuilder()
-            .WithTitle("Dodaj mecz")
-            .WithCustomId("admin_add_match_modal_v2")
-            .AddTextInput("Numer kolejki (1-18)", "round_number", TextInputStyle.Short, 
-                placeholder: defaultRound.ToString(), value: defaultRound.ToString(), required: true, minLength: 1, maxLength: 2)
-            .AddTextInput("Data (YYYY-MM-DD)", "match_date", TextInputStyle.Short, 
-                placeholder: defaultDate, value: defaultDate, required: true, minLength: 10, maxLength: 10)
-            .AddTextInput("Godzina (HH:mm)", "match_time", TextInputStyle.Short, 
-                placeholder: defaultTime, value: defaultTime, required: true, minLength: 5, maxLength: 5)
-            .AddTextInput("Drużyna domowa", "home_team", TextInputStyle.Short, 
-                placeholder: "Motor Lublin", required: true, minLength: 1, maxLength: 50)
-            .AddTextInput("Drużyna wyjazdowa", "away_team", TextInputStyle.Short, 
-                placeholder: "Włókniarz Częstochowa", required: true, minLength: 1, maxLength: 50)
-            .Build();
+        var modal = new AddMatchModalV2
+        {
+            RoundNumber = defaultRound.ToString(),
+            MatchDate = defaultDate,
+            MatchTime = defaultTime,
+            HomeTeam = "Motor Lublin",
+            AwayTeam = "Włókniarz Częstochowa"
+        };
 
         try
         {
-            await RespondWithModalAsync(modal);
+            await RespondWithModalAsync("admin_add_match_modal_v2", modal);
             _logger.LogInformation("Modal dodaj mecz wyświetlony - Użytkownik: {Username}", Context.User.Username);
         }
         catch (Exception ex)
@@ -1689,9 +1837,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    [ModalInteraction("admin_add_match_modal_v2")]
-    public async Task HandleAddMatchModalV2Async(string roundNumber, string matchDate, string matchTime, string homeTeam, string awayTeam)
+    [ModalInteraction("admin_add_match_modal_v2", true)]
+    public async Task HandleAddMatchModalV2Async(AddMatchModalV2 modal)
     {
+        var roundNumber = modal.RoundNumber;
+        var matchDate = modal.MatchDate;
+        var matchTime = modal.MatchTime;
+        var homeTeam = modal.HomeTeam;
+        var awayTeam = modal.AwayTeam;
+
         _logger.LogInformation(
             "Modal admin_add_match_modal_v2 otrzymany - Użytkownik: {Username} (ID: {UserId}), Round: '{Round}', Date: '{Date}', Time: '{Time}', HomeTeam: '{HomeTeam}', AwayTeam: '{AwayTeam}', Guild: {GuildId}, Channel: {ChannelId}",
             Context.User.Username, Context.User.Id, roundNumber, matchDate, matchTime, homeTeam, awayTeam, Context.Guild?.Id, Context.Channel?.Id);
@@ -1849,12 +2003,12 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         var setResultButton = new ButtonBuilder()
             .WithCustomId($"admin_set_result_{match.Id}")
-            .WithLabel("✅ Ustaw wynik")
+            .WithLabel($"✅ Wynik {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
             .WithStyle(ButtonStyle.Success);
 
         var editButton = new ButtonBuilder()
             .WithCustomId($"admin_edit_match_{match.Id}")
-            .WithLabel("✏ Edytuj mecz")
+            .WithLabel($"✏ {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
             .WithStyle(ButtonStyle.Secondary);
 
         var deleteButton = new ButtonBuilder()
@@ -1871,18 +2025,32 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         if (existingMessage != null)
         {
+            // Update existing message
             await existingMessage.ModifyAsync(prop => { prop.Embed = embed; prop.Components = component; });
             _logger.LogInformation("Karta meczu zaktualizowana - ID meczu: {MatchId}", match.Id);
         }
         else
         {
-            var thread = await predictionsChannel.CreateThreadAsync(
-                name: $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}",
-                type: ThreadType.PublicThread
-            );
+            // Check if thread should be created now
+            var shouldCreateNow = !match.ThreadCreationTime.HasValue || 
+                                  match.ThreadCreationTime.Value <= DateTimeOffset.UtcNow;
+            
+            if (shouldCreateNow)
+            {
+                var thread = await predictionsChannel.CreateThreadAsync(
+                    name: $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}",
+                    type: ThreadType.PublicThread
+                );
 
-            await thread.SendMessageAsync(embed: embed, components: component);
-            _logger.LogInformation("Karta meczu opublikowana w kanale typowań - ID meczu: {MatchId}", match.Id);
+                await thread.SendMessageAsync(embed: embed, components: component);
+                _logger.LogInformation("Karta meczu opublikowana w kanale typowań - ID meczu: {MatchId}", match.Id);
+            }
+            else
+            {
+                // Thread will be created later by ThreadCreationService
+                _logger.LogInformation("Karta meczu będzie utworzona później - ID meczu: {MatchId}, ThreadCreationTime: {Time}", 
+                    match.Id, match.ThreadCreationTime.Value);
+            }
         }
     }
 
@@ -1902,14 +2070,55 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var modal = new ModalBuilder()
-            .WithTitle("Ustaw wynik meczu")
-            .WithCustomId($"admin_set_result_modal_{matchId}")
-            .AddTextInput("Wynik drużyny domowej", "home_score", TextInputStyle.Short, placeholder: "50", required: true)
-            .AddTextInput("Wynik drużyny wyjazdowej", "away_score", TextInputStyle.Short, placeholder: "40", required: true)
-            .Build();
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
 
-        await RespondWithModalAsync(modal);
+        // If match is already finished, show confirmation dialog
+        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
+        {
+            var embed = new EmbedBuilder()
+                .WithTitle("⚠️ Uwaga! Zmiana wyniku zakończonego meczu")
+                .WithDescription(
+                    $"**Na pewno chcesz zmienić wynik meczu który się już odbył?**\n\n" +
+                    $"**{match.HomeTeam} vs {match.AwayTeam}**\n" +
+                    $"Aktualny wynik: **{match.HomeScore}:{match.AwayScore}**\n\n" +
+                    $"Zmiana wyniku spowoduje przeliczenie punktów wszystkich graczy. " +
+                    $"Informacja o tej zmianie zostanie opublikowana na kanale dostępnym dla wszystkich.")
+                .WithColor(Color.Orange)
+                .Build();
+
+            var confirmButton = new ButtonBuilder()
+                .WithCustomId($"admin_confirm_change_result_{matchId}")
+                .WithLabel("✅ Tak, zmień wynik")
+                .WithStyle(ButtonStyle.Danger);
+
+            var cancelButton = new ButtonBuilder()
+                .WithCustomId($"admin_cancel_change_result_{matchId}")
+                .WithLabel("❌ Anuluj")
+                .WithStyle(ButtonStyle.Secondary);
+
+            var component = new ComponentBuilder()
+                .WithButton(confirmButton, row: 0)
+                .WithButton(cancelButton, row: 0)
+                .Build();
+
+            await RespondAsync(embed: embed, components: component, ephemeral: true);
+            return;
+        }
+
+        // Match not finished yet, proceed normally
+        var modal = new SetResultModal
+        {
+            HomeScore = match.HomeScore?.ToString() ?? "50",
+            AwayScore = match.AwayScore?.ToString() ?? "40"
+        };
+
+        await RespondWithModalAsync($"admin_set_result_modal_{matchId}", modal);
+        
         _logger.LogInformation(
             "Przycisk ustaw wynik kliknięty - Użytkownik: {Username} (ID: {UserId}), ID meczu: {MatchId}, Serwer: {GuildId}, Kanał: {ChannelId}",
             Context.User.Username,
@@ -1919,8 +2128,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Channel.Id);
     }
 
-    [ModalInteraction("admin_set_result_modal_*")]
-    public async Task HandleSetResultModalAsync(string matchIdStr, string homeScore, string awayScore) // ← CRITICAL FIX: Discord.NET converts snake_case to camelCase
+    [ComponentInteraction("admin_confirm_change_result_*")]
+    public async Task HandleConfirmChangeResultAsync(string matchIdStr)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -1935,10 +2144,48 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (!int.TryParse(homeScore, out var home) || !int.TryParse(awayScore, out var away)) // ← Fixed parameter names
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var modal = new SetResultModal
+        {
+            HomeScore = match.HomeScore?.ToString() ?? "50",
+            AwayScore = match.AwayScore?.ToString() ?? "40"
+        };
+
+        await RespondWithModalAsync($"admin_set_result_modal_{matchId}", modal);
+    }
+
+    [ComponentInteraction("admin_cancel_change_result_*")]
+    public async Task HandleCancelChangeResultAsync(string matchIdStr)
+    {
+        await RespondAsync("❌ Anulowano zmianę wyniku.", ephemeral: true);
+    }
+
+    [ModalInteraction("admin_set_result_modal_*", true)]
+    public async Task HandleSetResultModalAsync(string matchIdStr, SetResultModal modal)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(modal.HomeScore, out var home) || !int.TryParse(modal.AwayScore, out var away))
         {
             _logger.LogWarning("Invalid score format - User: {User}, homeScore: '{Home}', awayScore: '{Away}'", 
-                Context.User.Username, homeScore, awayScore);
+                Context.User.Username, modal.HomeScore, modal.AwayScore);
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników.", ephemeral: true);
             return;
         }
@@ -1972,6 +2219,10 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        var wasFinished = match.Status == MatchStatus.Finished;
+        var oldHomeScore = match.HomeScore;
+        var oldAwayScore = match.AwayScore;
+
         // Update match result
         match.HomeScore = home;
         match.AwayScore = away;
@@ -1989,6 +2240,31 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             away,
             Context.Guild?.Id,
             Context.Channel.Id);
+
+        // If match was already finished, post notification to public channel
+        if (wasFinished && oldHomeScore.HasValue && oldAwayScore.HasValue)
+        {
+            var resultsChannel = await _lookupService.GetResultsChannelAsync();
+            if (resultsChannel != null)
+            {
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚠️ Zmiana wyniku zakończonego meczu")
+                    .WithDescription(
+                        $"**{match.HomeTeam} vs {match.AwayTeam}**\n\n" +
+                        $"Stary wynik: **{oldHomeScore}:{oldAwayScore}**\n" +
+                        $"Nowy wynik: **{home}:{away}**\n\n" +
+                        $"Punkty wszystkich graczy zostały przeliczone.")
+                    .WithColor(Color.Orange)
+                    .WithFooter($"Zmienione przez: {Context.User.Username}")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                await resultsChannel.SendMessageAsync(embed: embed);
+                _logger.LogInformation(
+                    "Opublikowano informację o zmianie wyniku meczu {MatchId} na kanale publicznym",
+                    matchId);
+            }
+        }
 
         // Post standings tables
         await PostStandingsAfterResultAsync(match);
@@ -2020,16 +2296,16 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
         var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
 
-        var modal = new ModalBuilder()
-            .WithTitle("Edytuj mecz")
-            .WithCustomId($"admin_edit_match_modal_{matchId}")
-            .AddTextInput("Drużyna domowa", "home_team", TextInputStyle.Short, value: match.HomeTeam, required: true)
-            .AddTextInput("Drużyna wyjazdowa", "away_team", TextInputStyle.Short, value: match.AwayTeam, required: true)
-            .AddTextInput("Data", "date", TextInputStyle.Short, value: localTime.ToString("yyyy-MM-dd"), required: true)
-            .AddTextInput("Godzina", "time", TextInputStyle.Short, value: localTime.ToString("HH:mm"), required: true)
-            .Build();
+        var modal = new EditMatchModal
+        {
+            HomeTeam = match.HomeTeam,
+            AwayTeam = match.AwayTeam,
+            Date = localTime.ToString("yyyy-MM-dd"),
+            Time = localTime.ToString("HH:mm")
+        };
 
-        await RespondWithModalAsync(modal);
+        await RespondWithModalAsync($"admin_edit_match_modal_{matchId}", modal);
+        
         _logger.LogInformation(
             "Przycisk edytuj mecz kliknięty - Użytkownik: {Username} (ID: {UserId}), ID meczu: {MatchId}, Serwer: {GuildId}, Kanał: {ChannelId}",
             Context.User.Username,
@@ -2039,8 +2315,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Channel.Id);
     }
 
-    [ModalInteraction("admin_edit_match_modal_*")]
-    public async Task HandleEditMatchModalAsync(string matchIdStr, string homeTeam, string awayTeam, string date, string time) // ← CRITICAL FIX: Discord.NET converts underscores to camelCase
+    [ModalInteraction("admin_edit_match_modal_*", true)]
+    public async Task HandleEditMatchModalAsync(string matchIdStr, EditMatchModal modal)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -2092,10 +2368,10 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             oldHomeTeam,
             oldAwayTeam,
             oldStartTime,
-            homeTeam, // ← Fixed parameter name (Discord.NET converts home_team to homeTeam)
-            awayTeam, // ← Fixed parameter name (Discord.NET converts away_team to awayTeam)
-            date,
-            time,
+            modal.HomeTeam,
+            modal.AwayTeam,
+            modal.Date,
+            modal.Time,
             Context.Guild.Id,
             Context.Channel.Id);
 
@@ -2103,15 +2379,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         DateTimeOffset startTime;
         try
         {
-            if (!DateTime.TryParse($"{date} {time}", out var localTime))
+            if (!DateTime.TryParse($"{modal.Date} {modal.Time}", out var localTime))
             {
                 _logger.LogError(
                     "Nie udało się sparsować daty/godziny w edycji - Użytkownik: {Username} (ID: {UserId}), ID meczu: {MatchId}, Data: {Date}, Godzina: {Time}",
                     Context.User.Username,
                     Context.User.Id,
                     matchId,
-                    date,
-                    time);
+                    modal.Date,
+                    modal.Time);
                 await RespondAsync("❌ Nieprawidłowy format daty lub godziny. Użyj YYYY-MM-DD dla daty i HH:MM dla godziny.", ephemeral: true);
                 return;
             }
@@ -2132,25 +2408,49 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Update match
-        match.HomeTeam = homeTeam; // ← Fixed parameter name (Discord.NET converts home_team to homeTeam)
-        match.AwayTeam = awayTeam; // ← Fixed parameter name (Discord.NET converts away_team to awayTeam)
+        match.HomeTeam = modal.HomeTeam;
+        match.AwayTeam = modal.AwayTeam;
         match.StartTime = startTime;
         await _matchRepository.UpdateAsync(match);
 
-        // Update match card
+        // Update or create match card
         var round = match.Round;
         var roundNum = round?.Number ?? 0;
-        await PostMatchCardAsync(match, roundNum, messageToUpdate);
+        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
+        var newThreadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
 
-        // Update thread name if it changed
-        if (threadToUpdate != null)
+        // Try to find thread with new name (in case it already exists)
+        IUserMessage? cardMessage = messageToUpdate;
+        SocketThreadChannel? targetThread = threadToUpdate;
+        
+        if (cardMessage == null && startTime > DateTimeOffset.UtcNow && predictionsChannel != null)
         {
-            var newRoundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
-            var newThreadName = $"{newRoundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-            if (threadToUpdate.Name != newThreadName)
+            // Thread not found by old name, try to find by new name
+            var existingThread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == newThreadName);
+            if (existingThread != null)
             {
-                await threadToUpdate.ModifyAsync(props => props.Name = newThreadName);
+                targetThread = existingThread;
+                var messages = await existingThread.GetMessagesAsync(1).FlattenAsync();
+                cardMessage = messages.FirstOrDefault() as IUserMessage;
             }
+        }
+
+        // Update or create match card
+        if (cardMessage != null)
+        {
+            // Update existing card
+            await PostMatchCardAsync(match, roundNum, cardMessage);
+        }
+        else if (startTime > DateTimeOffset.UtcNow)
+        {
+            // Create new card (thread doesn't exist or was deleted)
+            await PostMatchCardAsync(match, roundNum, null);
+        }
+
+        // Update thread name if exists and changed
+        if (targetThread != null && targetThread.Name != newThreadName)
+        {
+            await targetThread.ModifyAsync(props => props.Name = newThreadName);
         }
 
         _logger.LogInformation(
@@ -2160,8 +2460,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             oldHomeTeam,
             oldAwayTeam,
             oldStartTime,
-            homeTeam, // ← Fixed parameter name (Discord.NET converts home_team to homeTeam)
-            awayTeam, // ← Fixed parameter name (Discord.NET converts away_team to awayTeam)
+            match.HomeTeam,
+            match.AwayTeam,
             startTime);
 
         await RespondAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
@@ -2190,26 +2490,52 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var round = match.Round;
-        var roundNum = round?.Number ?? 0;
+        var embed = new EmbedBuilder()
+            .WithTitle("🗑️ Usuń mecz")
+            .WithDescription($"Czy na pewno chcesz usunąć mecz **{match.HomeTeam} vs {match.AwayTeam}**?")
+            .WithColor(Color.Red);
 
-        _logger.LogInformation(
-            "Usuwanie meczu - Użytkownik: {Username} (ID: {UserId}), ID meczu: {MatchId}, Runda: {Round}, {HomeTeam} vs {AwayTeam}, Serwer: {GuildId}, Kanał: {ChannelId}",
-            Context.User.Username,
-            Context.User.Id,
-            matchId,
-            roundNum,
-            match.HomeTeam,
-            match.AwayTeam,
-            Context.Guild.Id,
-            Context.Channel.Id);
+        var cancelMatchButton = new ButtonBuilder()
+            .WithCustomId($"admin_confirm_cancel_match_{match.Id}")
+            .WithLabel("🚫 Odwołaj (Status: Cancelled)")
+            .WithStyle(ButtonStyle.Secondary);
 
-        // Mark as cancelled instead of deleting (to preserve predictions)
+        var hardDeleteButton = new ButtonBuilder()
+            .WithCustomId($"admin_confirm_hard_delete_match_{match.Id}")
+            .WithLabel("💥 Usuń trwale (z bazy)")
+            .WithStyle(ButtonStyle.Danger);
+
+        var component = new ComponentBuilder()
+            .WithButton(cancelMatchButton)
+            .WithButton(hardDeleteButton)
+            .Build();
+
+        await RespondAsync(embed: embed.Build(), components: component, ephemeral: true);
+    }
+
+    [ComponentInteraction("admin_confirm_cancel_match_*")]
+    public async Task HandleConfirmCancelMatchAsync(string matchIdStr)
+    {
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null) return;
+
         match.Status = MatchStatus.Cancelled;
         await _matchRepository.UpdateAsync(match);
-
-        await RespondAsync("✅ Mecz został usunięty (oznaczony jako odwołany).", ephemeral: true);
+        
+        await RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
     }
+
+    [ComponentInteraction("admin_confirm_hard_delete_match_*")]
+    public async Task HandleConfirmHardDeleteMatchAsync(string matchIdStr)
+    {
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        
+        await _matchRepository.DeleteAsync(matchId);
+        
+        await RespondAsync("✅ Mecz został trwale usunięty z bazy danych.", ephemeral: true);
+    }
+
 
     // Table generation handlers
     [ComponentInteraction("admin_table_season")]
@@ -2240,17 +2566,65 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var seasonPng = _tableGenerator.GenerateSeasonTable(season, players);
-            
+            // Calculate season scores
+            var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+
+            foreach (var player in players)
+            {
+                var playerScores = player.PlayerScores
+                    .Where(s => s.Prediction != null && s.Prediction.IsValid)
+                    .ToList();
+
+                var totalPoints = playerScores.Sum(s => s.Points);
+                var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+                var correctWinners = playerScores.Count(s => s.Points > 0);
+                var predCount = playerScores.Count;
+
+                allScores.Add((player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+            }
+
+            var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"🏆 Tabela Sezonu")
+                .WithDescription($"**Sezon**: {season.Name}")
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp();
+
+            var table = "```\n";
+            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+            table += "════════════════════════════════════════════════\n";
+
+            for (int i = 0; i < sortedScores.Count; i++)
+            {
+                var score = sortedScores[i];
+                var playerName = score.PlayerName;
+                if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
+                
+                var medal = i switch 
+                { 
+                    0 => "🥇", 
+                    1 => "🥈", 
+                    2 => "🥉", 
+                    _ when i == sortedScores.Count - 1 => "💩", // Last place
+                    _ => "  " 
+                };
+                table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+            }
+            table += "```";
+
+            embed.AddField("Tabela punktowa - Sezon", table, false);
+            embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
             var resultsChannel = await _lookupService.GetResultsChannelAsync();
             if (resultsChannel != null)
             {
-                await resultsChannel.SendFileAsync(
-                    new Discord.FileAttachment(new MemoryStream(seasonPng), $"tabela-sezonu-{DateTime.UtcNow:yyyyMMdd-HHmmss}.png")
-                );
+                await resultsChannel.SendMessageAsync(embed: embed.Build());
+                
                 _logger.LogInformation(
                     "Tabela sezonu wygenerowana przez admina - {Username} (ID: {UserId}), Gracze: {PlayerCount}",
                     Context.User.Username, Context.User.Id, players.Count);
+                    
                 await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale wyników.", ephemeral: true);
             }
             else
@@ -2351,17 +2725,76 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var roundPng = _tableGenerator.GenerateRoundTable(season, round, players);
+            // Calculate scores for the round
+            var roundMatches = (await _matchRepository.GetByRoundIdAsync(round.Id)).Select(m => m.Id).ToList();
             
+            var allScores = new List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+
+            foreach (var player in players)
+            {
+                var roundPredictions = player.Predictions
+                    .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid && p.PlayerScore != null)
+                    .ToList();
+
+                var playerScores = roundPredictions.Select(p => p.PlayerScore!).ToList();
+                
+                var totalPoints = playerScores.Sum(s => s.Points);
+                var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+                var correctWinners = playerScores.Count(s => s.Points > 0);
+                var predCount = roundPredictions.Count;
+
+                if (predCount > 0)
+                {
+                    allScores.Add((player.Id, player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+                }
+            }
+
+            var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"📊 Tabela Kolejki {round.Number}")
+                .WithDescription($"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? $"Kolejka {round.Number}"}")
+                .WithColor(Color.Blue)
+                .WithCurrentTimestamp();
+
+            var table = "```\n";
+            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+            table += "════════════════════════════════════════════════\n";
+
+            for (int i = 0; i < sortedScores.Count; i++)
+            {
+                var score = sortedScores[i];
+                var playerName = score.PlayerName;
+                if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
+                
+                var medal = i switch 
+                { 
+                    0 => "🥇", 
+                    1 => "🥈", 
+                    2 => "🥉", 
+                    _ when i == sortedScores.Count - 1 => "💩", // Last place
+                    _ => "  " 
+                };
+                
+                table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+            }
+            table += "```";
+
+            if (sortedScores.Any())
+            {
+                embed.AddField("Tabela punktowa", table, false);
+            }
+            else
+            {
+                embed.WithDescription($"**Sezon**: {season.Name}\n**Kolejka**: {round.Number}\n\n*Brak wyników dla tej kolejki.*");
+            }
+
+            embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
             var resultsChannel = await _lookupService.GetResultsChannelAsync();
             if (resultsChannel != null)
             {
-                await resultsChannel.SendFileAsync(
-                    new Discord.FileAttachment(new MemoryStream(roundPng), $"tabela-kolejki-{round.Number}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.png")
-                );
-                _logger.LogInformation(
-                    "Tabela kolejki {Round} wygenerowana przez admina - {Username} (ID: {UserId})",
-                    round.Number, Context.User.Username, Context.User.Id);
+                await resultsChannel.SendMessageAsync(embed: embed.Build());
                 await FollowupAsync($"✅ Tabela kolejki {Application.Services.RoundHelper.GetRoundLabel(round.Number)} została opublikowana w kanale wyników.", ephemeral: true);
             }
             else
@@ -2481,103 +2914,63 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         {
             int row = buttonCount / 3; // 3 buttons per row
             
-            if (match.Status != MatchStatus.Finished)
-            {
-                var editButton = new ButtonBuilder()
-                    .WithCustomId($"admin_edit_match_{match.Id}")
-                    .WithLabel($"✏️ Edytuj #{match.Id}")
-                    .WithStyle(ButtonStyle.Secondary);
-                component.WithButton(editButton, row: row);
-                buttonCount++;
-            }
+            // Edit button - always available
+            var editButton = new ButtonBuilder()
+                .WithCustomId($"admin_edit_match_{match.Id}")
+                .WithLabel($"✏️ {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
+                .WithStyle(ButtonStyle.Secondary);
+            component.WithButton(editButton, row: row);
+            buttonCount++;
 
-            if (!match.HomeScore.HasValue)
-            {
-                var resultButton = new ButtonBuilder()
-                    .WithCustomId($"admin_set_result_{match.Id}")
-                    .WithLabel($"🏁 Wynik #{match.Id}")
-                    .WithStyle(ButtonStyle.Success);
-                component.WithButton(resultButton, row: row);
-                buttonCount++;
-            }
+            // Result button - always available (to allow corrections)
+            var resultLabel = match.HomeScore.HasValue ? $"📝 Zmień wynik" : $"🏁 Wynik";
+            var resultStyle = match.HomeScore.HasValue ? ButtonStyle.Secondary : ButtonStyle.Success;
+            
+            var resultButton = new ButtonBuilder()
+                .WithCustomId($"admin_set_result_{match.Id}")
+                .WithLabel(resultLabel)
+                .WithStyle(resultStyle);
+            component.WithButton(resultButton, row: row);
+            buttonCount++;
 
-            // Delete button for all matches (except finished ones with scores)
-            if (match.Status != MatchStatus.Finished || !match.HomeScore.HasValue)
-            {
-                var deleteButton = new ButtonBuilder()
-                    .WithCustomId($"admin_delete_match_{match.Id}")
-                    .WithLabel($"🗑️ Usuń #{match.Id}")
-                    .WithStyle(ButtonStyle.Danger);
-                component.WithButton(deleteButton, row: row);
-                buttonCount++;
-            }
+            // Delete button - always available
+            var deleteButton = new ButtonBuilder()
+                .WithCustomId($"admin_delete_match_{match.Id}")
+                .WithLabel($"🗑️ Usuń")
+                .WithStyle(ButtonStyle.Danger);
+            component.WithButton(deleteButton, row: row);
+            buttonCount++;
         }
+
+        // Add "Add Match" button at the bottom
+        var addMatchButton = new ButtonBuilder()
+            .WithCustomId($"admin_add_match_to_round_{round.Id}")
+            .WithLabel("➕ Dodaj mecz do tej kolejki")
+            .WithStyle(ButtonStyle.Primary);
+        
+        component.WithButton(addMatchButton, row: 4); // Put it in the last row
 
         await FollowupAsync(embed: embed.Build(), components: component.Build(), ephemeral: true);
     }
 
-    [ComponentInteraction("admin_delete_match_*")]
-    public async Task HandleDeleteMatchAsync(string matchIdStr)
+    [ComponentInteraction("admin_add_match_to_round_*")]
+    public async Task HandleAddMatchToRoundAsync(string roundIdStr)
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
+        if (!int.TryParse(roundIdStr, out var roundId)) return;
+        var round = await _roundRepository.GetByIdAsync(roundId);
+        if (round == null) return;
+
+        // Pre-fill modal with round number
+        var modal = new AddMatchModalV2
         {
-            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
-            return;
-        }
-
-        if (!int.TryParse(matchIdStr, out var matchId))
-        {
-            await RespondWithErrorAsync("Nieprawidłowy ID meczu.");
-            return;
-        }
-
-        _logger.LogInformation(
-            "Usuwanie meczu - Użytkownik: {Username} (ID: {UserId}), MatchId: {MatchId}, Serwer: {GuildId}",
-            Context.User.Username, Context.User.Id, matchId, Context.Guild.Id);
-
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
-        {
-            await RespondWithErrorAsync("Mecz nie został znaleziony.");
-            return;
-        }
-
-        // Check if match has predictions
-        var hasPredictions = match.Predictions?.Any() == true;
-        if (hasPredictions)
-        {
-            _logger.LogWarning(
-                "Próba usunięcia meczu z typami - Użytkownik: {Username} (ID: {UserId}), MatchId: {MatchId}, Liczba typów: {PredictionCount}",
-                Context.User.Username, Context.User.Id, matchId, match.Predictions?.Count() ?? 0);
-            await RespondWithErrorAsync(
-                "Nie można usunąć meczu, który ma przypisane typy.",
-                $"Mecz ma {match.Predictions?.Count() ?? 0} typów. Najpierw usuń typy lub ustaw wynik meczu.");
-            return;
-        }
-
-        try
-        {
-            var roundNum = match.Round?.Number ?? 0;
-            var homeTeam = match.HomeTeam;
-            var awayTeam = match.AwayTeam;
-
-            await _matchRepository.DeleteAsync(matchId);
-
-            _logger.LogInformation(
-                "Mecz usunięty pomyślnie - MatchId: {MatchId}, Runda: {Round}, {HomeTeam} vs {AwayTeam}, Użytkownik: {Username} (ID: {UserId})",
-                matchId, roundNum, homeTeam, awayTeam, Context.User.Username, Context.User.Id);
-
-            await RespondWithSuccessAsync($"Mecz usunięty: Runda {roundNum}, {homeTeam} vs {awayTeam}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Błąd podczas usuwania meczu - MatchId: {MatchId}, Użytkownik: {Username} (ID: {UserId})",
-                matchId, Context.User.Username, Context.User.Id);
-            await RespondWithErrorAsync("Wystąpił błąd podczas usuwania meczu.", ex.Message);
-        }
+            RoundNumber = round.Number.ToString(),
+            MatchDate = DateTime.Now.ToString("yyyy-MM-dd"),
+            MatchTime = "18:00"
+        };
+        
+        await RespondWithModalAsync("admin_add_match_modal_v2", modal);
     }
+
 
     [SlashCommand("wyniki-gracza", "Wyświetl wyniki konkretnego gracza (tylko dla adminów)")]
     public async Task PlayerResultsAsync([Summary(description: "Użytkownik")] IUser uzytkownik)
@@ -2699,17 +3092,19 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Generate round table
+        // 1. Post match results table (with player predictions)
+        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
+        {
+            await PostMatchResultsTableAsync(match, resultsChannel);
+        }
+
+        // 2. Generate round table
         var round = match.Round;
         if (round != null)
         {
             try
             {
-                var roundPng = _tableGenerator.GenerateRoundTable(season, round, players);
-                await resultsChannel.SendFileAsync(
-                    new Discord.FileAttachment(new MemoryStream(roundPng), $"round-{round.Number}-standings.png")
-                );
-                _logger.LogInformation("Round {Round} standings posted", round.Number);
+                await PostRoundTableEmbedAsync(season, round, players, resultsChannel, match);
             }
             catch (Exception ex)
             {
@@ -2717,19 +3112,208 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        // Generate season table
+        // 3. Generate season table
         try
         {
-            var seasonPng = _tableGenerator.GenerateSeasonTable(season, players);
-            await resultsChannel.SendFileAsync(
-                new Discord.FileAttachment(new MemoryStream(seasonPng), $"season-standings.png")
-            );
-            _logger.LogInformation("Season standings posted");
+            await PostSeasonTableEmbedAsync(season, players, resultsChannel, match);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate season table");
         }
+    }
+
+    private async Task PostMatchResultsTableAsync(Domain.Entities.Match match, ITextChannel channel)
+    {
+        var predictions = (await _predictionRepository.GetValidPredictionsByMatchAsync(match.Id))
+            .Where(p => p.PlayerScore != null)
+            .OrderByDescending(p => p.PlayerScore!.Points)
+            .ThenByDescending(p => p.PlayerScore!.Bucket == Bucket.P35 || p.PlayerScore!.Bucket == Bucket.P50)
+            .ToList();
+
+        var embed = new EmbedBuilder()
+            .WithTitle($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}")
+            .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore.Value}:{match.AwayScore.Value}")
+            .WithColor(Color.Green)
+            .WithCurrentTimestamp();
+
+        var round = match.Round;
+        if (round != null)
+        {
+            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(round.Number);
+            embed.AddField("Kolejka", roundLabel, inline: true);
+        }
+
+        if (predictions.Any())
+        {
+            var table = "```\n";
+            table += "Gracz                  Typ      Pkt\n";
+            table += "════════════════════════════════════\n";
+            
+            // Add actual result as first row
+            table += $"🏆 Wynik rzeczywisty  {match.HomeScore.Value,2}:{match.AwayScore.Value,2}     -\n";
+            table += "────────────────────────────────────\n";
+
+            foreach (var pred in predictions)
+            {
+                var playerName = pred.Player.DiscordUsername;
+                if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
+
+                var statusIcon = "";
+                if (pred.PlayerScore!.Bucket == Bucket.P35 || pred.PlayerScore!.Bucket == Bucket.P50)
+                {
+                    statusIcon = "👑"; // Exact score (korona)
+                }
+                else if (pred.PlayerScore.Points > 0)
+                {
+                    statusIcon = "👍"; // Correct winner (thumbsup)
+                }
+                else
+                {
+                    statusIcon = "💩"; // No points (kupa)
+                }
+
+                table += $"{playerName,-20}  {pred.HomeTip,2}:{pred.AwayTip,2}     {pred.PlayerScore.Points,3}   {statusIcon}\n";
+            }
+            table += "```";
+
+            embed.AddField("Typy graczy", table, false);
+            embed.WithFooter("👑 = Celny wynik | 👍 = Poprawny zwycięzca | 💩 = Brak punktów");
+        }
+        else
+        {
+            embed.AddField("Typy graczy", "*Brak typów dla tego meczu*", false);
+        }
+
+        await channel.SendMessageAsync(embed: embed.Build());
+        _logger.LogInformation("Match results table posted for match {MatchId}", match.Id);
+    }
+
+    private async Task PostRoundTableEmbedAsync(Domain.Entities.Season season, Domain.Entities.Round round, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match triggerMatch)
+    {
+        var roundMatches = (await _matchRepository.GetByRoundIdAsync(round.Id)).Select(m => m.Id).ToList();
+        
+        var allScores = new List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+
+        foreach (var player in players)
+        {
+            var roundPredictions = player.Predictions
+                .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid && p.PlayerScore != null)
+                .ToList();
+
+            var playerScores = roundPredictions.Select(p => p.PlayerScore!).ToList();
+            
+            var totalPoints = playerScores.Sum(s => s.Points);
+            var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+            var correctWinners = playerScores.Count(s => s.Points > 0);
+            var predCount = roundPredictions.Count;
+
+            if (predCount > 0)
+            {
+                allScores.Add((player.Id, player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+            }
+        }
+
+        var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(round.Number);
+        var embed = new EmbedBuilder()
+            .WithTitle($"📊 Tabela Kolejki {round.Number}")
+            .WithDescription($"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? roundLabel}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})")
+            .WithColor(Color.Blue)
+            .WithCurrentTimestamp();
+
+        var table = "```\n";
+        table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+        table += "════════════════════════════════════════════════\n";
+
+        for (int i = 0; i < sortedScores.Count; i++)
+        {
+            var score = sortedScores[i];
+            var playerName = score.PlayerName;
+            if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
+            
+            var medal = i switch 
+            { 
+                0 => "🥇", 
+                1 => "🥈", 
+                2 => "🥉", 
+                _ when i == sortedScores.Count - 1 => "💩", // Last place
+                _ => "  " 
+            };
+            
+            table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+        }
+        table += "```";
+
+        if (sortedScores.Any())
+        {
+            embed.AddField("Tabela punktowa", table, false);
+        }
+        else
+        {
+            embed.WithDescription($"**Sezon**: {season.Name}\n**Kolejka**: {roundLabel}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam}\n\n*Brak wyników dla tej kolejki.*");
+        }
+
+        embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
+        await channel.SendMessageAsync(embed: embed.Build());
+        _logger.LogInformation("Round {Round} standings posted", round.Number);
+    }
+
+    private async Task PostSeasonTableEmbedAsync(Domain.Entities.Season season, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match triggerMatch)
+    {
+        var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+
+        foreach (var player in players)
+        {
+            var playerScores = player.PlayerScores
+                .Where(s => s.Prediction != null && s.Prediction.IsValid)
+                .ToList();
+
+            var totalPoints = playerScores.Sum(s => s.Points);
+            var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+            var correctWinners = playerScores.Count(s => s.Points > 0);
+            var predCount = playerScores.Count;
+
+            allScores.Add((player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+        }
+
+        var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+        var embed = new EmbedBuilder()
+            .WithTitle($"🏆 Tabela Sezonu")
+            .WithDescription($"**Sezon**: {season.Name}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})")
+            .WithColor(Color.Gold)
+            .WithCurrentTimestamp();
+
+        var table = "```\n";
+        table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+        table += "════════════════════════════════════════════════\n";
+
+        for (int i = 0; i < sortedScores.Count; i++)
+        {
+            var score = sortedScores[i];
+            var playerName = score.PlayerName;
+            if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
+            
+            var medal = i switch 
+            { 
+                0 => "🥇", 
+                1 => "🥈", 
+                2 => "🥉", 
+                _ when i == sortedScores.Count - 1 => "💩", // Last place
+                _ => "  " 
+            };
+            table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+        }
+        table += "```";
+
+        embed.AddField("Tabela punktowa - Sezon", table, false);
+        embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
+        await channel.SendMessageAsync(embed: embed.Build());
+        _logger.LogInformation("Season standings posted");
     }
 
     [SlashCommand("admin-eksport-sezonu", "Eksportuj pełne dane sezonu do CSV (tylko dla adminów)")]
@@ -2913,18 +3497,98 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 }
 
 // Modal classes using IModal interface (REQUIRED for Discord.Net 3.x)
-public class TestUltraDebugModal : IModal
+
+public class EditMatchModal : IModal
 {
-    public string Title => "🔬 Test Modal - Ultra Debug";
+    public string Title => "Edytuj mecz";
 
-    [InputLabel("Test Field 1")]
-    [ModalTextInput("test_field_1", TextInputStyle.Short, "Wpisz coś", maxLength: 100)]
+    [InputLabel("Drużyna domowa")]
+    [ModalTextInput("home_team", TextInputStyle.Short)]
     [RequiredInput(true)]
-    public string TestField1 { get; set; } = string.Empty;
+    public string HomeTeam { get; set; } = string.Empty;
 
-    [InputLabel("Test Field 2")]
-    [ModalTextInput("test_field_2", TextInputStyle.Short, "Opcjonalne", maxLength: 100)]
-    [RequiredInput(false)]
-    public string? TestField2 { get; set; }
+    [InputLabel("Drużyna wyjazdowa")]
+    [ModalTextInput("away_team", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string AwayTeam { get; set; } = string.Empty;
+
+    [InputLabel("Data (YYYY-MM-DD)")]
+    [ModalTextInput("date", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string Date { get; set; } = string.Empty;
+
+    [InputLabel("Godzina (HH:mm)")]
+    [ModalTextInput("time", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string Time { get; set; } = string.Empty;
+}
+
+public class SetResultModal : IModal
+{
+    public string Title => "Ustaw wynik meczu";
+
+    [InputLabel("Wynik drużyny domowej")]
+    [ModalTextInput("home_score", TextInputStyle.Short, placeholder: "50")]
+    [RequiredInput(true)]
+    public string HomeScore { get; set; } = string.Empty;
+
+    [InputLabel("Wynik drużyny wyjazdowej")]
+    [ModalTextInput("away_score", TextInputStyle.Short, placeholder: "40")]
+    [RequiredInput(true)]
+    public string AwayScore { get; set; } = string.Empty;
+}
+
+public class AddMatchModalV2 : IModal
+{
+    public string Title => "Dodaj mecz";
+
+    [InputLabel("Nr Kolejki")]
+    [ModalTextInput("round_number", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string RoundNumber { get; set; } = string.Empty;
+
+    [InputLabel("Drużyna domowa")]
+    [ModalTextInput("home_team", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string HomeTeam { get; set; } = string.Empty;
+
+    [InputLabel("Drużyna wyjazdowa")]
+    [ModalTextInput("away_team", TextInputStyle.Short)]
+    [RequiredInput(true)]
+    public string AwayTeam { get; set; } = string.Empty;
+
+    [InputLabel("Data (YYYY-MM-DD)")]
+    [ModalTextInput("match_date", TextInputStyle.Short, placeholder: "2023-05-01")]
+    [RequiredInput(true)]
+    public string MatchDate { get; set; } = string.Empty;
+
+    [InputLabel("Godzina (HH:mm)")]
+    [ModalTextInput("match_time", TextInputStyle.Short, placeholder: "18:00")]
+    [RequiredInput(true)]
+    public string MatchTime { get; set; } = string.Empty;
+}
+
+public class StartSeasonModal : IModal
+{
+    public string Title => "Rozpocznij nowy sezon";
+
+    [InputLabel("Nazwa sezonu")]
+    [ModalTextInput("season_name", TextInputStyle.Short, placeholder: "PGE Ekstraliga 2025", maxLength: 200)]
+    public string SeasonName { get; set; } = string.Empty;
+}
+
+public class AddKolejkaModal : IModal
+{
+    public string Title => "Dodaj kolejkę";
+
+    [InputLabel("Numer kolejki (1-18)")]
+    [ModalTextInput("kolejka_number", TextInputStyle.Short, placeholder: "1", minLength: 1, maxLength: 2)]
+    [RequiredInput(true)]
+    public string KolejkaNumber { get; set; } = string.Empty;
+
+    [InputLabel("Liczba meczów w kolejce")]
+    [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 1)]
+    [RequiredInput(true)]
+    public string LiczbaMeczow { get; set; } = string.Empty;
 }
 

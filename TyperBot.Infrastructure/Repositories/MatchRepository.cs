@@ -24,18 +24,19 @@ public class MatchRepository : IMatchRepository
 
     public async Task<IEnumerable<Match>> GetByRoundIdAsync(int roundId)
     {
-        return await _context.Matches
+        var matches = await _context.Matches
             .Where(m => m.RoundId == roundId)
-            .OrderBy(m => m.StartTime)
             .ToListAsync();
+        return matches.OrderBy(m => m.StartTime);
     }
 
     public async Task<IEnumerable<Match>> GetUpcomingMatchesAsync()
     {
-        return await _context.Matches
+        var matches = await _context.Matches
+            .Include(m => m.Round)
             .Where(m => m.Status == MatchStatus.Scheduled && m.StartTime > DateTimeOffset.UtcNow)
-            .OrderBy(m => m.StartTime)
             .ToListAsync();
+        return matches.OrderBy(m => m.StartTime);
     }
 
     public async Task<IEnumerable<Match>> GetAllAsync()

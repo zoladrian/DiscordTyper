@@ -24,7 +24,8 @@ public class MatchManagementService
         int roundNumber,
         string homeTeam,
         string awayTeam,
-        DateTimeOffset startTime)
+        DateTimeOffset startTime,
+        DateTimeOffset? threadCreationTime = null)
     {
         // Get or create active season
         var season = await _seasonRepository.GetActiveSeasonAsync();
@@ -51,6 +52,12 @@ public class MatchManagementService
             round = await _roundRepository.AddAsync(round);
         }
 
+        // Set default thread creation time (2 days before match) if not provided
+        if (!threadCreationTime.HasValue)
+        {
+            threadCreationTime = startTime.AddDays(-2);
+        }
+
         // Create match
         var match = new Match
         {
@@ -58,6 +65,7 @@ public class MatchManagementService
             HomeTeam = homeTeam,
             AwayTeam = awayTeam,
             StartTime = startTime,
+            ThreadCreationTime = threadCreationTime,
             Status = MatchStatus.Scheduled
         };
 

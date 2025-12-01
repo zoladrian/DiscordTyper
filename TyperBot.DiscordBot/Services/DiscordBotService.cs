@@ -114,6 +114,10 @@ public class DiscordBotService : IHostedService
         if (!result.IsSuccess)
         {
             _logger.LogError("InteractionExecuted failed: {Error} - {ErrorReason}", result.Error, result.ErrorReason);
+            if (result is ExecuteResult executeResult && executeResult.Exception != null)
+            {
+                _logger.LogError(executeResult.Exception, "Exception details for command: {CommandName}", commandInfo.Name);
+            }
         }
         return Task.CompletedTask;
     }

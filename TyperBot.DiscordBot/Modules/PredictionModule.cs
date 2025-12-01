@@ -50,39 +50,39 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         
         if (!HasPlayerRole(user))
         {
-            await RespondAsync("❌ You need the Typer role to submit predictions.", ephemeral: true);
+            await RespondAsync("❌ Musisz mieć rolę Typer, aby składać typy.", ephemeral: true);
             return;
         }
 
         if (!int.TryParse(matchIdStr, out var matchId))
         {
-            await RespondAsync("❌ Invalid match.", ephemeral: true);
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
             return;
         }
 
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await RespondAsync("❌ Match not found.", ephemeral: true);
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
         // Validate match status and timing
         if (match.Status == MatchStatus.Finished)
         {
-            await RespondAsync("❌ This match has already finished.", ephemeral: true);
+            await RespondAsync("❌ Ten mecz już się zakończył.", ephemeral: true);
             return;
         }
 
         if (match.Status == MatchStatus.Cancelled)
         {
-            await RespondAsync("❌ This match has been cancelled.", ephemeral: true);
+            await RespondAsync("❌ Ten mecz został odwołany.", ephemeral: true);
             return;
         }
 
         if (DateTimeOffset.UtcNow >= match.StartTime)
         {
-            await RespondAsync("❌ Predictions are now closed for this match.", ephemeral: true);
+            await RespondAsync("❌ Typowanie dla tego meczu zostało zamknięte.", ephemeral: true);
             return;
         }
 
@@ -103,10 +103,10 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
         // Show prediction modal
         var modal = new ModalBuilder()
-            .WithTitle("Submit your prediction")
+            .WithTitle("Złóż swój typ")
             .WithCustomId($"predict_match_modal_{matchId}")
-            .AddTextInput("Home Points", "home_points", TextInputStyle.Short, placeholder: "50", required: true)
-            .AddTextInput("Away Points", "away_points", TextInputStyle.Short, placeholder: "40", required: true)
+            .AddTextInput("Punkty drużyny domowej", "home_points", TextInputStyle.Short, placeholder: "50", required: true)
+            .AddTextInput("Punkty drużyny wyjazdowej", "away_points", TextInputStyle.Short, placeholder: "40", required: true)
             .Build();
 
         await RespondWithModalAsync(modal);
@@ -119,19 +119,61 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         
         if (!HasPlayerRole(user))
         {
-            await RespondAsync("❌ You need the Typer role to submit predictions.", ephemeral: true);
+            await RespondAsync("❌ Musisz mieć rolę Typer, aby składać typy.", ephemeral: true);
             return;
         }
 
         if (!int.TryParse(matchIdStr, out var matchId))
         {
-            await RespondAsync("❌ Invalid match.", ephemeral: true);
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
             return;
         }
 
-        if (!int.TryParse(homePoints, out var homeTip) || !int.TryParse(awayPoints, out var awayTip))
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
         {
-            await RespondAsync("❌ Please enter valid numbers for both scores.", ephemeral: true);
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        // Check for invalid input (non-numeric or invalid sum)
+        bool hasInvalidInput = false;
+        string? invalidInputError = null;
+        int homeTip = 0;
+        int awayTip = 0;
+
+        if (!int.TryParse(homePoints, out homeTip) || !int.TryParse(awayPoints, out awayTip))
+        {
+            hasInvalidInput = true;
+            invalidInputError = "Wprowadź prawidłowe liczby dla obu wyników.";
+        }
+        else if (homeTip + awayTip != 90)
+        {
+            hasInvalidInput = true;
+            invalidInputError = $"Suma musi wynosić 90, a nie {homeTip + awayTip}.";
+        }
+
+        if (hasInvalidInput)
+        {
+            // Post public message in match thread
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+                
+                if (thread != null)
+                {
+                    var genderSuffix = user!.Username.EndsWith("a", StringComparison.OrdinalIgnoreCase) ? "a" : "";
+                    await thread.SendMessageAsync($"@{user.Username} zatypował{genderSuffix} jak imbecyl 😂");
+                    _logger.LogInformation(
+                        "Publiczne oznaczenie użytkownika przy błędzie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}",
+                        user.Username, user.Id, matchId, homePoints, awayPoints);
+                }
+            }
+
+            await RespondAsync($"❌ {invalidInputError}", ephemeral: true);
             return;
         }
 
@@ -148,11 +190,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         
         if (prediction == null)
         {
-            await RespondAsync("❌ Failed to save prediction. Please try again.", ephemeral: true);
+            await RespondAsync("❌ Nie udało się zapisać typu. Spróbuj ponownie.", ephemeral: true);
             return;
         }
 
-        await RespondAsync($"✅ Prediction saved: **{homeTip}:{awayTip}**\nGood luck! 🍀", ephemeral: true);
+        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
         _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
             user.Id, matchId, homeTip, awayTip);
     }

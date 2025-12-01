@@ -93,6 +93,8 @@ builder.Services.AddSingleton<AdminMatchCreationStateService>();
 
 // Add Discord bot service
 builder.Services.AddHostedService<DiscordBotService>();
+builder.Services.AddHostedService<ReminderService>();
+builder.Services.AddHostedService<ThreadCreationService>();
 
 var app = builder.Build();
 

@@ -32,31 +32,31 @@ public class PredictionService
         // Validation 1: Both integers >= 0
         if (homeTip < 0 || awayTip < 0)
         {
-            return (false, "Both scores must be greater than or equal to 0.");
+            return (false, "Oba wyniki muszą być większe lub równe 0.");
         }
 
         // Validation 2: Sum equals 90
         if (homeTip + awayTip != 90)
         {
-            return (false, "The sum of both scores must equal 90 (e.g., 50:40, 46:44, 45:45).");
+            return (false, "Suma obu wyników musi wynosić 90 (np. 50:40, 46:44, 45:45).");
         }
 
         // Validation 3: Before match start time
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            return (false, "Match not found.");
+            return (false, "Mecz nie znaleziony.");
         }
 
         if (DateTimeOffset.UtcNow >= match.StartTime)
         {
-            return (false, "Prediction time has expired. Matches can only be predicted before their start time.");
+            return (false, "Czas na typowanie minął. Możesz typować tylko przed rozpoczęciem meczu.");
         }
 
         // Validation 4: Match not cancelled
         if (match.Status == MatchStatus.Cancelled)
         {
-            return (false, "This match has been cancelled.");
+            return (false, "Ten mecz został odwołany.");
         }
 
         return (true, null);

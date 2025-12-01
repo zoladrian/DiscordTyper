@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
+using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
 
 namespace TyperBot.DiscordBot.Modules;
@@ -81,21 +82,106 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        var roundNumber = round;
         var embed = new EmbedBuilder()
-            .WithTitle(round.HasValue ? $"Moje typy - Kolejka {round.Value}" : "Moje typy - Nadchodzące mecze")
-            .WithColor(Color.Blue);
+            .WithTitle(roundNumber.HasValue ? $"📝 Moje Typy - Kolejka {roundNumber.Value}" : "📝 Moje Typy - Nadchodzące")
+            .WithColor(Color.Blue)
+            .WithCurrentTimestamp();
 
-        var description = string.Empty;
+        // Build detailed table with match info
+        var matchesWithPreds = new List<(Domain.Entities.Match Match, Domain.Entities.Prediction Pred)>();
         foreach (var pred in predictions)
         {
             var match = await _matchRepository.GetByIdAsync(pred.MatchId);
-            if (match != null)
+            if (match != null && match.Round != null)
             {
-                description += $"**{match.HomeTeam} vs {match.AwayTeam}**: {pred.HomeTip}:{pred.AwayTip}\n";
+                matchesWithPreds.Add((match, pred));
             }
         }
 
-        embed.WithDescription(description);
+        // Group by round for better organization
+        var grouped = matchesWithPreds
+            .GroupBy(m => m.Match.RoundId)
+            .OrderBy(g => g.First().Match.Round?.Number ?? 0);
+
+        foreach (var roundGroup in grouped)
+        {
+            var roundEntity = roundGroup.First().Match.Round;
+            var rndNum = roundEntity?.Number ?? 0;
+            var roundDesc = roundEntity?.Description ?? $"Kolejka {rndNum}";
+            
+            var matchList = string.Join("\n\n", roundGroup
+                .OrderBy(m => m.Match.StartTime)
+                .Select(m =>
+                {
+                    var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                    var localTime = TimeZoneInfo.ConvertTimeFromUtc(m.Match.StartTime.UtcDateTime, tz);
+                    
+                    var statusIcon = m.Match.Status switch
+                    {
+                        Domain.Enums.MatchStatus.Finished => "✅",
+                        Domain.Enums.MatchStatus.InProgress => "▶️",
+                        Domain.Enums.MatchStatus.Cancelled => "❌",
+                        _ => "⏰"
+                    };
+                    
+                    var result = "";
+                    if (m.Match.Status == Domain.Enums.MatchStatus.Finished)
+                    {
+                        if (m.Match.HomeScore.HasValue && m.Match.AwayScore.HasValue)
+                        {
+                            result = $"\n**Wynik:** `{m.Match.HomeScore.Value}:{m.Match.AwayScore.Value}`";
+                        }
+                        else
+                        {
+                            result = "\n**Wynik:** *Brak*";
+                        }
+                        
+                        // Show points earned
+                        var score = m.Pred.PlayerScore;
+                        if (score != null)
+                        {
+                            var pointsDesc = score.Bucket switch
+                            {
+                                Bucket.P35 or Bucket.P50 => "🎯 Celny wynik",
+                                _ when score.Points > 0 => "✓ Poprawny zwycięzca",
+                                _ => "✗ Brak punktów"
+                            };
+                            result += $" → {pointsDesc} **+{score.Points}pkt**";
+                        }
+                    }
+                    else if (m.Match.Status == Domain.Enums.MatchStatus.Cancelled)
+                    {
+                        result = "\n*Mecz odwołany*";
+                    }
+                    
+                    return $"{statusIcon} **{m.Match.HomeTeam} vs {m.Match.AwayTeam}**\n" +
+                           $"`{localTime:yyyy-MM-dd HH:mm}` | Twój typ: **`{m.Pred.HomeTip}:{m.Pred.AwayTip}`**{result}";
+                }));
+            
+            // Discord limit: 1024 characters per field value
+            if (matchList.Length > 1024)
+            {
+                matchList = matchList.Substring(0, 1020) + "...";
+            }
+            
+            embed.AddField($"📋 {roundDesc}", matchList, inline: false);
+        }
+        
+        var totalFinished = matchesWithPreds.Count(m => m.Match.Status == Domain.Enums.MatchStatus.Finished);
+        var totalPoints = predictions
+            .Where(p => p.PlayerScore != null)
+            .Sum(p => p.PlayerScore!.Points);
+        
+        if (totalFinished > 0)
+        {
+            embed.WithFooter($"Zdobyte punkty: {totalPoints} | Zakończonych meczów: {totalFinished}/{predictions.Count}");
+        }
+        else
+        {
+            embed.WithFooter($"Liczba typów: {predictions.Count}");
+        }
+
         await RespondAsync(embed: embed.Build(), ephemeral: true);
     }
 
@@ -125,10 +211,62 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var png = _tableGenerator.GenerateRoundTable(season, roundEntity, players);
-            await RespondWithFileAsync(
-                new Discord.FileAttachment(new MemoryStream(png), $"tabela-kolejki-{round}.png")
-            );
+            // Calculate scores for the round
+            var roundMatches = (await _matchRepository.GetByRoundIdAsync(roundEntity.Id)).Select(m => m.Id).ToList();
+            var allScores = new List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+            
+            foreach (var player in players)
+            {
+                var roundPredictions = player.Predictions
+                    .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid && p.PlayerScore != null)
+                    .ToList();
+                
+                var playerScores = roundPredictions
+                    .Select(p => p.PlayerScore!)
+                    .ToList();
+                
+                var totalPoints = playerScores.Sum(s => s.Points);
+                // Exact scores = P35 (exact match) or P50 (perfect draw)
+                var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+                // Correct winners = all scores > 0
+                var correctWinners = playerScores.Count(s => s.Points > 0);
+                var predCount = roundPredictions.Count;
+                
+                allScores.Add((player.Id, player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+            }
+            
+            var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"📊 Tabela Kolejki {round}")
+                .WithDescription($"**Sezon**: {season.Name}\n**Kolejka**: {roundEntity.Description ?? $"Kolejka {round}"}")
+                .WithColor(Color.Blue)
+                .WithCurrentTimestamp();
+
+            // Build table using code block for monospace alignment
+            var table = "```\n";
+            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+            table += "════════════════════════════════════════════════\n";
+            
+            for (int i = 0; i < sortedScores.Count; i++)
+            {
+                var score = sortedScores[i];
+                var player = players.FirstOrDefault(p => p.Id == score.PlayerId);
+                var playerName = player?.DiscordUsername ?? "Unknown";
+                
+                // Truncate long names
+                if (playerName.Length > 20)
+                    playerName = playerName.Substring(0, 17) + "...";
+                
+                table += $"{i + 1,3}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+            }
+            
+            table += "```";
+            embed.AddField("Tabela punktowa", table, false);
+            
+            embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
+            await RespondAsync(embed: embed.Build());
             _logger.LogInformation("Tabela kolejki {Round} wygenerowana przez {User}", round, Context.User.Username);
         }
         catch (Exception ex)
@@ -157,10 +295,65 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var png = _tableGenerator.GenerateSeasonTable(season, players);
-            await RespondWithFileAsync(
-                new Discord.FileAttachment(new MemoryStream(png), $"tabela-sezonu.png")
-            );
+            // Get all player scores for the season
+            var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+            
+            foreach (var player in players)
+            {
+                var playerScores = player.PlayerScores
+                    .Where(s => s.Prediction != null && s.Prediction.IsValid)
+                    .ToList();
+                
+                var totalPoints = playerScores.Sum(s => s.Points);
+                // Exact scores = P35 (exact match) or P50 (perfect draw)
+                var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+                // Correct winners = all scores > 0 (any points means correct winner)
+                var correctWinners = playerScores.Count(s => s.Points > 0);
+                var predCount = playerScores.Count;
+                
+                allScores.Add((player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+            }
+
+            var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"🏆 Tabela Sezonu")
+                .WithDescription($"**Sezon**: {season.Name}")
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp();
+
+            // Build table using code block for monospace alignment
+            var table = "```\n";
+            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
+            table += "════════════════════════════════════════════════\n";
+            
+            for (int i = 0; i < sortedScores.Count; i++)
+            {
+                var score = sortedScores[i];
+                var playerName = score.PlayerName;
+                
+                // Truncate long names
+                if (playerName.Length > 20)
+                    playerName = playerName.Substring(0, 17) + "...";
+                
+                // Add medal emojis for top 3
+                var medal = i switch
+                {
+                    0 => "🥇",
+                    1 => "🥈",
+                    2 => "🥉",
+                    _ => "  "
+                };
+                
+                table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+            }
+            
+            table += "```";
+            embed.AddField("Tabela punktowa - Sezon", table, false);
+            
+            embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+
+            await RespondAsync(embed: embed.Build());
             _logger.LogInformation("Tabela sezonu wygenerowana przez {User}", Context.User.Username);
         }
         catch (Exception ex)

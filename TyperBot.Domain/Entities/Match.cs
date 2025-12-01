@@ -10,6 +10,7 @@ public class Match
     public string AwayTeam { get; set; } = string.Empty;
     public DateTimeOffset StartTime { get; set; }
     public DateTimeOffset? ActualStartTime { get; set; }
+    public DateTimeOffset? ThreadCreationTime { get; set; }
     public MatchStatus Status { get; set; }
     public int? HomeScore { get; set; }
     public int? AwayScore { get; set; }

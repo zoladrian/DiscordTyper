@@ -51,6 +51,9 @@ namespace TyperBot.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTimeOffset?>("ThreadCreationTime")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RoundId");
