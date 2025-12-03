@@ -38,6 +38,10 @@ public class TyperContext : DbContext
                 .WithMany(s => s.Rounds)
                 .HasForeignKey(e => e.SeasonId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Add index for frequently queried columns
+            entity.HasIndex(e => e.SeasonId);
+            entity.HasIndex(e => new { e.SeasonId, e.Number });
         });
 
         // Match configuration
@@ -53,6 +57,12 @@ public class TyperContext : DbContext
                 .WithMany(r => r.Matches)
                 .HasForeignKey(e => e.RoundId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Add indexes for frequently queried columns
+            entity.HasIndex(e => e.RoundId);
+            entity.HasIndex(e => e.StartTime);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ThreadId);
         });
 
         // Player configuration
@@ -88,6 +98,8 @@ public class TyperContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => new { e.MatchId, e.PlayerId }).IsUnique();
+            entity.HasIndex(e => e.MatchId);
+            entity.HasIndex(e => e.PlayerId);
         });
 
         // PlayerScore configuration

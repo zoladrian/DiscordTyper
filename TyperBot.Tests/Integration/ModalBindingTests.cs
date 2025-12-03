@@ -52,7 +52,8 @@ public class ModalBindingTests : IDisposable
             _matchRepository,
             _playerRepository,
             _scoreCalculator,
-            _playerScoreRepository);
+            _playerScoreRepository,
+            _context);
         _matchService = new MatchManagementService(
             _seasonRepository,
             _roundRepository,

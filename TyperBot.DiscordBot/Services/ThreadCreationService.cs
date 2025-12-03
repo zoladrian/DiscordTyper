@@ -82,13 +82,30 @@ public class ThreadCreationService : BackgroundService
         {
             try
             {
-                // Check if thread already exists
                 var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
                 var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                var existingThread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+                
+                // Check if thread already exists by ThreadId
+                SocketThreadChannel? existingThread = null;
+                if (match.ThreadId.HasValue)
+                {
+                    existingThread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                }
+                
+                // Fallback to name search if ThreadId not found
+                if (existingThread == null)
+                {
+                    existingThread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+                }
                 
                 if (existingThread != null)
                 {
+                    // Update ThreadId if it wasn't set
+                    if (!match.ThreadId.HasValue)
+                    {
+                        match.ThreadId = existingThread.Id;
+                        await matchRepository.UpdateAsync(match);
+                    }
                     _logger.LogInformation("Thread already exists for match {MatchId}, skipping", match.Id);
                     continue;
                 }
@@ -137,14 +154,25 @@ public class ThreadCreationService : BackgroundService
                     .WithButton(deleteButton, row: 1)
                     .Build();
 
+                // Validate thread name length (Discord limit is 100 characters)
+                if (threadName.Length > 100)
+                {
+                    threadName = threadName.Substring(0, 97) + "...";
+                }
+
                 var thread = await predictionsChannel.CreateThreadAsync(
                     name: threadName,
                     type: ThreadType.PublicThread
                 );
 
                 await thread.SendMessageAsync(embed: embed, components: component);
-                _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away})", 
-                    match.Id, match.HomeTeam, match.AwayTeam);
+                
+                // Save ThreadId to database
+                match.ThreadId = thread.Id;
+                await matchRepository.UpdateAsync(match);
+                
+                _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away}), Thread ID: {ThreadId}", 
+                    match.Id, match.HomeTeam, match.AwayTeam, thread.Id);
             }
             catch (Exception ex)
             {

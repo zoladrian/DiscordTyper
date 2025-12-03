@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TyperBot.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using TyperBot.Infrastructure.Data;
 namespace TyperBot.Infrastructure.Migrations
 {
     [DbContext(typeof(TyperContext))]
-    partial class TyperContextModelSnapshot : ModelSnapshot
+    [Migration("20251203191541_AddThreadIdToMatch")]
+    partial class AddThreadIdToMatch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.10");
@@ -60,12 +63,6 @@ namespace TyperBot.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RoundId");
-
-                    b.HasIndex("StartTime");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("ThreadId");
 
                     b.ToTable("Matches");
                 });
@@ -153,8 +150,6 @@ namespace TyperBot.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
-
                     b.HasIndex("PlayerId");
 
                     b.HasIndex("MatchId", "PlayerId")
@@ -182,8 +177,6 @@ namespace TyperBot.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SeasonId");
-
-                    b.HasIndex("SeasonId", "Number");
 
                     b.ToTable("Rounds");
                 });

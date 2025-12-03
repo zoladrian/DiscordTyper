@@ -1,5 +1,8 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
+using TyperBot.Infrastructure.Data;
 using TyperBot.Infrastructure.Repositories;
 
 namespace TyperBot.Application.Services;
@@ -11,19 +14,22 @@ public class PredictionService
     private readonly IPlayerRepository _playerRepository;
     private readonly ScoreCalculator _scoreCalculator;
     private readonly IPlayerScoreRepository _playerScoreRepository;
+    private readonly TyperContext _context;
 
     public PredictionService(
         IPredictionRepository predictionRepository,
         IMatchRepository matchRepository,
         IPlayerRepository playerRepository,
         ScoreCalculator scoreCalculator,
-        IPlayerScoreRepository playerScoreRepository)
+        IPlayerScoreRepository playerScoreRepository,
+        TyperContext context)
     {
         _predictionRepository = predictionRepository;
         _matchRepository = matchRepository;
         _playerRepository = playerRepository;
         _scoreCalculator = scoreCalculator;
         _playerScoreRepository = playerScoreRepository;
+        _context = context;
     }
 
     public async Task<(bool isValid, string? errorMessage)> ValidatePrediction(
@@ -65,41 +71,74 @@ public class PredictionService
     public async Task<Prediction?> CreateOrUpdatePredictionAsync(
         ulong discordUserId, int matchId, int homeTip, int awayTip)
     {
-        // Get or create player
-        var player = await _playerRepository.GetByDiscordUserIdAsync(discordUserId);
-        if (player == null)
+        // Use database transaction to prevent race conditions
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            // Player will be created by the bot service when they first interact
-            return null;
-        }
-
-        // Check if prediction exists
-        var existingPrediction = await _predictionRepository.GetByMatchAndPlayerAsync(matchId, player.Id);
-
-        if (existingPrediction != null)
-        {
-            // Update existing prediction
-            existingPrediction.HomeTip = homeTip;
-            existingPrediction.AwayTip = awayTip;
-            existingPrediction.UpdatedAt = DateTimeOffset.UtcNow;
-            await _predictionRepository.UpdateAsync(existingPrediction);
-            return existingPrediction;
-        }
-        else
-        {
-            // Create new prediction
-            var prediction = new Prediction
+            // Re-validate match status within transaction to prevent race conditions
+            var match = await _matchRepository.GetByIdAsync(matchId);
+            if (match == null)
             {
-                MatchId = matchId,
-                PlayerId = player.Id,
-                HomeTip = homeTip,
-                AwayTip = awayTip,
-                CreatedAt = DateTimeOffset.UtcNow,
-                IsValid = true
-            };
+                await transaction.RollbackAsync();
+                return null;
+            }
 
-            await _predictionRepository.AddAsync(prediction);
-            return prediction;
+            if (DateTimeOffset.UtcNow >= match.StartTime)
+            {
+                await transaction.RollbackAsync();
+                return null;
+            }
+
+            if (match.Status == MatchStatus.Cancelled || match.Status == MatchStatus.Finished)
+            {
+                await transaction.RollbackAsync();
+                return null;
+            }
+
+            // Get or create player
+            var player = await _playerRepository.GetByDiscordUserIdAsync(discordUserId);
+            if (player == null)
+            {
+                // Player will be created by the bot service when they first interact
+                await transaction.RollbackAsync();
+                return null;
+            }
+
+            // Check if prediction exists (within transaction to prevent race conditions)
+            var existingPrediction = await _predictionRepository.GetByMatchAndPlayerAsync(matchId, player.Id);
+
+            if (existingPrediction != null)
+            {
+                // Update existing prediction
+                existingPrediction.HomeTip = homeTip;
+                existingPrediction.AwayTip = awayTip;
+                existingPrediction.UpdatedAt = DateTimeOffset.UtcNow;
+                await _predictionRepository.UpdateAsync(existingPrediction);
+                await transaction.CommitAsync();
+                return existingPrediction;
+            }
+            else
+            {
+                // Create new prediction
+                var prediction = new Prediction
+                {
+                    MatchId = matchId,
+                    PlayerId = player.Id,
+                    HomeTip = homeTip,
+                    AwayTip = awayTip,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    IsValid = true
+                };
+
+                await _predictionRepository.AddAsync(prediction);
+                await transaction.CommitAsync();
+                return prediction;
+            }
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 

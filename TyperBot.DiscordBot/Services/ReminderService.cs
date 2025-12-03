@@ -17,6 +17,7 @@ public class ReminderService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly DiscordLookupService _lookupService;
     private readonly DiscordSocketClient _client;
+    private readonly HashSet<int> _remindedMatches = new(); // Track matches that already received reminders
 
     public ReminderService(
         ILogger<ReminderService> logger,
@@ -61,11 +62,9 @@ public class ReminderService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var matchRepository = scope.ServiceProvider.GetRequiredService<IMatchRepository>();
 
-        // Get matches that started > 3 hours ago, are not finished, and not cancelled
-        // We look for matches started between 3h and 3h 20m ago to send reminder only once (approx)
+        // Get matches that started > 3 hours ago, are not finished, not cancelled, and don't have results
         var now = DateTimeOffset.UtcNow;
         var threeHoursAgo = now.AddHours(-3);
-        var checkWindowStart = now.AddHours(-3).AddMinutes(-20);
 
         var allMatches = await matchRepository.GetAllAsync();
         
@@ -73,38 +72,76 @@ public class ReminderService : BackgroundService
             m.Status != MatchStatus.Finished &&
             m.Status != MatchStatus.Cancelled &&
             m.StartTime <= threeHoursAgo &&
-            m.StartTime > checkWindowStart
+            (!m.HomeScore.HasValue || !m.AwayScore.HasValue) && // No result entered
+            !_remindedMatches.Contains(m.Id) // Haven't sent reminder for this match yet
         ).ToList();
 
         if (!matchesToRemind.Any()) return;
 
         var channel = await _lookupService.GetAdminChannelAsync();
-        if (channel == null) return;
+        if (channel == null)
+        {
+            _logger.LogWarning("Admin channel not found, cannot send reminders");
+            return;
+        }
 
         foreach (var match in matchesToRemind)
         {
-            var home = match.HomeTeam;
-            var away = match.AwayTeam;
-            var shortcut = TeamNameHelper.GetMatchShortcut(home, away);
-            
-            var embed = new EmbedBuilder()
-                .WithTitle("⚠️ Przypomnienie o wyniku")
-                .WithDescription($"Mecz **{home} vs {away}** ({shortcut}) rozpoczął się ponad 3 godziny temu, a wynik nie został jeszcze wprowadzony.")
-                .AddField("Data rozpoczęcia", $"<t:{match.StartTime.ToUnixTimeSeconds()}:F>")
-                .WithColor(Color.Orange)
-                .WithFooter($"ID Meczu: {match.Id}");
+            try
+            {
+                var home = match.HomeTeam;
+                var away = match.AwayTeam;
+                var shortcut = TeamNameHelper.GetMatchShortcut(home, away);
+                var timeSinceStart = now - match.StartTime;
+                var hoursSinceStart = (int)timeSinceStart.TotalHours;
+                
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚠️ Przypomnienie o wyniku meczu")
+                    .WithDescription(
+                        $"Mecz **{home} vs {away}** ({shortcut}) rozpoczął się **{hoursSinceStart} godzin** temu, " +
+                        $"a wynik nie został jeszcze wprowadzony.\n\n" +
+                        $"**Możliwe akcje:**\n" +
+                        $"• Wpisz wynik meczu\n" +
+                        $"• Odwołaj mecz (jeśli został przełożony)\n" +
+                        $"• Edytuj datę meczu (jeśli został przełożony)")
+                    .AddField("Data rozpoczęcia", $"<t:{match.StartTime.ToUnixTimeSeconds()}:F>", inline: true)
+                    .AddField("Czas od rozpoczęcia", $"{hoursSinceStart}h {timeSinceStart.Minutes}min", inline: true)
+                    .WithColor(Color.Orange)
+                    .WithFooter($"ID Meczu: {match.Id}")
+                    .WithCurrentTimestamp();
 
-             var button = new ButtonBuilder()
-                .WithCustomId($"admin_set_result_{match.Id}")
-                .WithLabel("📝 Wpisz wynik")
-                .WithStyle(ButtonStyle.Primary);
+                var setResultButton = new ButtonBuilder()
+                    .WithCustomId($"admin_set_result_{match.Id}")
+                    .WithLabel("📝 Wpisz wynik")
+                    .WithStyle(ButtonStyle.Primary);
 
-            var components = new ComponentBuilder()
-                .WithButton(button)
-                .Build();
+                var editButton = new ButtonBuilder()
+                    .WithCustomId($"admin_edit_match_{match.Id}")
+                    .WithLabel("✏️ Edytuj mecz")
+                    .WithStyle(ButtonStyle.Secondary);
 
-            await channel.SendMessageAsync(embed: embed.Build(), components: components);
-            _logger.LogInformation("Sent reminder for match {MatchId} ({Home} vs {Away})", match.Id, home, away);
+                var cancelButton = new ButtonBuilder()
+                    .WithCustomId($"admin_cancel_match_{match.Id}")
+                    .WithLabel("❌ Odwołaj mecz")
+                    .WithStyle(ButtonStyle.Danger);
+
+                var components = new ComponentBuilder()
+                    .WithButton(setResultButton, row: 0)
+                    .WithButton(editButton, row: 0)
+                    .WithButton(cancelButton, row: 1)
+                    .Build();
+
+                await channel.SendMessageAsync(embed: embed.Build(), components: components);
+                _remindedMatches.Add(match.Id); // Mark as reminded
+                
+                _logger.LogInformation(
+                    "Wysłano przypomnienie o wyniku dla meczu {MatchId} ({Home} vs {Away}), rozpoczął się {HoursAgo}h temu",
+                    match.Id, home, away, hoursSinceStart);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Błąd podczas wysyłania przypomnienia dla meczu {MatchId}", match.Id);
+            }
         }
     }
 }

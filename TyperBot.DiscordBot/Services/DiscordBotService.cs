@@ -18,6 +18,7 @@ public class DiscordBotService : IHostedService
     private readonly ILogger<DiscordBotService> _logger;
     private readonly DiscordSettings _settings;
     private readonly DiscordLookupService _lookupService;
+    private readonly WelcomeMessageService _welcomeMessageService;
 
     public DiscordBotService(
         DiscordSocketClient client,
@@ -25,7 +26,8 @@ public class DiscordBotService : IHostedService
         IServiceProvider serviceProvider,
         ILogger<DiscordBotService> logger,
         IOptions<DiscordSettings> settings,
-        DiscordLookupService lookupService)
+        DiscordLookupService lookupService,
+        WelcomeMessageService welcomeMessageService)
     {
         _client = client;
         _interactionService = interactionService;
@@ -33,6 +35,7 @@ public class DiscordBotService : IHostedService
         _logger = logger;
         _settings = settings.Value;
         _lookupService = lookupService;
+        _welcomeMessageService = welcomeMessageService;
 
         _client.Log += LogAsync;
         _client.Ready += ReadyAsync;
@@ -194,6 +197,18 @@ public class DiscordBotService : IHostedService
         else
         {
             _logger.LogWarning("GuildId is 0, commands not registered");
+        }
+
+        // Send welcome messages when bot connects to server
+        try
+        {
+            _logger.LogInformation("Checking and sending welcome messages...");
+            await _welcomeMessageService.SendWelcomeMessagesIfNeededAsync();
+            _logger.LogInformation("Welcome messages check completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send welcome messages during startup");
         }
     }
 

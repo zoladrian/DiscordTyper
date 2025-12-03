@@ -1,7 +1,9 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using TyperBot.Application.Services;
 using TyperBot.Domain.Enums;
+using TyperBot.Infrastructure.Data;
 using TyperBot.Infrastructure.Repositories;
 using Xunit;
 using DomainMatch = TyperBot.Domain.Entities.Match;
@@ -18,6 +20,7 @@ public class PredictionServiceTests
     private readonly Mock<IPlayerRepository> _playerRepo;
     private readonly Mock<IPlayerScoreRepository> _playerScoreRepo;
     private readonly ScoreCalculator _scoreCalculator;
+    private readonly TyperContext _context;
     private readonly PredictionService _service;
 
     public PredictionServiceTests()
@@ -27,12 +30,20 @@ public class PredictionServiceTests
         _playerRepo = new Mock<IPlayerRepository>();
         _playerScoreRepo = new Mock<IPlayerScoreRepository>();
         _scoreCalculator = new ScoreCalculator();
+        
+        // Create in-memory database context for testing
+        var options = new DbContextOptionsBuilder<TyperContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        _context = new TyperContext(options);
+        
         _service = new PredictionService(
             _predictionRepo.Object,
             _matchRepo.Object,
             _playerRepo.Object,
             _scoreCalculator,
-            _playerScoreRepo.Object);
+            _playerScoreRepo.Object,
+            _context);
     }
 
     [Fact]

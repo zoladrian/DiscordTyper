@@ -2,6 +2,7 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -90,6 +91,7 @@ builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<D
 // Register Discord services
 builder.Services.AddSingleton<DiscordLookupService>();
 builder.Services.AddSingleton<AdminMatchCreationStateService>();
+builder.Services.AddSingleton<WelcomeMessageService>();
 
 // Add Discord bot service
 builder.Services.AddHostedService<DiscordBotService>();

@@ -32,11 +32,18 @@ public class MatchRepository : IMatchRepository
 
     public async Task<IEnumerable<Match>> GetUpcomingMatchesAsync()
     {
+        var now = DateTimeOffset.UtcNow;
+        var scheduledStatus = (int)MatchStatus.Scheduled;
+        
+        // Use database filtering with enum conversion to int
+        // SQLite can handle WHERE clauses with integer comparisons
         var matches = await _context.Matches
             .Include(m => m.Round)
-            .Where(m => m.Status == MatchStatus.Scheduled && m.StartTime > DateTimeOffset.UtcNow)
+            .Where(m => (int)m.Status == scheduledStatus && m.StartTime > now)
+            .OrderBy(m => m.StartTime)
             .ToListAsync();
-        return matches.OrderBy(m => m.StartTime);
+        
+        return matches;
     }
 
     public async Task<IEnumerable<Match>> GetAllAsync()

@@ -56,24 +56,27 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var predictions = (await _predictionRepository.GetByPlayerIdAsync(player.Id)).ToList();
+        IEnumerable<Domain.Entities.Prediction> predictions;
         
         if (round.HasValue)
         {
-            // Filter by round
+            // Filter by round - get matches first, then get predictions only for those matches
             var upcomingMatches = await _matchRepository.GetUpcomingMatchesAsync();
             var roundMatches = upcomingMatches.Where(m => m.Round?.Number == round.Value).ToList();
-            predictions = predictions.Where(p => roundMatches.Any(m => m.Id == p.MatchId)).ToList();
+            var matchIds = roundMatches.Select(m => m.Id).ToList();
+            predictions = await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds);
         }
         else
         {
-            // Show all upcoming
+            // Show all upcoming - get matches first, then get predictions only for those matches
             var upcomingMatches = await _matchRepository.GetUpcomingMatchesAsync();
-            var upcomingMatchIds = upcomingMatches.Select(m => m.Id).ToList();
-            predictions = predictions.Where(p => upcomingMatchIds.Contains(p.MatchId)).ToList();
+            var matchIds = upcomingMatches.Select(m => m.Id).ToList();
+            predictions = await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds);
         }
+        
+        var predictionsList = predictions.ToList();
 
-        if (!predictions.Any())
+        if (!predictionsList.Any())
         {
             var message = round.HasValue 
                 ? $"❌ Nie masz typów dla kolejki {round.Value}."
@@ -90,7 +93,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         // Build detailed table with match info
         var matchesWithPreds = new List<(Domain.Entities.Match Match, Domain.Entities.Prediction Pred)>();
-        foreach (var pred in predictions)
+        foreach (var pred in predictionsList)
         {
             var match = await _matchRepository.GetByIdAsync(pred.MatchId);
             if (match != null && match.Round != null)
@@ -169,17 +172,17 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         }
         
         var totalFinished = matchesWithPreds.Count(m => m.Match.Status == Domain.Enums.MatchStatus.Finished);
-        var totalPoints = predictions
+        var totalPoints = predictionsList
             .Where(p => p.PlayerScore != null)
             .Sum(p => p.PlayerScore!.Points);
         
         if (totalFinished > 0)
         {
-            embed.WithFooter($"Zdobyte punkty: {totalPoints} | Zakończonych meczów: {totalFinished}/{predictions.Count}");
+            embed.WithFooter($"Zdobyte punkty: {totalPoints} | Zakończonych meczów: {totalFinished}/{predictionsList.Count}");
         }
         else
         {
-            embed.WithFooter($"Liczba typów: {predictions.Count}");
+            embed.WithFooter($"Liczba typów: {predictionsList.Count}");
         }
 
         await RespondAsync(embed: embed.Build(), ephemeral: true);
@@ -245,8 +248,8 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
             // Build table using code block for monospace alignment
             var table = "```\n";
-            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
-            table += "════════════════════════════════════════════════\n";
+            table += "Poz  Gracz                    Pkt   Typ   Cel   Wyg\n";
+            table += "═══════════════════════════════════════════════════\n";
             
             for (int i = 0; i < sortedScores.Count; i++)
             {
@@ -255,10 +258,10 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
                 var playerName = player?.DiscordUsername ?? "Unknown";
                 
                 // Truncate long names
-                if (playerName.Length > 20)
-                    playerName = playerName.Substring(0, 17) + "...";
+                if (playerName.Length > 22)
+                    playerName = playerName.Substring(0, 19) + "...";
                 
-                table += $"{i + 1,3}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+                table += $"{i + 1,3}  {playerName,-22}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
             }
             
             table += "```";
@@ -324,8 +327,8 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
             // Build table using code block for monospace alignment
             var table = "```\n";
-            table += "Poz  Gracz                  Pkt   Typ   Cel   Wyg\n";
-            table += "════════════════════════════════════════════════\n";
+            table += "Poz  Gracz                    Pkt   Typ   Cel   Wyg\n";
+            table += "═══════════════════════════════════════════════════\n";
             
             for (int i = 0; i < sortedScores.Count; i++)
             {
@@ -333,8 +336,8 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
                 var playerName = score.PlayerName;
                 
                 // Truncate long names
-                if (playerName.Length > 20)
-                    playerName = playerName.Substring(0, 17) + "...";
+                if (playerName.Length > 22)
+                    playerName = playerName.Substring(0, 19) + "...";
                 
                 // Add medal emojis for top 3
                 var medal = i switch
@@ -345,7 +348,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
                     _ => "  "
                 };
                 
-                table += $"{medal} {i + 1,2}  {playerName,-20}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+                table += $"{medal} {i + 1,2}  {playerName,-22}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
             }
             
             table += "```";

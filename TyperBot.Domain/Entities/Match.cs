@@ -11,6 +11,7 @@ public class Match
     public DateTimeOffset StartTime { get; set; }
     public DateTimeOffset? ActualStartTime { get; set; }
     public DateTimeOffset? ThreadCreationTime { get; set; }
+    public ulong? ThreadId { get; set; }
     public MatchStatus Status { get; set; }
     public int? HomeScore { get; set; }
     public int? AwayScore { get; set; }

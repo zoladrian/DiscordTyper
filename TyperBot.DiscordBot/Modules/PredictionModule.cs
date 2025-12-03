@@ -20,6 +20,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     private readonly PredictionService _predictionService;
     private readonly IPlayerRepository _playerRepository;
     private readonly IMatchRepository _matchRepository;
+    private readonly IPredictionRepository _predictionRepository;
 
     public PredictionModule(
         ILogger<PredictionModule> logger,
@@ -27,7 +28,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         DiscordLookupService lookupService,
         PredictionService predictionService,
         IPlayerRepository playerRepository,
-        IMatchRepository matchRepository)
+        IMatchRepository matchRepository,
+        IPredictionRepository predictionRepository)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -35,12 +37,100 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         _predictionService = predictionService;
         _playerRepository = playerRepository;
         _matchRepository = matchRepository;
+        _predictionRepository = predictionRepository;
     }
 
     private bool HasPlayerRole(SocketGuildUser? user)
     {
         if (user == null) return false;
         return user.Roles.Any(r => r.Name == _settings.PlayerRoleName);
+    }
+
+    private async Task<Domain.Entities.Player?> EnsurePlayerExistsAsync(ulong discordUserId, string discordUsername)
+    {
+        var player = await _playerRepository.GetByDiscordUserIdAsync(discordUserId);
+        if (player == null)
+        {
+            // Create player
+            player = new Domain.Entities.Player
+            {
+                DiscordUserId = discordUserId,
+                DiscordUsername = discordUsername,
+                IsActive = true
+            };
+            player = await _playerRepository.AddAsync(player);
+            _logger.LogInformation("Created new player: {DiscordUserId} ({DiscordUsername})", player.DiscordUserId, player.DiscordUsername);
+        }
+        return player;
+    }
+
+    private async Task PostPredictionMessageInThreadAsync(Domain.Entities.Match match, SocketGuildUser user, bool isUpdate)
+    {
+        try
+        {
+            // Validate match hasn't started yet
+            if (DateTimeOffset.UtcNow >= match.StartTime)
+            {
+                _logger.LogWarning("Próba wysłania wiadomości o typie po rozpoczęciu meczu - Mecz ID: {MatchId}", match.Id);
+                return;
+            }
+
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null) return;
+
+            // Use ThreadId if available, otherwise fall back to name search
+            SocketThreadChannel? thread = null;
+            if (match.ThreadId.HasValue)
+            {
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+            }
+            
+            // Fallback to name search if ThreadId not found or not set
+            if (thread == null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+            }
+            
+            if (thread == null) return;
+
+            string message;
+            if (isUpdate)
+            {
+                // Random message for update
+                var updateMessages = new[]
+                {
+                    $"{user.Username} wydygał i zmienił wynik",
+                    $"{user.Username} obsrał się i zmienił wynik",
+                    $"{user.Username} obsmarkał się i zmienił wynik",
+                    $"{user.Username} obsrał zbroje i zmienił wynik"
+                };
+                message = updateMessages[Random.Shared.Next(updateMessages.Length)];
+            }
+            else
+            {
+                // Random message for new prediction
+                var newMessages = new[]
+                {
+                    $"{user.Username} obstawił",
+                    $"{user.Username} zatypował",
+                    $"{user.Username} wpisał wynik",
+                    $"{user.Username} postawil",
+                    $"{user.Username} zatypował wynik"
+                };
+                message = newMessages[Random.Shared.Next(newMessages.Length)];
+            }
+
+            await thread.SendMessageAsync(message);
+            _logger.LogInformation(
+                "Wiadomość o typie opublikowana w wątku - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Update: {IsUpdate}",
+                user.Username, user.Id, match.Id, isUpdate);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Nie udało się opublikować wiadomości w wątku meczu");
+        }
     }
 
     [ComponentInteraction("predict_match_*")]
@@ -87,18 +177,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Ensure player exists
-        var player = await _playerRepository.GetByDiscordUserIdAsync(user!.Id);
+        var player = await EnsurePlayerExistsAsync(user!.Id, user.Username);
         if (player == null)
         {
-            // Create player
-            player = new Player
-            {
-                DiscordUserId = user.Id,
-                DiscordUsername = user.Username,
-                IsActive = true
-            };
-            player = await _playerRepository.AddAsync(player);
-            _logger.LogInformation("Created new player: {DiscordUserId} ({DiscordUsername})", player.DiscordUserId, player.DiscordUsername);
+            await RespondAsync("❌ Nie udało się utworzyć gracza. Spróbuj ponownie.", ephemeral: true);
+            return;
         }
 
         // Show prediction modal
@@ -112,8 +195,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         await RespondWithModalAsync(modal);
     }
 
-    [ModalInteraction("predict_match_modal_*")]
-    public async Task HandlePredictModalAsync(string matchIdStr, string homePoints, string awayPoints)
+    [ModalInteraction("predict_match_modal_*", true)]
+    public async Task HandlePredictModalAsync(string matchIdStr, PredictionModal modal)
     {
         var user = Context.User as SocketGuildUser;
         
@@ -142,7 +225,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         int homeTip = 0;
         int awayTip = 0;
 
-        if (!int.TryParse(homePoints, out homeTip) || !int.TryParse(awayPoints, out awayTip))
+        if (!int.TryParse(modal.HomePoints, out homeTip) || !int.TryParse(modal.AwayPoints, out awayTip))
         {
             hasInvalidInput = true;
             invalidInputError = "Wprowadź prawidłowe liczby dla obu wyników.";
@@ -169,7 +252,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                     await thread.SendMessageAsync($"@{user.Username} zatypował{genderSuffix} jak imbecyl 😂");
                     _logger.LogInformation(
                         "Publiczne oznaczenie użytkownika przy błędzie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}",
-                        user.Username, user.Id, matchId, homePoints, awayPoints);
+                        user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
                 }
             }
 
@@ -185,6 +268,18 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Ensure player exists
+        var player = await EnsurePlayerExistsAsync(user!.Id, user.Username);
+        if (player == null)
+        {
+            await RespondAsync("❌ Nie udało się utworzyć gracza. Spróbuj ponownie.", ephemeral: true);
+            return;
+        }
+
+        // Check if this is an update (prediction already exists)
+        var existingPrediction = await _predictionRepository.GetByMatchAndPlayerAsync(matchId, player.Id);
+        var isUpdate = existingPrediction != null;
+
         // Create or update prediction
         var prediction = await _predictionService.CreateOrUpdatePredictionAsync(user.Id, matchId, homeTip, awayTip);
         
@@ -197,6 +292,24 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
         _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
             user.Id, matchId, homeTip, awayTip);
+
+        // Post message in match thread
+        await PostPredictionMessageInThreadAsync(match, user, isUpdate);
     }
+}
+
+public class PredictionModal : IModal
+{
+    public string Title => "Złóż swój typ";
+
+    [InputLabel("Punkty drużyny domowej")]
+    [ModalTextInput("home_points", TextInputStyle.Short, placeholder: "50", minLength: 1, maxLength: 3)]
+    [RequiredInput(true)]
+    public string HomePoints { get; set; } = string.Empty;
+
+    [InputLabel("Punkty drużyny wyjazdowej")]
+    [ModalTextInput("away_points", TextInputStyle.Short, placeholder: "40", minLength: 1, maxLength: 3)]
+    [RequiredInput(true)]
+    public string AwayPoints { get; set; } = string.Empty;
 }
 

@@ -8,6 +8,7 @@ public interface IPredictionRepository
     Task<Prediction?> GetByMatchAndPlayerAsync(int matchId, int playerId);
     Task<IEnumerable<Prediction>> GetByMatchIdAsync(int matchId);
     Task<IEnumerable<Prediction>> GetByPlayerIdAsync(int playerId);
+    Task<IEnumerable<Prediction>> GetByPlayerIdAndMatchIdsAsync(int playerId, IEnumerable<int> matchIds);
     Task<IEnumerable<Prediction>> GetValidPredictionsByMatchAsync(int matchId);
     Task<IEnumerable<Prediction>> GetAllAsync(); // ← For demo data cleanup
     Task<Prediction> AddAsync(Prediction prediction);
