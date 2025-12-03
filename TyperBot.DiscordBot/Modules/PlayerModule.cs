@@ -269,7 +269,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             
             embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
 
-            await RespondAsync(embed: embed.Build());
+            await RespondAsync(embed: embed.Build(), ephemeral: true);
             _logger.LogInformation("Tabela kolejki {Round} wygenerowana przez {User}", round, Context.User.Username);
         }
         catch (Exception ex)
@@ -356,7 +356,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             
             embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
 
-            await RespondAsync(embed: embed.Build());
+            await RespondAsync(embed: embed.Build(), ephemeral: true);
             _logger.LogInformation("Tabela sezonu wygenerowana przez {User}", Context.User.Username);
         }
         catch (Exception ex)

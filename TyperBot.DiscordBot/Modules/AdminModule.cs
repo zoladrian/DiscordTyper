@@ -617,6 +617,18 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Check for missing previous rounds
+        var allRounds = await _roundRepository.GetBySeasonIdAsync(season.Id);
+        var existingRoundNumbers = allRounds.Select(r => r.Number).OrderBy(n => n).ToList();
+        var missingRounds = new List<int>();
+        for (int i = 1; i < roundNumber; i++)
+        {
+            if (!existingRoundNumbers.Contains(i))
+            {
+                missingRounds.Add(i);
+            }
+        }
+        
         // Initialize kolejka creation flow
         _stateService.ClearState(Context.Guild.Id, Context.User.Id);
         _stateService.InitializeKolejkaCreation(Context.Guild.Id, Context.User.Id, roundNumber, matchCount);
@@ -627,10 +639,18 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
         _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, "18:00");
 
-        await RespondAsync(
-            $"✅ Rozpoczynam tworzenie kolejki {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) z {matchCount} meczami.\n" +
-            "Wypełnij dane dla każdego meczu.",
-            ephemeral: true);
+        // Build response message
+        var responseMessage = $"✅ Rozpoczynam tworzenie kolejki {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) z {matchCount} meczami.\n" +
+            "Wypełnij dane dla każdego meczu.";
+        
+        if (missingRounds.Any())
+        {
+            var missingLabels = missingRounds.Select(n => $"{n} ({Application.Services.RoundHelper.GetRoundLabel(n)})");
+            responseMessage += $"\n\n⚠️ **Uwaga:** Brakuje wcześniejszych kolejek: {string.Join(", ", missingLabels)}.\n" +
+                "Możesz kontynuować, ale zalecamy dodanie brakujących kolejek najpierw.";
+        }
+
+        await RespondAsync(responseMessage, ephemeral: true);
 
         // Show first match form
         await ShowKolejkaMatchFormAsync();
@@ -760,6 +780,11 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithLabel("❌ Anuluj")
             .WithStyle(ButtonStyle.Danger);
 
+        var finishKolejkaButton = new ButtonBuilder()
+            .WithCustomId("admin_kolejka_finish")
+            .WithLabel("✅ Zatwierdź kolejkę")
+            .WithStyle(ButtonStyle.Success);
+
         // Calendar navigation
         var prevMonth = new ButtonBuilder()
             .WithCustomId("admin_kolejka_calendar_prev")
@@ -785,6 +810,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithButton(today, row: 4)
             .WithButton(nextMonth, row: 4)
             .WithButton(submitMatchButton, row: 4)
+            .WithButton(finishKolejkaButton, row: 5)
+            .WithButton(cancelButton, row: 5)
             .Build();
 
         await FollowupAsync(embed: embed, components: component, ephemeral: true);
@@ -1390,19 +1417,28 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (!TimeSpan.TryParse(godzina, out var time) || time.TotalHours >= 24)
+        // Try parsing as HH:mm format first
+        if (!DateTime.TryParseExact(godzina, "HH:mm", null, System.Globalization.DateTimeStyles.None, out var parsedTime))
         {
-            _logger.LogWarning(
-                "Nieprawidłowy format godziny - Użytkownik: {Username} (ID: {UserId}), Wprowadzono: {Time}, Serwer: {GuildId}",
-                Context.User.Username,
-                Context.User.Id,
-                godzina,
-                Context.Guild.Id);
-            await RespondAsync("❌ Nieprawidłowy format godziny. Użyj HH:mm, np. 18:30.", ephemeral: true);
-            return;
+            // Fallback to TimeSpan parsing
+            if (!TimeSpan.TryParse(godzina, out var time) || time.TotalHours >= 24)
+            {
+                _logger.LogWarning(
+                    "Nieprawidłowy format godziny - Użytkownik: {Username} (ID: {UserId}), Wprowadzono: {Time}, Serwer: {GuildId}",
+                    Context.User.Username,
+                    Context.User.Id,
+                    godzina,
+                    Context.Guild.Id);
+                await RespondAsync("❌ Nieprawidłowy format godziny. Użyj HH:mm, np. 18:30.", ephemeral: true);
+                return;
+            }
+            _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)time.TotalHours:D2}:{time.Minutes:D2}");
         }
-
-        _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)time.TotalHours:D2}:{time.Minutes:D2}");
+        else
+        {
+            // Use parsed DateTime time
+            _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, parsedTime.ToString("HH:mm"));
+        }
         _logger.LogInformation(
             "Godzina ustawiona ręcznie (kolejka) - Użytkownik: {Username} (ID: {UserId}), Godzina: {Time}, Serwer: {GuildId}",
             Context.User.Username,
@@ -1555,6 +1591,43 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [ComponentInteraction("admin_kolejka_finish")]
+    public async Task HandleFinishKolejkaAsync()
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        {
+            await RespondAsync("❌ Stan formularza wygasł. Rozpocznij ponownie.", ephemeral: true);
+            return;
+        }
+
+        // Check if there are missing matches
+        var missingMatches = state.TotalMatchesInKolejka - state.CollectedMatches.Count;
+        if (missingMatches > 0)
+        {
+            // Show form for first missing match
+            await DeferAsync();
+            state.CurrentMatchIndex = state.CollectedMatches.Count + 1;
+            await ShowKolejkaMatchFormAsync();
+            await FollowupAsync(
+                $"⚠️ **Uwaga:** Brakuje jeszcze {missingMatches} mecz(ów) w kolejce. " +
+                $"Możesz je dodać teraz lub zatwierdzić kolejkę bez nich używając przycisku '✅ Zatwierdź kolejkę'.",
+                ephemeral: true);
+            return;
+        }
+
+        // All matches collected, create them
+        await DeferAsync();
+        await CreateKolejkaMatchesAsync();
+    }
+
     private async Task CreateKolejkaMatchesAsync()
     {
         if (Context.Guild == null) return;
@@ -1613,15 +1686,32 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 await PostMatchCardAsync(match, roundNumber);
             }
 
+            // Check for missing matches BEFORE clearing state
+            var totalMatchesExpected = state.TotalMatchesInKolejka;
+            var collectedMatchesCount = state.CollectedMatches.Count;
+            var missingMatches = totalMatchesExpected - createdMatches.Count;
+            var missingMatchesList = new List<int>();
+            for (int i = collectedMatchesCount + 1; i <= totalMatchesExpected; i++)
+            {
+                missingMatchesList.Add(i);
+            }
+
             // Clear state
             _stateService.ClearState(Context.Guild.Id, Context.User.Id);
 
             _logger.LogInformation(
-                "Kolejka utworzona pomyślnie - Kolejka: {Round} ({Label}), Liczba meczów: {Count}",
-                roundNumber, roundLabel, createdMatches.Count);
+                "Kolejka utworzona pomyślnie - Kolejka: {Round} ({Label}), Liczba meczów: {Count}/{Total}",
+                roundNumber, roundLabel, createdMatches.Count, totalMatchesExpected);
 
             // Build response message
-            var responseMessage = $"✅ Dodano kolejkę {roundLabel} z {createdMatches.Count} meczami.";
+            var responseMessage = $"✅ Kolejka {roundLabel} została dodana z {createdMatches.Count} meczami.";
+            
+            if (missingMatches > 0)
+            {
+                responseMessage += $"\n\n⚠️ **Brakuje {missingMatches} mecz(ów):** Mecz {string.Join(", Mecz ", missingMatchesList)}.";
+                responseMessage += "\nMożesz je dodać później używając opcji 'Dodaj mecz do kolejki' w panelu zarządzania kolejką.";
+            }
+            
             if (errors.Any())
             {
                 responseMessage += $"\n\n⚠️ Wystąpiły błędy:\n{string.Join("\n", errors)}";
@@ -2363,8 +2453,136 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
+        // Automatically reveal predictions if not already revealed and match is not cancelled/postponed
+        if (!match.PredictionsRevealed && match.Status == MatchStatus.Finished)
+        {
+            try
+            {
+                await RevealPredictionsForMatchAsync(match);
+                _logger.LogInformation("Typy automatycznie ujawnione po wpisaniu wyniku - Mecz ID: {MatchId}", matchId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Błąd podczas automatycznego ujawniania typów dla meczu {MatchId}", matchId);
+                // Don't fail the whole operation if revealing fails
+            }
+        }
+
         // Post standings tables
         await PostStandingsAfterResultAsync(match);
+    }
+
+    private async Task RevealPredictionsForMatchAsync(Domain.Entities.Match match)
+    {
+        // Get all predictions for this match
+        var predictions = await _predictionRepository.GetByMatchIdAsync(match.Id);
+        var predictionsList = predictions.ToList();
+
+        // Get all players with Typer role
+        var playersWithRole = await _lookupService.GetPlayersWithRoleAsync();
+        var playerDiscordIds = playersWithRole.Select(p => p.Id).ToHashSet();
+
+        // Get players who made predictions (by Discord ID)
+        var playersWithPredictions = predictionsList
+            .Select(p => p.Player.DiscordUserId)
+            .ToHashSet();
+
+        // Find players who didn't predict
+        var playersWithoutPredictions = playersWithRole
+            .Where(p => !playersWithPredictions.Contains(p.Id))
+            .ToList();
+
+        // Build predictions table
+        var tableLines = new List<string>();
+        tableLines.Add("```");
+        tableLines.Add("┌─────────────────────┬───────────┐");
+        tableLines.Add("│ Gracz               │ Typ       │");
+        tableLines.Add("├─────────────────────┼───────────┤");
+
+        if (predictionsList.Any())
+        {
+            foreach (var pred in predictionsList.OrderBy(p => p.Player.DiscordUsername))
+            {
+                var playerName = pred.Player.DiscordUsername;
+                if (playerName.Length > 19)
+                {
+                    playerName = playerName.Substring(0, 16) + "...";
+                }
+                tableLines.Add($"│ {playerName,-19} │ {pred.HomeTip,2}:{pred.AwayTip,-2} │");
+            }
+        }
+        else
+        {
+            tableLines.Add("│ Brak typów          │           │");
+        }
+
+        tableLines.Add("└─────────────────────┴───────────┘");
+        tableLines.Add("```");
+
+        var tableText = string.Join("\n", tableLines);
+
+        // Get thread
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel == null)
+        {
+            _logger.LogWarning("Kanał typowań nie znaleziony przy ujawnianiu typów dla meczu {MatchId}", match.Id);
+            return;
+        }
+
+        SocketThreadChannel? thread = null;
+        if (match.ThreadId.HasValue)
+        {
+            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+        }
+
+        if (thread == null)
+        {
+            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+            var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+        }
+
+        if (thread == null)
+        {
+            _logger.LogWarning("Wątek meczu nie znaleziony przy ujawnianiu typów dla meczu {MatchId}", match.Id);
+            return;
+        }
+
+        // Send table message
+        var embed = new EmbedBuilder()
+            .WithTitle($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}")
+            .WithDescription(tableText)
+            .WithColor(Color.Gold)
+            .WithCurrentTimestamp()
+            .Build();
+
+        var revealMessage = await thread.SendMessageAsync(embed: embed);
+        
+        // Pin the message
+        await revealMessage.PinAsync();
+
+        // Send message about players who didn't predict
+        if (playersWithoutPredictions.Any())
+        {
+            var playerNames = playersWithoutPredictions.Select(p => p.Username).ToList();
+            string message;
+            if (playerNames.Count == 1)
+            {
+                message = $"Nie zatypował {playerNames[0]}";
+            }
+            else
+            {
+                message = $"Nie zatypowali: {string.Join(", ", playerNames)}";
+            }
+            await thread.SendMessageAsync(message);
+        }
+
+        // Mark predictions as revealed
+        match.PredictionsRevealed = true;
+        await _matchRepository.UpdateAsync(match);
+
+        // Update match card to remove reveal button
+        await PostMatchCardAsync(match, match.Round?.Number ?? 0);
     }
 
     [ComponentInteraction("admin_reveal_predictions_*")]
@@ -2408,121 +2626,12 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            // Get all predictions for this match
-            var predictions = await _predictionRepository.GetByMatchIdAsync(matchId);
-            var predictionsList = predictions.ToList();
-
-            // Get all players with Typer role
-            var playersWithRole = await _lookupService.GetPlayersWithRoleAsync();
-            var playerDiscordIds = playersWithRole.Select(p => p.Id).ToHashSet();
-
-            // Get players who made predictions (by Discord ID)
-            var playersWithPredictions = predictionsList
-                .Select(p => p.Player.DiscordUserId)
-                .ToHashSet();
-
-            // Find players who didn't predict
-            var playersWithoutPredictions = playersWithRole
-                .Where(p => !playersWithPredictions.Contains(p.Id))
-                .ToList();
-
-            // Build predictions table
-            var tableLines = new List<string>();
-            tableLines.Add("```");
-            tableLines.Add("┌─────────────────────┬───────────┐");
-            tableLines.Add("│ Gracz               │ Typ       │");
-            tableLines.Add("├─────────────────────┼───────────┤");
-
-            if (predictionsList.Any())
-            {
-                foreach (var pred in predictionsList.OrderBy(p => p.Player.DiscordUsername))
-                {
-                    var playerName = pred.Player.DiscordUsername;
-                    if (playerName.Length > 19)
-                    {
-                        playerName = playerName.Substring(0, 16) + "...";
-                    }
-                    tableLines.Add($"│ {playerName,-19} │ {pred.HomeTip,2}:{pred.AwayTip,-2} │");
-                }
-            }
-            else
-            {
-                tableLines.Add("│ Brak typów          │           │");
-            }
-
-            tableLines.Add("└─────────────────────┴───────────┘");
-            tableLines.Add("```");
-
-            var tableText = string.Join("\n", tableLines);
-
-            // Get thread
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel == null)
-            {
-                await FollowupAsync("❌ Kanał typowań nie znaleziony.", ephemeral: true);
-                return;
-            }
-
-            SocketThreadChannel? thread = null;
-            if (match.ThreadId.HasValue)
-            {
-                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-            }
-
-            if (thread == null)
-            {
-                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
-                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
-            }
-
-            if (thread == null)
-            {
-                await FollowupAsync("❌ Wątek meczu nie znaleziony.", ephemeral: true);
-                return;
-            }
-
-            // Send table message
-            var embed = new EmbedBuilder()
-                .WithTitle($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}")
-                .WithDescription(tableText)
-                .WithColor(Color.Gold)
-                .WithCurrentTimestamp()
-                .Build();
-
-            var revealMessage = await thread.SendMessageAsync(embed: embed);
-            
-            // Pin the message
-            await revealMessage.PinAsync();
-
-            // Send message about players who didn't predict
-            if (playersWithoutPredictions.Any())
-            {
-                var playerNames = playersWithoutPredictions.Select(p => p.Username).ToList();
-                string message;
-                if (playerNames.Count == 1)
-                {
-                    message = $"Nie zatypował {playerNames[0]}";
-                }
-                else
-                {
-                    message = $"Nie zatypowali: {string.Join(", ", playerNames)}";
-                }
-                await thread.SendMessageAsync(message);
-            }
-
-            // Mark predictions as revealed
-            match.PredictionsRevealed = true;
-            await _matchRepository.UpdateAsync(match);
-
-            // Update match card to remove reveal button
-            await PostMatchCardAsync(match, match.Round?.Number ?? 0);
-
+            await RevealPredictionsForMatchAsync(match);
             await FollowupAsync("✅ Typy zostały ujawnione i przypięte w wątku meczu.", ephemeral: true);
             
             _logger.LogInformation(
-                "Typy ujawnione - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typów: {Count}, Niezatypowanych: {NotPredictedCount}",
-                user.Username, user.Id, matchId, predictionsList.Count, playersWithoutPredictions.Count);
+                "Typy ujawnione ręcznie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}",
+                user.Username, user.Id, matchId);
         }
         catch (Exception ex)
         {

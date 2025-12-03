@@ -243,7 +243,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         else if (homeTip + awayTip != 90)
         {
             hasInvalidInput = true;
-            invalidInputError = $"Suma musi wynosić 90, a nie {homeTip + awayTip}.";
+            invalidInputError = $"Suma wyniku musi wynosić 90, a nie {homeTip + awayTip}. Oglądałeś kiedyś żużel?";
         }
 
         if (hasInvalidInput)

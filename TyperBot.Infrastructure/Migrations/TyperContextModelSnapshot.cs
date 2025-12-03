@@ -57,6 +57,11 @@ namespace TyperBot.Infrastructure.Migrations
                     b.Property<ulong?>("ThreadId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("PredictionsRevealed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
                     b.HasKey("Id");
 
                     b.HasIndex("RoundId");

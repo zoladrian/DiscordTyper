@@ -119,6 +119,37 @@ using (var scope = app.Services.CreateScope())
         {
             Log.Information("Database is up to date");
         }
+
+        // CRITICAL FIX: Ensure columns exist even if migrations claim they are applied
+        try 
+        {
+            // 1. Fix ThreadCreationTime
+            try 
+            {
+                await context.Database.ExecuteSqlRawAsync("SELECT ThreadCreationTime FROM Matches LIMIT 1");
+            } 
+            catch 
+            {
+                Log.Warning("Repairing database: Adding missing column ThreadCreationTime");
+                await context.Database.ExecuteSqlRawAsync("ALTER TABLE Matches ADD COLUMN ThreadCreationTime TEXT NULL");
+            }
+
+            // 2. Fix PredictionsRevealed
+            try 
+            {
+                await context.Database.ExecuteSqlRawAsync("SELECT PredictionsRevealed FROM Matches LIMIT 1");
+            } 
+            catch 
+            {
+                Log.Warning("Repairing database: Adding missing column PredictionsRevealed");
+                await context.Database.ExecuteSqlRawAsync("ALTER TABLE Matches ADD COLUMN PredictionsRevealed INTEGER NOT NULL DEFAULT 0");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Database schema repair failed");
+            // Don't rethrow, try to continue
+        }
     }
     catch (Exception ex)
     {
