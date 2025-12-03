@@ -15,6 +15,7 @@ public class Match
     public MatchStatus Status { get; set; }
     public int? HomeScore { get; set; }
     public int? AwayScore { get; set; }
+    public bool PredictionsRevealed { get; set; }
 
     // Navigation properties
     public Round Round { get; set; } = null!;

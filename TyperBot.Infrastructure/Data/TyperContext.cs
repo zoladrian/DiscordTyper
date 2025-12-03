@@ -52,6 +52,7 @@ public class TyperContext : DbContext
             entity.Property(e => e.AwayTeam).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.StartTime).IsRequired();
+            entity.Property(e => e.PredictionsRevealed).IsRequired().HasDefaultValue(false);
 
             entity.HasOne(e => e.Round)
                 .WithMany(r => r.Matches)

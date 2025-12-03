@@ -65,6 +65,17 @@ public class PredictionService
             return (false, "Ten mecz został odwołany.");
         }
 
+        // Validation 5: Allow postponed matches (user can change prediction)
+        if (match.Status == MatchStatus.Postponed)
+        {
+            // Postponed matches can still be predicted/updated before their original start time
+            if (DateTimeOffset.UtcNow >= match.StartTime)
+            {
+                return (false, "Czas na typowanie minął. Możesz typować tylko przed pierwotną godziną rozpoczęcia meczu.");
+            }
+            // Allow prediction for postponed matches
+        }
+
         return (true, null);
     }
 
@@ -90,6 +101,13 @@ public class PredictionService
             }
 
             if (match.Status == MatchStatus.Cancelled || match.Status == MatchStatus.Finished)
+            {
+                await transaction.RollbackAsync();
+                return null;
+            }
+
+            // Allow postponed matches to be predicted/updated before original start time
+            if (match.Status == MatchStatus.Postponed && DateTimeOffset.UtcNow >= match.StartTime)
             {
                 await transaction.RollbackAsync();
                 return null;

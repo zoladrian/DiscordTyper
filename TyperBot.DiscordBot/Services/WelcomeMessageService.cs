@@ -123,10 +123,8 @@ public class WelcomeMessageService
             // Check pinned messages from bot
             var pinnedMessages = await channel.GetPinnedMessagesAsync();
             var existingMessage = pinnedMessages
-                .Where(m => m.Author.Id == _client.CurrentUser.Id && m is SocketUserMessage)
-                .Cast<SocketUserMessage>()
-                .FirstOrDefault(m => 
-                    m.Embeds.Any(e => e.Title?.Contains("Komendy Admina") == true));
+                .Where(m => m.Author.Id == _client.CurrentUser.Id && m.Embeds.Any(e => e.Title?.Contains("Komendy Admina") == true))
+                .FirstOrDefault();
 
             if (existingMessage != null)
             {
@@ -143,9 +141,28 @@ public class WelcomeMessageService
                         _logger.LogInformation("Admin welcome message exists but differs, updating...");
                         try
                         {
-                            await existingMessage.UnpinAsync();
-                            await existingMessage.DeleteAsync();
-                            _logger.LogInformation("Old admin welcome message removed");
+                            // Try to unpin and delete - works for IUserMessage
+                            if (existingMessage is IUserMessage userMsg)
+                            {
+                                await userMsg.UnpinAsync();
+                                await userMsg.DeleteAsync();
+                                _logger.LogInformation("Old admin welcome message removed");
+                            }
+                            else
+                            {
+                                // If it's not IUserMessage, try to get it from channel
+                                var msg = await channel.GetMessageAsync(existingMessage.Id);
+                                if (msg is IUserMessage channelUserMsg)
+                                {
+                                    await channelUserMsg.UnpinAsync();
+                                    await channelUserMsg.DeleteAsync();
+                                    _logger.LogInformation("Old admin welcome message removed");
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Could not delete existing admin welcome message - wrong message type");
+                                }
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -172,8 +189,7 @@ public class WelcomeMessageService
         {
             var pinnedMessages = await channel.GetPinnedMessagesAsync();
             var botMessages = pinnedMessages
-                .Where(m => m.Author.Id == _client.CurrentUser.Id && m is SocketUserMessage)
-                .Cast<SocketUserMessage>()
+                .Where(m => m.Author.Id == _client.CurrentUser.Id)
                 .ToList();
 
             // Commands message
@@ -184,8 +200,8 @@ public class WelcomeMessageService
                 .AddField("🎯 Jak typować?",
                     "1. Znajdź wątek meczu w tym kanale (każdy mecz ma swój wątek)\n" +
                     "2. Kliknij przycisk **\"Typuj\"** na karcie meczu\n" +
-                    "3. Wpisz swój typ (np. 3:2 dla drużyny domowej 3, wyjazdowej 2)\n" +
-                    "4. Gotowe! Możesz zmienić typ w każdej chwili przed rozpoczęciem meczu", inline: false)
+                    "3. Wpisz swój typ (np. 52:38)\n" +
+                    "4. Gotowe! Możesz zmienić typ w każdej chwili przed pierwotną godziną rozpoczęcia meczu", inline: false)
                 .AddField("📊 Sprawdzanie wyników",
                     "`/moje-typy` - Zobacz wszystkie swoje typy\n" +
                     "`/moje-typy [numer kolejki]` - Zobacz typy dla konkretnej kolejki\n\n" +
@@ -226,9 +242,28 @@ public class WelcomeMessageService
                         _logger.LogInformation("Player commands welcome message exists but differs, updating...");
                         try
                         {
-                            await existingCommandsMessage.UnpinAsync();
-                            await existingCommandsMessage.DeleteAsync();
-                            _logger.LogInformation("Old player commands welcome message removed");
+                            // Try to unpin and delete - works for IUserMessage
+                            if (existingCommandsMessage is IUserMessage userMsg)
+                            {
+                                await userMsg.UnpinAsync();
+                                await userMsg.DeleteAsync();
+                                _logger.LogInformation("Old player commands welcome message removed");
+                            }
+                            else
+                            {
+                                // If it's not IUserMessage, try to get it from channel
+                                var msg = await channel.GetMessageAsync(existingCommandsMessage.Id);
+                                if (msg is IUserMessage channelUserMsg)
+                                {
+                                    await channelUserMsg.UnpinAsync();
+                                    await channelUserMsg.DeleteAsync();
+                                    _logger.LogInformation("Old player commands welcome message removed");
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Could not delete existing player commands welcome message - wrong message type");
+                                }
+                            }
                             
                             var newMessage = await channel.SendMessageAsync(embed: commandsEmbed);
                             await newMessage.PinAsync();
@@ -254,14 +289,25 @@ public class WelcomeMessageService
                 .WithDescription("Zasady i informacje o systemie punktowania.")
                 .WithColor(Color.Gold)
                 .AddField("🎯 System punktowania",
-                    "**50 punktów** - Dokładny wynik (np. typowałeś 3:2, wynik to 3:2)\n" +
-                    "**35 punktów** - Dokładny remis (np. typowałeś 2:2, wynik to 2:2)\n" +
-                    "**20 punktów** - Poprawny zwycięzca + różnica bramek (np. typowałeś 3:1, wynik to 2:0)\n" +
-                    "**2 punkty** - Tylko poprawny zwycięzca (np. typowałeś 2:1, wynik to 1:0)\n" +
-                    "**0 punktów** - Niepoprawny typ", inline: false)
+                    "**50 punktów** - Dokładny remis 45:45 (np. typowałeś 45:45, wynik to 45:45)\n" +
+                    "**35 punktów** - Dokładny wynik który nie jest remisem (np. typowałeś 50:40, wynik to 50:40)\n" +
+                    "**20 punktów** - Różnica 1-2 punktów (np. typowałeś 50:40, wynik 49:41)\n" +
+                    "**18 punktów** - Różnica 3-4 punktów\n" +
+                    "**16 punktów** - Różnica 5-6 punktów\n" +
+                    "**14 punktów** - Różnica 7-8 punktów\n" +
+                    "**12 punktów** - Różnica 9-10 punktów\n" +
+                    "**10 punktów** - Różnica 11-12 punktów\n" +
+                    "**8 punktów** - Różnica 13-14 punktów\n" +
+                    "**6 punktów** - Różnica 15-16 punktów\n" +
+                    "**4 punkty** - Różnica 17-18 punktów\n" +
+                    "**2 punkty** - Różnica 19+ punktów\n" +
+                    "**0 punktów** - Źle wyznaczony zwycięzca meczu\n\n" +
+                    "**Uwaga:** Suma typowanego wyniku musi wynosić 90 punktów. Jeśli suma jest inna, typ zostanie odrzucony.", inline: false)
                 .AddField("⏰ Kiedy typować?",
-                    "• Typuj **przed rozpoczęciem meczu**\n" +
-                    "• Po starcie meczu nie możesz już zmienić typu\n" +
+                    "• Typuj **przed pierwotną godziną rozpoczęcia meczu**\n" +
+                    "• Jeśli mecz jest opóźniony, godzina typowania pozostaje taka sama\n" +
+                    "• Po pierwotnej godzinie rozpoczęcia nie możesz już zmienić typu\n" +
+                    "• Dla meczów przełożonych możesz zmienić typ przed pierwotną godziną rozpoczęcia\n" +
                     "• Każdy mecz ma swój wątek w kanale `#typowanie`\n" +
                     "• Wątki są tworzone automatycznie 2 dni przed meczem", inline: false)
                 .AddField("📍 Gdzie typować?",
@@ -271,13 +317,18 @@ public class WelcomeMessageService
                     "4. Kliknij przycisk i wpisz swój typ", inline: false)
                 .AddField("✅ Co dalej?",
                     "• Po zatypowaniu pojawi się wiadomość w wątku\n" +
-                    "• Możesz zmienić typ w każdej chwili przed meczem\n" +
+                    "• Możesz zmienić typ w każdej chwili przed pierwotną godziną rozpoczęcia\n" +
+                    "• Typy są tajne do momentu rozpoczęcia meczu\n" +
                     "• Po zakończeniu meczu admin wpisze wynik\n" +
                     "• Punkty są przyznawane automatycznie\n" +
                     "• Sprawdź swoje wyniki komendą `/moje-typy`", inline: false)
                 .AddField("❓ Częste pytania",
                     "**Czy mogę zmienić typ?**\n" +
-                    "Tak, ale tylko przed rozpoczęciem meczu.\n\n" +
+                    "Tak, ale tylko przed pierwotną godziną rozpoczęcia meczu. Jeśli mecz jest przełożony, możesz zmienić typ przed pierwotną godziną.\n\n" +
+                    "**Co jeśli mecz jest opóźniony?**\n" +
+                    "Godzina typowania pozostaje taka sama - typujesz do pierwotnej godziny rozpoczęcia, nie do faktycznej.\n\n" +
+                    "**Dlaczego suma musi wynosić 90?**\n" +
+                    "To zasady żużlowe - każdy mecz ma łącznie 90 punktów do zdobycia (15 biegów × 6 punktów).\n\n" +
                     "**Kiedy dostanę punkty?**\n" +
                     "Automatycznie po wpisaniu wyniku przez admina.\n\n" +
                     "**Gdzie zobaczę tabelę?**\n" +
@@ -303,9 +354,28 @@ public class WelcomeMessageService
                         _logger.LogInformation("Player rules welcome message exists but differs, updating...");
                         try
                         {
-                            await existingRulesMessage.UnpinAsync();
-                            await existingRulesMessage.DeleteAsync();
-                            _logger.LogInformation("Old player rules welcome message removed");
+                            // Try to unpin and delete - works for IUserMessage
+                            if (existingRulesMessage is IUserMessage userMsg)
+                            {
+                                await userMsg.UnpinAsync();
+                                await userMsg.DeleteAsync();
+                                _logger.LogInformation("Old player rules welcome message removed");
+                            }
+                            else
+                            {
+                                // If it's not IUserMessage, try to get it from channel
+                                var msg = await channel.GetMessageAsync(existingRulesMessage.Id);
+                                if (msg is IUserMessage channelUserMsg)
+                                {
+                                    await channelUserMsg.UnpinAsync();
+                                    await channelUserMsg.DeleteAsync();
+                                    _logger.LogInformation("Old player rules welcome message removed");
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("Could not delete existing player rules welcome message - wrong message type");
+                                }
+                            }
                             
                             var newMessage = await channel.SendMessageAsync(embed: rulesEmbed);
                             await newMessage.PinAsync();

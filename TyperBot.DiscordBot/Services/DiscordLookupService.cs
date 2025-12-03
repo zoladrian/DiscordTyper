@@ -171,5 +171,21 @@ public class DiscordLookupService
         
         return role;
     }
+
+    public async Task<IEnumerable<SocketGuildUser>> GetPlayersWithRoleAsync()
+    {
+        var guild = await GetGuildAsync();
+        if (guild == null) return Enumerable.Empty<SocketGuildUser>();
+
+        var playerRole = GetPlayerRole(guild);
+        if (playerRole == null) return Enumerable.Empty<SocketGuildUser>();
+
+        // Get all users with the player role
+        var players = guild.Users.Where(u => u.Roles.Any(r => r.Id == playerRole.Id)).ToList();
+        
+        _logger.LogInformation("Found {Count} users with role '{RoleName}'", players.Count, _settings.PlayerRoleName);
+        
+        return players;
+    }
 }
 

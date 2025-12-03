@@ -170,7 +170,17 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (DateTimeOffset.UtcNow >= match.StartTime)
+        // Allow postponed matches to be predicted before original start time
+        if (match.Status == MatchStatus.Postponed)
+        {
+            if (DateTimeOffset.UtcNow >= match.StartTime)
+            {
+                await RespondAsync("❌ Typowanie dla tego meczu zostało zamknięte (mecz przełożony, ale minęła pierwotna godzina rozpoczęcia).", ephemeral: true);
+                return;
+            }
+            // Allow prediction for postponed matches before original start time
+        }
+        else if (DateTimeOffset.UtcNow >= match.StartTime)
         {
             await RespondAsync("❌ Typowanie dla tego meczu zostało zamknięte.", ephemeral: true);
             return;
@@ -238,21 +248,42 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
         if (hasInvalidInput)
         {
-            // Post public message in match thread
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel != null)
+            // Post public message in match thread when sum != 90
+            if (homeTip + awayTip != 90)
             {
-                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
-                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
-                
-                if (thread != null)
+                try
                 {
-                    var genderSuffix = user!.Username.EndsWith("a", StringComparison.OrdinalIgnoreCase) ? "a" : "";
-                    await thread.SendMessageAsync($"@{user.Username} zatypował{genderSuffix} jak imbecyl 😂");
-                    _logger.LogInformation(
-                        "Publiczne oznaczenie użytkownika przy błędzie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}",
-                        user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
+                    var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+                    if (predictionsChannel != null)
+                    {
+                        SocketThreadChannel? thread = null;
+                        
+                        // Use ThreadId if available, otherwise fall back to name search
+                        if (match.ThreadId.HasValue)
+                        {
+                            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                        }
+                        
+                        // Fallback to name search if ThreadId not found or not set
+                        if (thread == null)
+                        {
+                            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                            var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+                        }
+                        
+                        if (thread != null)
+                        {
+                            await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
+                            _logger.LogInformation(
+                                "Publiczne oznaczenie użytkownika przy błędzie sumy - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}, Suma: {Sum}",
+                                user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints, homeTip + awayTip);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Nie udało się wysłać publicznej wiadomości o błędzie sumy");
                 }
             }
 

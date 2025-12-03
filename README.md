@@ -61,12 +61,32 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
 
 ## Scoring Rules
 
-- **Perfect Draw** (all equal): 50 points
-- **Exact Score**: 35 points
-- **Otherwise**: Based on margin difference + penalty for sum not equal to 90
-  - Points range from 20 (closest) to 2 (furthest)
+### Point System (Speedway Match Predictions)
 
-Tie-breaks are determined by bucket counts (P50 → P35 → P20 → ... → P2).
+- **50 points**: Perfect draw (exactly 45:45)
+- **35 points**: Exact score match (not a draw)
+- **20 points**: Difference 1-2 points
+- **18 points**: Difference 3-4 points
+- **16 points**: Difference 5-6 points
+- **14 points**: Difference 7-8 points
+- **12 points**: Difference 9-10 points
+- **10 points**: Difference 11-12 points
+- **8 points**: Difference 13-14 points
+- **6 points**: Difference 15-16 points
+- **4 points**: Difference 17-18 points
+- **2 points**: Difference 19+ points
+- **0 points**: Wrong winner predicted
+
+**Important Rules:**
+- Sum of predicted scores must equal 90 points (speedway rules: 15 races × 6 points)
+- If sum ≠ 90, prediction is rejected
+- Penalty for sum ≠ 90 is already included in difference calculation
+- Predictions are secret until match start time
+- Predictions can be changed until original match start time (even if match is postponed)
+
+**Tie-breaks:**
+- During season: Points → P50+P35 count
+- End of season: Points → P50+P35 → P20 → P18 → P16 → ... → P2
 
 ## Permissions
 

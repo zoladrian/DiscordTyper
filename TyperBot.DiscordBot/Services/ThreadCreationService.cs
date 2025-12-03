@@ -147,12 +147,23 @@ public class ThreadCreationService : BackgroundService
                     .WithLabel("🗑 Usuń mecz")
                     .WithStyle(ButtonStyle.Danger);
 
-                var component = new ComponentBuilder()
+                var componentBuilder = new ComponentBuilder()
                     .WithButton(predictButton, row: 0)
                     .WithButton(setResultButton, row: 0)
                     .WithButton(editButton, row: 1)
-                    .WithButton(deleteButton, row: 1)
-                    .Build();
+                    .WithButton(deleteButton, row: 1);
+
+                // Add "Reveal Predictions" button for admins if match start time has passed and not yet revealed
+                if (now >= match.StartTime && !match.PredictionsRevealed)
+                {
+                    var revealButton = new ButtonBuilder()
+                        .WithCustomId($"admin_reveal_predictions_{match.Id}")
+                        .WithLabel("👁️ Ujawnij typy")
+                        .WithStyle(ButtonStyle.Secondary);
+                    componentBuilder.WithButton(revealButton, row: 2);
+                }
+
+                var component = componentBuilder.Build();
 
                 // Validate thread name length (Discord limit is 100 characters)
                 if (threadName.Length > 100)
@@ -165,11 +176,28 @@ public class ThreadCreationService : BackgroundService
                     type: ThreadType.PublicThread
                 );
 
-                await thread.SendMessageAsync(embed: embed, components: component);
+                var cardMessage = await thread.SendMessageAsync(embed: embed, components: component);
                 
                 // Save ThreadId to database
                 match.ThreadId = thread.Id;
                 await matchRepository.UpdateAsync(match);
+                
+                // Mention all players with Typer role
+                try
+                {
+                    var players = await _lookupService.GetPlayersWithRoleAsync();
+                    var playerMentions = players.Select(p => p.Mention).ToList();
+                    if (playerMentions.Any())
+                    {
+                        var mentionMessage = $"Nowy mecz do zatypowania! {string.Join(" ", playerMentions)}";
+                        await thread.SendMessageAsync(mentionMessage);
+                        _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu wątku dla meczu {MatchId}", playerMentions.Count, match.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Nie udało się wspomnieć graczy przy tworzeniu wątku dla meczu {MatchId}", match.Id);
+                }
                 
                 _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away}), Thread ID: {ThreadId}", 
                     match.Id, match.HomeTeam, match.AwayTeam, thread.Id);
