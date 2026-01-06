@@ -539,7 +539,76 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild.Id,
             Context.Channel.Id);
 
-        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
+        // Calculate default week for modal
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        DateTime defaultWeekStart;
+        
+        if (season != null)
+        {
+            var allRounds = await _roundRepository.GetBySeasonIdAsync(season.Id);
+            var existingRoundNumbers = allRounds.Select(r => r.Number).OrderBy(n => n).ToList();
+            
+            if (existingRoundNumbers.Any())
+            {
+                var lastRoundNumber = existingRoundNumbers.Max();
+                var lastRound = await _roundRepository.GetByNumberAsync(season.Id, lastRoundNumber);
+                
+                if (lastRound != null)
+                {
+                    var lastRoundMatches = await _matchRepository.GetByRoundIdAsync(lastRound.Id);
+                    var lastMatch = lastRoundMatches.OrderByDescending(m => m.StartTime).FirstOrDefault();
+                    
+                    if (lastMatch != null)
+                    {
+                        var lastMatchDate = TimeZoneInfo.ConvertTimeFromUtc(lastMatch.StartTime.UtcDateTime, tz);
+                        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)lastMatchDate.DayOfWeek + 7) % 7;
+                        if (daysUntilMonday == 0) daysUntilMonday = 7;
+                        defaultWeekStart = lastMatchDate.Date.AddDays(daysUntilMonday);
+                    }
+                    else
+                    {
+                        defaultWeekStart = now.Date.AddDays(7);
+                        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+                        if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+                        defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+                    }
+                }
+                else
+                {
+                    defaultWeekStart = now.Date.AddDays(7);
+                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+                    if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+                    defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+                }
+            }
+            else
+            {
+                // First round: 1st week of April
+                defaultWeekStart = new DateTime(now.Year, 4, 1);
+                var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+                if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+                defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+            }
+        }
+        else
+        {
+            // No season: 1st week of April
+            defaultWeekStart = new DateTime(now.Year, 4, 1);
+            var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+            if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+            defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+        }
+        
+        var modal = new AddKolejkaModal
+        {
+            KolejkaNumber = "",
+            LiczbaMeczow = "",
+            WeekStart = defaultWeekStart.ToString("yyyy-MM-dd")
+        };
+        
+        await RespondWithModalAsync("admin_add_kolejka_modal", modal);
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
@@ -629,13 +698,79 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
         
+        // Calculate default week start date
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        DateTime defaultWeekStart;
+        
+        if (roundNumber == 1)
+        {
+            // First round: 1st week of April
+            defaultWeekStart = new DateTime(now.Year, 4, 1);
+            // Find Monday of that week
+            var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+            if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+            defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+        }
+        else
+        {
+            // Find last round's date
+            var lastRoundNumber = existingRoundNumbers.Any() ? existingRoundNumbers.Max() : roundNumber - 1;
+            var lastRound = await _roundRepository.GetByNumberAsync(season.Id, lastRoundNumber);
+            
+            if (lastRound != null)
+            {
+                var lastRoundMatches = await _matchRepository.GetByRoundIdAsync(lastRound.Id);
+                var lastMatch = lastRoundMatches.OrderByDescending(m => m.StartTime).FirstOrDefault();
+                
+                if (lastMatch != null)
+                {
+                    var lastMatchDate = TimeZoneInfo.ConvertTimeFromUtc(lastMatch.StartTime.UtcDateTime, tz);
+                    // Next week (Monday) after last match
+                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)lastMatchDate.DayOfWeek + 7) % 7;
+                    if (daysUntilMonday == 0) daysUntilMonday = 7;
+                    defaultWeekStart = lastMatchDate.Date.AddDays(daysUntilMonday);
+                }
+                else
+                {
+                    // No matches in last round, use current date + missing rounds weeks
+                    defaultWeekStart = now.Date;
+                    var weeksToAdd = (roundNumber - lastRoundNumber);
+                    defaultWeekStart = defaultWeekStart.AddDays(weeksToAdd * 7);
+                    // Find Monday
+                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+                    if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+                    defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+                }
+            }
+            else
+            {
+                // Last round doesn't exist, calculate based on missing rounds
+                var weeksToAdd = missingRounds.Count + 1;
+                defaultWeekStart = now.Date.AddDays(weeksToAdd * 7);
+                // Find Monday
+                var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
+                if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
+                defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
+            }
+        }
+        
+        // Parse week start from modal or use default
+        DateTime weekStartDate = defaultWeekStart;
+        if (!string.IsNullOrWhiteSpace(modal.WeekStart))
+        {
+            if (DateTime.TryParse(modal.WeekStart, out var parsedWeekStart))
+            {
+                weekStartDate = parsedWeekStart.Date;
+            }
+        }
+        
         // Initialize kolejka creation flow
         _stateService.ClearState(Context.Guild.Id, Context.User.Id);
         _stateService.InitializeKolejkaCreation(Context.Guild.Id, Context.User.Id, roundNumber, matchCount);
+        _stateService.SetWeekStartDate(Context.Guild.Id, Context.User.Id, weekStartDate);
 
         // Initialize time and calendar
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
         _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, "18:00");
 
@@ -652,7 +787,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         await RespondAsync(responseMessage, ephemeral: true);
 
-        // Show first match form
+        // Show first match form - use FollowupAsync with button to open modal
         await ShowKolejkaMatchFormAsync();
     }
 
@@ -799,22 +934,37 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithLabel("Następny »")
             .WithStyle(ButtonStyle.Secondary);
 
+        // Use modal instead of complex form - simpler and more reliable
+        var defaultDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : now.Date.AddDays(1).ToString("yyyy-MM-dd");
+        var defaultTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : "18:00";
+        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "Motor Lublin";
+        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "Włókniarz Częstochowa";
+
+        var modal = new AddMatchModalV2
+        {
+            RoundNumber = state.SelectedRound.Value.ToString(),
+            MatchDate = defaultDate,
+            MatchTime = defaultTime,
+            HomeTeam = defaultHomeTeam,
+            AwayTeam = defaultAwayTeam
+        };
+
+        // Discord doesn't allow responding to modal with another modal directly
+        // Use a button that will open the modal instead
+        var openModalButton = new ButtonBuilder()
+            .WithCustomId($"admin_kolejka_open_match_modal_{currentMatch}")
+            .WithLabel($"📝 Dodaj mecz {currentMatch}/{totalMatches}")
+            .WithStyle(ButtonStyle.Primary);
+
         var component = new ComponentBuilder()
-            .WithSelectMenu(homeTeamSelect, row: 0)
-            .WithSelectMenu(awayTeamSelect, row: 1)
-            .WithSelectMenu(dateSelect, row: 2)
-            .WithButton(timeMinus15, row: 3)
-            .WithButton(timePlus15, row: 3)
-            .WithButton(timeManual, row: 3)
-            .WithButton(prevMonth, row: 4)
-            .WithButton(today, row: 4)
-            .WithButton(nextMonth, row: 4)
-            .WithButton(submitMatchButton, row: 4)
-            .WithButton(finishKolejkaButton, row: 5)
-            .WithButton(cancelButton, row: 5)
+            .WithButton(openModalButton)
             .Build();
 
-        await FollowupAsync(embed: embed, components: component, ephemeral: true);
+        await FollowupAsync(
+            $"📝 **{roundLabel} - Mecz {currentMatch}/{totalMatches}**\n" +
+            $"Kliknij przycisk poniżej, aby dodać mecz.",
+            components: component,
+            ephemeral: true);
     }
 
     [ComponentInteraction("admin_add_match")]
@@ -1591,6 +1741,88 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [ComponentInteraction("admin_kolejka_open_match_modal_*")]
+    public async Task HandleOpenMatchModalForKolejkaAsync(string matchIndexStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        {
+            await RespondAsync("❌ Stan formularza wygasł. Rozpocznij ponownie.", ephemeral: true);
+            return;
+        }
+
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        var defaultDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : now.Date.AddDays(1).ToString("yyyy-MM-dd");
+        var defaultTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : "18:00";
+        // Set default teams - Discord requires at least 1 character for required fields
+        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "Motor Lublin";
+        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "Włókniarz Częstochowa";
+
+        // Calculate default date/time based on match index in kolejka
+        var matchIndex = state.CurrentMatchIndex;
+        var weekStartDate = state.SelectedWeekStartDate ?? now.Date.AddDays(1);
+        
+        // Default dates/times for matches:
+        // 1st match: Friday 18:00
+        // 2nd match: Saturday 16:00
+        // 3rd match: Saturday 19:00
+        // 4th+ match: Sunday 19:00
+        DateTime defaultMatchDate;
+        string defaultMatchTime;
+        
+        if (matchIndex == 0)
+        {
+            // 1st match: Friday
+            var daysUntilFriday = ((int)DayOfWeek.Friday - (int)weekStartDate.DayOfWeek + 7) % 7;
+            if (daysUntilFriday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Friday) daysUntilFriday = 7;
+            defaultMatchDate = weekStartDate.AddDays(daysUntilFriday);
+            defaultMatchTime = "18:00";
+        }
+        else if (matchIndex == 1)
+        {
+            // 2nd match: Saturday 16:00
+            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
+            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
+            defaultMatchDate = weekStartDate.AddDays(daysUntilSaturday);
+            defaultMatchTime = "16:00";
+        }
+        else if (matchIndex == 2)
+        {
+            // 3rd match: Saturday 19:00
+            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
+            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
+            defaultMatchDate = weekStartDate.AddDays(daysUntilSaturday);
+            defaultMatchTime = "19:00";
+        }
+        else
+        {
+            // 4th+ match: Sunday 19:00
+            var daysUntilSunday = ((int)DayOfWeek.Sunday - (int)weekStartDate.DayOfWeek + 7) % 7;
+            if (daysUntilSunday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Sunday) daysUntilSunday = 7;
+            defaultMatchDate = weekStartDate.AddDays(daysUntilSunday);
+            defaultMatchTime = "19:00";
+        }
+
+        var modal = new AddMatchModalV2
+        {
+            RoundNumber = state.SelectedRound.Value.ToString(),
+            MatchDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : defaultMatchDate.ToString("yyyy-MM-dd"),
+            MatchTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : defaultMatchTime,
+            HomeTeam = defaultHomeTeam,
+            AwayTeam = defaultAwayTeam
+        };
+
+        await RespondWithModalAsync("admin_add_match_modal_kolejka", modal);
+    }
+
     [ComponentInteraction("admin_kolejka_finish")]
     public async Task HandleFinishKolejkaAsync()
     {
@@ -1973,8 +2205,19 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [ModalInteraction("admin_add_match_modal_kolejka", true)]
+    public async Task HandleAddMatchModalKolejkaAsync(AddMatchModalV2 modal)
+    {
+        await HandleAddMatchModalV2Async(modal, isKolejkaCreation: true);
+    }
+
     [ModalInteraction("admin_add_match_modal_v2", true)]
     public async Task HandleAddMatchModalV2Async(AddMatchModalV2 modal)
+    {
+        await HandleAddMatchModalV2Async(modal, isKolejkaCreation: false);
+    }
+
+    private async Task HandleAddMatchModalV2Async(AddMatchModalV2 modal, bool isKolejkaCreation)
     {
         var roundNumber = modal.RoundNumber;
         var matchDate = modal.MatchDate;
@@ -2085,7 +2328,103 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
             match = createdMatch;
 
-            // Post match card to predictions channel
+            // Handle kolejka creation flow
+            if (isKolejkaCreation)
+            {
+                var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+                if (state != null && state.IsKolejkaCreation)
+                {
+                    // Add match to collection (don't create yet)
+                    _stateService.AddMatchToKolejka(Context.Guild.Id, Context.User.Id, homeTeam, awayTeam, matchDate, matchTime);
+                    
+                    var updatedState = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+                    if (updatedState == null)
+                    {
+                        await RespondWithErrorAsync("Błąd: stan formularza wygasł.");
+                        return;
+                    }
+                    
+                    var currentMatch = updatedState.CurrentMatchIndex;
+                    var totalMatches = updatedState.TotalMatchesInKolejka;
+                    var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
+                    
+                    // Check if this is the last match
+                    if (currentMatch >= totalMatches)
+                    {
+                        // All matches collected, create them
+                        await DeferAsync();
+                        await CreateKolejkaMatchesAsync();
+                        return;
+                    }
+                    else
+                    {
+                        // Show modal for next match
+                        var nextMatch = currentMatch + 1;
+                        
+                        await RespondAsync(
+                            $"✅ Mecz {currentMatch}/{totalMatches} dodany: {homeTeam} vs {awayTeam}\n" +
+                            $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
+                            ephemeral: true);
+                        
+                        // Calculate default date/time for next match
+                        var tzForNext = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                        var tzNowForNext = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tzForNext);
+                        var nextMatchIndex = updatedState.CurrentMatchIndex;
+                        var weekStartDate = updatedState.SelectedWeekStartDate ?? tzNowForNext.Date.AddDays(1);
+                        
+                        DateTime nextMatchDate;
+                        string nextMatchTime;
+                        
+                        if (nextMatchIndex == 0)
+                        {
+                            // 1st match: Friday 18:00
+                            var daysUntilFriday = ((int)DayOfWeek.Friday - (int)weekStartDate.DayOfWeek + 7) % 7;
+                            if (daysUntilFriday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Friday) daysUntilFriday = 7;
+                            nextMatchDate = weekStartDate.AddDays(daysUntilFriday);
+                            nextMatchTime = "18:00";
+                        }
+                        else if (nextMatchIndex == 1)
+                        {
+                            // 2nd match: Saturday 16:00
+                            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
+                            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
+                            nextMatchDate = weekStartDate.AddDays(daysUntilSaturday);
+                            nextMatchTime = "16:00";
+                        }
+                        else if (nextMatchIndex == 2)
+                        {
+                            // 3rd match: Saturday 19:00
+                            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
+                            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
+                            nextMatchDate = weekStartDate.AddDays(daysUntilSaturday);
+                            nextMatchTime = "19:00";
+                        }
+                        else
+                        {
+                            // 4th+ match: Sunday 19:00
+                            var daysUntilSunday = ((int)DayOfWeek.Sunday - (int)weekStartDate.DayOfWeek + 7) % 7;
+                            if (daysUntilSunday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Sunday) daysUntilSunday = 7;
+                            nextMatchDate = weekStartDate.AddDays(daysUntilSunday);
+                            nextMatchTime = "19:00";
+                        }
+                        
+                        // Show modal for next match
+                        var nextModal = new AddMatchModalV2
+                        {
+                            RoundNumber = roundNum.ToString(),
+                            MatchDate = nextMatchDate.ToString("yyyy-MM-dd"),
+                            MatchTime = nextMatchTime,
+                            HomeTeam = "Motor Lublin",
+                            AwayTeam = "Włókniarz Częstochowa"
+                        };
+                        
+                        await RespondWithModalAsync("admin_add_match_modal_kolejka", nextModal);
+                        return;
+                    }
+                }
+            }
+
+            // Normal flow - post match card and respond
             await PostMatchCardAsync(match, roundNum);
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
@@ -4175,7 +4514,7 @@ public class SetResultModal : IModal
 
 public class AddMatchModalV2 : IModal
 {
-    public string Title => "Dodaj mecz";
+    public virtual string Title => "Dodaj mecz";
 
     [InputLabel("Nr Kolejki")]
     [ModalTextInput("round_number", TextInputStyle.Short)]
@@ -4226,5 +4565,10 @@ public class AddKolejkaModal : IModal
     [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 1)]
     [RequiredInput(true)]
     public string LiczbaMeczow { get; set; } = string.Empty;
+
+    [InputLabel("Tydzień kolejki (YYYY-MM-DD)")]
+    [ModalTextInput("week_start", TextInputStyle.Short, placeholder: "2025-04-07")]
+    [RequiredInput(true)]
+    public string WeekStart { get; set; } = string.Empty;
 }
 
