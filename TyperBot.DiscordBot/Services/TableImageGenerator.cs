@@ -48,7 +48,7 @@ public class TableImageGenerator
             const int headerHeight = 80;
             const int rowHeight = 50;
             const int padding = 20;
-            const int totalHeight = headerHeight + (players.Count * rowHeight) + (padding * 2);
+            int totalHeight = headerHeight + (players.Count * rowHeight) + (padding * 2);
 
             // Create image
             using var image = new Image<Rgba32>(width, totalHeight);
