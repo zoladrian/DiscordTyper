@@ -2381,22 +2381,44 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
-        var embed = new EmbedBuilder()
-            .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}")
-            .WithDescription(
-                "📋 **Zasady typowania:**\n" +
-                "• Typy są tajne (tylko ty je widzisz)\n" +
-                "• Suma musi wynosić 90 punktów (np. 50:40, 46:44, 45:45)\n" +
-                "• Termin: czas rozpoczęcia meczu"
-            )
-            .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
-            .WithColor(Color.Blue)
-            .Build();
+        
+        var embedBuilder = new EmbedBuilder()
+            .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}");
 
-        var predictButton = new ButtonBuilder()
-            .WithCustomId($"predict_match_{match.Id}")
-            .WithLabel("🔢 Typuj wynik")
-            .WithStyle(ButtonStyle.Primary);
+        // Show result if match is finished
+        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
+        {
+            embedBuilder
+                .WithDescription($"✅ **Mecz zakończony**\n\n🏆 **Wynik: {match.HomeScore}:{match.AwayScore}**")
+                .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
+                .WithColor(Color.Green);
+        }
+        else
+        {
+            embedBuilder
+                .WithDescription(
+                    "📋 **Zasady typowania:**\n" +
+                    "• Typy są tajne (tylko ty je widzisz)\n" +
+                    "• Suma musi wynosić 90 punktów (np. 50:40, 46:44, 45:45)\n" +
+                    "• Termin: czas rozpoczęcia meczu"
+                )
+                .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
+                .WithColor(Color.Blue);
+        }
+
+        var embed = embedBuilder.Build();
+
+        var componentBuilder = new ComponentBuilder();
+
+        // Only show "Typuj wynik" button if match doesn't have a result yet
+        if (match.Status != MatchStatus.Finished)
+        {
+            var predictButton = new ButtonBuilder()
+                .WithCustomId($"predict_match_{match.Id}")
+                .WithLabel("🔢 Typuj wynik")
+                .WithStyle(ButtonStyle.Primary);
+            componentBuilder.WithButton(predictButton, row: 0);
+        }
 
         var setResultButton = new ButtonBuilder()
             .WithCustomId($"admin_set_result_{match.Id}")
@@ -2413,8 +2435,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithLabel("🗑 Usuń mecz")
             .WithStyle(ButtonStyle.Danger);
 
-        var componentBuilder = new ComponentBuilder()
-            .WithButton(predictButton, row: 0)
+        componentBuilder
             .WithButton(setResultButton, row: 0)
             .WithButton(editButton, row: 1)
             .WithButton(deleteButton, row: 1);
@@ -2767,6 +2788,33 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
+        // Update match card in thread to remove "Typuj wynik" button
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await PostMatchCardAsync(match, roundNum, cardMessage);
+                        _logger.LogInformation("Zaktualizowano kartę meczu w wątku po ustawieniu wyniku - Mecz ID: {MatchId}", matchId);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd podczas aktualizacji karty meczu w wątku - Mecz ID: {MatchId}", matchId);
+            // Don't fail the whole operation if updating the card fails
+        }
+
         // Automatically reveal predictions if not already revealed and match is not cancelled/postponed
         if (!match.PredictionsRevealed && match.Status == MatchStatus.Finished)
         {
@@ -2896,7 +2944,24 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         await _matchRepository.UpdateAsync(match);
 
         // Update match card to remove reveal button
-        await PostMatchCardAsync(match, match.Round?.Number ?? 0);
+        try
+        {
+            var messages = await thread.GetMessagesAsync(50).FlattenAsync();
+            var cardMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => 
+                e.Title?.Contains(match.HomeTeam) == true && 
+                e.Title?.Contains(match.AwayTeam) == true &&
+                e.Type == EmbedType.Rich)) as IUserMessage;
+            
+            if (cardMessage != null)
+            {
+                await PostMatchCardAsync(match, match.Round?.Number ?? 0, cardMessage);
+                _logger.LogInformation("Zaktualizowano kartę meczu po ujawnieniu typów - Mecz ID: {MatchId}", match.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd podczas aktualizacji karty meczu po ujawnieniu typów - Mecz ID: {MatchId}", match.Id);
+        }
     }
 
     [ComponentInteraction("admin_reveal_predictions_*")]
