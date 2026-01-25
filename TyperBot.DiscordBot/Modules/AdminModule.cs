@@ -2458,11 +2458,38 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 {
                     var players = await _lookupService.GetPlayersWithRoleAsync();
                     var playerMentions = players.Select(p => p.Mention).ToList();
+                    
                     if (playerMentions.Any())
                     {
-                        var mentionMessage = $"Nowy mecz do zatypowania! {string.Join(" ", playerMentions)}";
-                        await thread.SendMessageAsync(mentionMessage);
-                        _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu meczu {MatchId}", playerMentions.Count, match.Id);
+                        // Discord limit: max 50 mentions per message
+                        const int maxMentionsPerMessage = 50;
+                        
+                        if (playerMentions.Count <= maxMentionsPerMessage)
+                        {
+                            // Single message for all players
+                            var mentionMessage = $"Nowy mecz do zatypowania! {string.Join(" ", playerMentions)}";
+                            await thread.SendMessageAsync(mentionMessage);
+                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu meczu {MatchId}", playerMentions.Count, match.Id);
+                        }
+                        else
+                        {
+                            // Split into multiple messages
+                            for (int i = 0; i < playerMentions.Count; i += maxMentionsPerMessage)
+                            {
+                                var batch = playerMentions.Skip(i).Take(maxMentionsPerMessage);
+                                var mentionMessage = i == 0 
+                                    ? $"Nowy mecz do zatypowania! {string.Join(" ", batch)}"
+                                    : string.Join(" ", batch);
+                                await thread.SendMessageAsync(mentionMessage);
+                            }
+                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu meczu {MatchId} (w {BatchCount} wiadomościach)", 
+                                playerMentions.Count, match.Id, (int)Math.Ceiling((double)playerMentions.Count / maxMentionsPerMessage));
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Nie znaleziono graczy z rolą '{RoleName}' do wspomnienia przy meczu {MatchId}", 
+                            _settings.PlayerRoleName, match.Id);
                     }
                 }
                 catch (Exception ex)
@@ -2538,13 +2565,26 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Match not finished yet, proceed normally
-        var modal = new SetResultModal
-        {
-            HomeScore = match.HomeScore?.ToString() ?? "50",
-            AwayScore = match.AwayScore?.ToString() ?? "40"
-        };
+        var modal = new ModalBuilder()
+            .WithTitle("Ustaw wynik meczu")
+            .WithCustomId($"admin_set_result_modal_{matchId}")
+            .AddTextInput(
+                label: match.HomeTeam,
+                customId: "home_score",
+                style: TextInputStyle.Short,
+                placeholder: "50",
+                value: match.HomeScore?.ToString() ?? "50",
+                required: true)
+            .AddTextInput(
+                label: match.AwayTeam,
+                customId: "away_score",
+                style: TextInputStyle.Short,
+                placeholder: "40",
+                value: match.AwayScore?.ToString() ?? "40",
+                required: true)
+            .Build();
 
-        await RespondWithModalAsync($"admin_set_result_modal_{matchId}", modal);
+        await RespondWithModalAsync(modal);
         
         _logger.LogInformation(
             "Przycisk ustaw wynik kliknięty - Użytkownik: {Username} (ID: {UserId}), ID meczu: {MatchId}, Serwer: {GuildId}, Kanał: {ChannelId}",
@@ -2578,13 +2618,26 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var modal = new SetResultModal
-        {
-            HomeScore = match.HomeScore?.ToString() ?? "50",
-            AwayScore = match.AwayScore?.ToString() ?? "40"
-        };
+        var modal = new ModalBuilder()
+            .WithTitle("Ustaw wynik meczu")
+            .WithCustomId($"admin_set_result_modal_{matchId}")
+            .AddTextInput(
+                label: match.HomeTeam,
+                customId: "home_score",
+                style: TextInputStyle.Short,
+                placeholder: "50",
+                value: match.HomeScore?.ToString() ?? "50",
+                required: true)
+            .AddTextInput(
+                label: match.AwayTeam,
+                customId: "away_score",
+                style: TextInputStyle.Short,
+                placeholder: "40",
+                value: match.AwayScore?.ToString() ?? "40",
+                required: true)
+            .Build();
 
-        await RespondWithModalAsync($"admin_set_result_modal_{matchId}", modal);
+        await RespondWithModalAsync(modal);
     }
 
     [ComponentInteraction("admin_cancel_change_result_*")]

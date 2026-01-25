@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
@@ -71,8 +71,8 @@ builder.Services.AddApplication();
 // Configure Discord client
 var discordConfig = new DiscordSocketConfig
 {
-    GatewayIntents = GatewayIntents.Guilds,
-    AlwaysDownloadUsers = false,
+    GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMembers,
+    AlwaysDownloadUsers = false, // We'll download users on-demand when needed
     MessageCacheSize = 100,
     LogLevel = LogSeverity.Info
 };

@@ -180,6 +180,18 @@ public class DiscordLookupService
         var playerRole = GetPlayerRole(guild);
         if (playerRole == null) return Enumerable.Empty<SocketGuildUser>();
 
+        // Download all users to cache if not already downloaded
+        // This ensures we get all users, not just those in cache
+        try
+        {
+            await guild.DownloadUsersAsync();
+            _logger.LogDebug("Downloaded all users for guild {GuildId}", guild.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to download all users for guild {GuildId}, using cached users only", guild.Id);
+        }
+
         // Get all users with the player role
         var players = guild.Users.Where(u => u.Roles.Any(r => r.Id == playerRole.Id)).ToList();
         
