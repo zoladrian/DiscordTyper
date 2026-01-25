@@ -72,7 +72,8 @@ public class ReminderService : BackgroundService
             m.Status != MatchStatus.Finished &&
             m.Status != MatchStatus.Cancelled &&
             m.StartTime <= threeHoursAgo &&
-            (!m.HomeScore.HasValue || !m.AwayScore.HasValue) && // No result entered
+            !m.HomeScore.HasValue && // No home score
+            !m.AwayScore.HasValue && // No away score
             !_remindedMatches.Contains(m.Id) // Haven't sent reminder for this match yet
         ).ToList();
 
