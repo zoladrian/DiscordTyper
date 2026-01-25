@@ -873,11 +873,17 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithButton(openModalButton)
             .Build();
 
-        await FollowupAsync(
+        var followupMessage = await FollowupAsync(
             $"📝 **{roundLabel} - Mecz {currentMatch}/{totalMatches}**\n" +
             $"Kliknij przycisk poniżej, aby dodać mecz.",
             components: component,
             ephemeral: true);
+        
+        // Store followup message ID in state for later updates
+        if (followupMessage != null && state != null)
+        {
+            state.FollowupMessageId = followupMessage.Id;
+        }
     }
 
     [ComponentInteraction("admin_add_match")]
@@ -2226,22 +2232,37 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 }
                 else
                 {
-                    // Show modal for next match
+                    // Update the original message with button instead of sending new messages
                     var nextMatch = currentMatch + 1;
                     
-                    // Respond first, then show modal
                     try
                     {
+                        // First, respond to the modal interaction
                         await RespondAsync(
-                            $"✅ Mecz {currentMatch}/{totalMatches} dodany do kolekcji: {homeTeam} vs {awayTeam}\n" +
-                            $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
+                            $"✅ Mecz {currentMatch}/{totalMatches} dodany do kolekcji: {homeTeam} vs {awayTeam}",
                             ephemeral: true);
                         
-                        // Can't show modal after responding - need to use button instead
-                        // For now, just inform user to use the button
-                        await FollowupAsync(
-                            $"Kliknij przycisk 'Dodaj mecz {nextMatch}' aby kontynuować.",
+                        // Then send a new followup message with updated button (replacing the old one)
+                        var updatedButton = new ButtonBuilder()
+                            .WithCustomId($"admin_kolejka_open_match_modal_{nextMatch}")
+                            .WithLabel($"📝 Dodaj mecz {nextMatch}/{totalMatches}")
+                            .WithStyle(ButtonStyle.Primary);
+
+                        var updatedComponent = new ComponentBuilder()
+                            .WithButton(updatedButton)
+                            .Build();
+
+                        var newFollowupMessage = await FollowupAsync(
+                            $"📝 **{roundLabel} - Mecz {nextMatch}/{totalMatches}**\n" +
+                            $"Kliknij przycisk poniżej, aby dodać mecz.",
+                            components: updatedComponent,
                             ephemeral: true);
+                        
+                        // Update state with new followup message ID
+                        if (newFollowupMessage != null)
+                        {
+                            updatedState.FollowupMessageId = newFollowupMessage.Id;
+                        }
                     }
                     catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
                     {

@@ -16,6 +16,7 @@ public class AdminMatchCreationState
     public string? SelectedHomeTeam { get; set; }
     public string? SelectedAwayTeam { get; set; }
     public DateTime? SelectedWeekStartDate { get; set; }
+    public ulong? FollowupMessageId { get; set; }
     public List<(string homeTeam, string awayTeam, string date, string time)> CollectedMatches { get; set; } = new();
 }
 

@@ -198,8 +198,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var modal = new ModalBuilder()
             .WithTitle("Złóż swój typ")
             .WithCustomId($"predict_match_modal_{matchId}")
-            .AddTextInput("Punkty drużyny domowej", "home_points", TextInputStyle.Short, placeholder: "50", required: true)
-            .AddTextInput("Punkty drużyny wyjazdowej", "away_points", TextInputStyle.Short, placeholder: "40", required: true)
+            .AddTextInput(match.HomeTeam, "home_points", TextInputStyle.Short, placeholder: "50", required: true)
+            .AddTextInput(match.AwayTeam, "away_points", TextInputStyle.Short, placeholder: "40", required: true)
             .Build();
 
         await RespondWithModalAsync(modal);
