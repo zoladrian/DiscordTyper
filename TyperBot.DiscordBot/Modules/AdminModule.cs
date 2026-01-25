@@ -2196,7 +2196,64 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        // Create match
+        // Handle kolejka creation flow - don't create match yet, just collect data
+        if (isKolejkaCreation)
+        {
+            var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+            if (state != null && state.IsKolejkaCreation)
+            {
+                // Add match to collection (don't create yet - will be created in CreateKolejkaMatchesAsync)
+                _stateService.AddMatchToKolejka(Context.Guild.Id, Context.User.Id, homeTeam, awayTeam, matchDate, matchTime);
+                
+                var updatedState = _stateService.GetState(Context.Guild.Id, Context.User.Id);
+                if (updatedState == null)
+                {
+                    await RespondWithErrorAsync("Błąd: stan formularza wygasł.");
+                    return;
+                }
+                
+                var currentMatch = updatedState.CurrentMatchIndex;
+                var totalMatches = updatedState.TotalMatchesInKolejka;
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
+                
+                // Check if this is the last match
+                if (currentMatch >= totalMatches)
+                {
+                    // All matches collected, create them
+                    await DeferAsync();
+                    await CreateKolejkaMatchesAsync();
+                    return;
+                }
+                else
+                {
+                    // Show modal for next match
+                    var nextMatch = currentMatch + 1;
+                    
+                    // Respond first, then show modal
+                    try
+                    {
+                        await RespondAsync(
+                            $"✅ Mecz {currentMatch}/{totalMatches} dodany do kolekcji: {homeTeam} vs {awayTeam}\n" +
+                            $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
+                            ephemeral: true);
+                        
+                        // Can't show modal after responding - need to use button instead
+                        // For now, just inform user to use the button
+                        await FollowupAsync(
+                            $"Kliknij przycisk 'Dodaj mecz {nextMatch}' aby kontynuować.",
+                            ephemeral: true);
+                    }
+                    catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        // Interaction expired, can't respond
+                        _logger.LogWarning("Interakcja wygasła podczas dodawania meczu do kolejki");
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Normal flow - create match immediately
         Domain.Entities.Match? match = null;
         try
         {
@@ -2212,63 +2269,6 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             match = createdMatch;
-
-            // Handle kolejka creation flow
-            if (isKolejkaCreation)
-            {
-                var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-                if (state != null && state.IsKolejkaCreation)
-                {
-                    // Add match to collection (don't create yet)
-                    _stateService.AddMatchToKolejka(Context.Guild.Id, Context.User.Id, homeTeam, awayTeam, matchDate, matchTime);
-                    
-                    var updatedState = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-                    if (updatedState == null)
-                    {
-                        await RespondWithErrorAsync("Błąd: stan formularza wygasł.");
-                        return;
-                    }
-                    
-                    var currentMatch = updatedState.CurrentMatchIndex;
-                    var totalMatches = updatedState.TotalMatchesInKolejka;
-                    var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
-                    
-                    // Check if this is the last match
-                    if (currentMatch >= totalMatches)
-                    {
-                        // All matches collected, create them
-                        await DeferAsync();
-                        await CreateKolejkaMatchesAsync();
-                        return;
-                    }
-                    else
-                    {
-                        // Show modal for next match
-                        var nextMatch = currentMatch + 1;
-                        
-                        // Respond first, then show modal
-                        try
-                        {
-                            await RespondAsync(
-                                $"✅ Mecz {currentMatch}/{totalMatches} dodany: {homeTeam} vs {awayTeam}\n" +
-                                $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
-                                ephemeral: true);
-                            
-                            // Can't show modal after responding - need to use button instead
-                            // For now, just inform user to use the button
-                            await FollowupAsync(
-                                $"Kliknij przycisk 'Dodaj mecz {nextMatch}' aby kontynuować.",
-                                ephemeral: true);
-                        }
-                        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
-                        {
-                            // Interaction expired, can't respond
-                            _logger.LogWarning("Interakcja wygasła podczas dodawania meczu do kolejki");
-                        }
-                        return;
-                    }
-                }
-            }
 
             // Normal flow - respond first, then post match card
             var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
