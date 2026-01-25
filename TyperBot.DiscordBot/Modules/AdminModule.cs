@@ -442,7 +442,14 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        await RespondAsync(embed: embed.Build(), components: componentBuilder.Build());
+        if (Context.Interaction.HasResponded)
+        {
+            await FollowupAsync(embed: embed.Build(), components: componentBuilder.Build());
+        }
+        else
+        {
+            await RespondAsync(embed: embed.Build(), components: componentBuilder.Build());
+        }
     }
 
     [ComponentInteraction("admin_end_season_*")]
@@ -539,7 +546,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild.Id,
             Context.Channel.Id);
 
-        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
+        try
+        {
+            await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
+        }
+        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning("Interakcja wygasła przed otwarciem modala dodaj kolejkę");
+            // Interaction expired, can't open modal - user needs to click button again
+        }
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
@@ -594,6 +609,19 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             matchCount,
             Context.Guild.Id);
 
+        // Respond immediately to avoid interaction timeout, then do database work
+        bool hasResponded = false;
+        try
+        {
+            await RespondAsync("⏳ Sprawdzam dane...", ephemeral: true);
+            hasResponded = true;
+        }
+        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Interaction expired, will use FollowupAsync instead
+            hasResponded = false;
+        }
+
         // Check if round already exists
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null)
@@ -601,19 +629,31 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             _logger.LogWarning(
                 "Brak aktywnego sezonu - Użytkownik: {Username} (ID: {UserId}), Serwer: {GuildId}, Kanał: {ChannelId}",
                 Context.User.Username, Context.User.Id, Context.Guild?.Id ?? 0, Context.Channel?.Id ?? 0);
-            await RespondWithErrorAsync(
-                "Brak aktywnego sezonu.",
-                "System automatycznie utworzy sezon przy pierwszym użyciu. Spróbuj ponownie za chwilę.");
-            return; // ← CRITICAL FIX: Return early if no season
+            var errorMsg = "❌ Brak aktywnego sezonu. System automatycznie utworzy sezon przy pierwszym użyciu. Spróbuj ponownie za chwilę.";
+            if (hasResponded)
+            {
+                await ModifyOriginalResponseAsync(msg => msg.Content = errorMsg);
+            }
+            else
+            {
+                await FollowupAsync(errorMsg, ephemeral: true);
+            }
+            return;
         }
         
         var existingRound = await _roundRepository.GetByNumberAsync(season.Id, roundNumber);
         if (existingRound != null)
         {
-            await RespondAsync(
-                $"❌ Kolejka o numerze {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) już istnieje. " +
-                "Możesz ją edytować z panelu '⚙ Zarządzaj kolejką'.",
-                ephemeral: true);
+            var errorMsg = $"❌ Kolejka o numerze {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) już istnieje. " +
+                "Możesz ją edytować z panelu '⚙ Zarządzaj kolejką'.";
+            if (hasResponded)
+            {
+                await ModifyOriginalResponseAsync(msg => msg.Content = errorMsg);
+            }
+            else
+            {
+                await FollowupAsync(errorMsg, ephemeral: true);
+            }
             return;
         }
 
@@ -650,7 +690,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 "Możesz kontynuować, ale zalecamy dodanie brakujących kolejek najpierw.";
         }
 
-        await RespondAsync(responseMessage, ephemeral: true);
+        // Update the initial response or send as followup
+        if (hasResponded)
+        {
+            await ModifyOriginalResponseAsync(msg => msg.Content = responseMessage);
+        }
+        else
+        {
+            await FollowupAsync(responseMessage, ephemeral: true);
+        }
 
         // Show first match form - use FollowupAsync with button to open modal
         await ShowKolejkaMatchFormAsync();
@@ -1627,8 +1675,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         var defaultDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var defaultTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : "18:00";
-        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "";
-        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "";
+        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "Motor Lublin";
+        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "Włókniarz Częstochowa";
 
         var modal = new AddMatchModalV2
         {
@@ -1898,8 +1946,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                     Context.User.Id,
                     dateStr,
                     timeStr,
-                    Context.Guild.Id,
-                    Context.Channel.Id);
+                    Context.Guild?.Id ?? 0,
+                    Context.Channel?.Id ?? 0);
                 await RespondAsync("❌ Nie udało się sparsować daty/godziny meczu. Spróbuj ponownie.", ephemeral: true);
                 return;
             }
@@ -1923,8 +1971,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 Context.User.Id,
                 dateStr,
                 timeStr,
-                Context.Guild.Id,
-                Context.Channel.Id);
+                Context.Guild?.Id ?? 0,
+                Context.Channel?.Id ?? 0);
             await RespondAsync("❌ Nie udało się sparsować daty/godziny meczu. Spróbuj ponownie.", ephemeral: true);
             return;
         }
@@ -1938,8 +1986,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 Context.User.Id,
                 startTime,
                 TimeZoneInfo.ConvertTimeFromUtc(startTime.UtcDateTime, TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone)),
-                Context.Guild.Id,
-                Context.Channel.Id);
+                Context.Guild?.Id ?? 0,
+                Context.Channel?.Id ?? 0);
             await RespondAsync("❌ Data rozpoczęcia meczu musi być w przyszłości.", ephemeral: true);
             return;
         }
@@ -1961,8 +2009,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                     homeTeam,
                     awayTeam,
                     error,
-                    Context.Guild.Id,
-                    Context.Channel.Id);
+                    Context.Guild?.Id ?? 0,
+                    Context.Channel?.Id ?? 0);
                 await RespondAsync($"❌ Błąd podczas tworzenia meczu: {error ?? "Nieznany błąd"}", ephemeral: true);
                 return;
             }
@@ -1975,14 +2023,17 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                     Context.User.Username,
                     Context.User.Id,
                     roundNum,
-                    Context.Guild.Id,
-                    Context.Channel.Id);
+                    Context.Guild?.Id ?? 0,
+                    Context.Channel?.Id ?? 0);
                 await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach. Sprawdź poprawność rundy, daty i godziny.", ephemeral: true);
                 return;
             }
 
             // Clear state
-            _stateService.ClearState(Context.Guild.Id, Context.User.Id);
+            if (Context.Guild != null)
+            {
+                _stateService.ClearState(Context.Guild.Id, Context.User?.Id ?? 0);
+            }
 
             // Post match card to predictions channel
             var round = match.Round;
@@ -2001,7 +2052,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 match.StartTime,
                 localStartTime,
                 (Context.Channel as SocketTextChannel)?.Name ?? "DM",
-                Context.Guild.Id);
+                Context.Guild?.Id ?? 0);
 
             await RespondAsync(
                 $"✅ Mecz utworzony: Runda {roundNum}, {homeTeam} vs {awayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.",
@@ -2018,8 +2069,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 timeStr,
                 homeTeam,
                 awayTeam,
-                Context.Guild.Id,
-                Context.Channel.Id);
+                Context.Guild?.Id ?? 0,
+                Context.Channel?.Id ?? 0);
             await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach. Sprawdź poprawność rundy, daty i godziny.", ephemeral: true);
         }
     }
@@ -2130,6 +2181,21 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Check if round already exists (prevent duplicates)
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season != null)
+        {
+            var existingRound = await _roundRepository.GetByNumberAsync(season.Id, roundNum);
+            if (existingRound != null && !isKolejkaCreation)
+            {
+                // Round exists and we're not in kolejka creation flow - prevent duplicate
+                await RespondWithErrorAsync(
+                    $"❌ Kolejka o numerze {roundNum} ({Application.Services.RoundHelper.GetRoundLabel(roundNum)}) już istnieje.",
+                    "Możesz dodać mecz do istniejącej kolejki używając panelu '⚙ Zarządzaj kolejką'.");
+                return;
+            }
+        }
+
         // Create match
         Domain.Entities.Match? match = null;
         try
@@ -2180,30 +2246,31 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                         // Show modal for next match
                         var nextMatch = currentMatch + 1;
                         
-                        await RespondAsync(
-                            $"✅ Mecz {currentMatch}/{totalMatches} dodany: {homeTeam} vs {awayTeam}\n" +
-                            $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
-                            ephemeral: true);
-                        
-                        // Show modal for next match
-                        var nextModal = new AddMatchModalV2
+                        // Respond first, then show modal
+                        try
                         {
-                            RoundNumber = roundNum.ToString(),
-                            MatchDate = matchDate, // Keep same date as default
-                            MatchTime = matchTime, // Keep same time as default
-                            HomeTeam = "",
-                            AwayTeam = ""
-                        };
-                        
-                        await RespondWithModalAsync("admin_add_match_modal_kolejka", nextModal);
+                            await RespondAsync(
+                                $"✅ Mecz {currentMatch}/{totalMatches} dodany: {homeTeam} vs {awayTeam}\n" +
+                                $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
+                                ephemeral: true);
+                            
+                            // Can't show modal after responding - need to use button instead
+                            // For now, just inform user to use the button
+                            await FollowupAsync(
+                                $"Kliknij przycisk 'Dodaj mecz {nextMatch}' aby kontynuować.",
+                                ephemeral: true);
+                        }
+                        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+                        {
+                            // Interaction expired, can't respond
+                            _logger.LogWarning("Interakcja wygasła podczas dodawania meczu do kolejki");
+                        }
                         return;
                     }
                 }
             }
 
-            // Normal flow - post match card and respond
-            await PostMatchCardAsync(match, roundNum);
-
+            // Normal flow - respond first, then post match card
             var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
             var localStartTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
             
@@ -2211,14 +2278,71 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 "Mecz utworzony pomyślnie - ID meczu: {MatchId}, Runda: {Round}, {HomeTeam} vs {AwayTeam}, StartTime Local: {StartTimeLocal}",
                 match.Id, roundNum, match.HomeTeam, match.AwayTeam, localStartTime);
 
-            await RespondWithSuccessAsync($"Mecz utworzony: Runda {roundNum}, {match.HomeTeam} vs {match.AwayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.");
+            // Respond immediately to avoid timeout
+            if (!Context.Interaction.HasResponded)
+            {
+                await RespondAsync("⏳ Tworzenie meczu...", ephemeral: true);
+            }
+
+            // Post match card (this might take time)
+            await PostMatchCardAsync(match, roundNum);
+
+            // Update response with success message
+            try
+            {
+                if (Context.Interaction.HasResponded)
+                {
+                    await ModifyOriginalResponseAsync(msg => 
+                    {
+                        msg.Content = $"✅ Mecz utworzony: Runda {roundNum}, {match.HomeTeam} vs {match.AwayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.";
+                        msg.Embed = null;
+                    });
+                }
+                else
+                {
+                    await RespondWithSuccessAsync($"Mecz utworzony: Runda {roundNum}, {match.HomeTeam} vs {match.AwayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.");
+                }
+            }
+            catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Interaction expired, send as followup
+                await FollowupAsync($"✅ Mecz utworzony: Runda {roundNum}, {match.HomeTeam} vs {match.AwayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.", ephemeral: true);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "Wyjątek podczas tworzenia meczu - Użytkownik: {Username} (ID: {UserId}), Runda: {Round}, {HomeTeam} vs {AwayTeam}",
                 Context.User.Username, Context.User.Id, roundNum, homeTeam, awayTeam);
-            await RespondWithErrorAsync("Wystąpił błąd podczas tworzenia meczu.", ex.Message);
+            
+            try
+            {
+                if (Context.Interaction.HasResponded)
+                {
+                    await ModifyOriginalResponseAsync(msg => 
+                    {
+                        msg.Content = $"❌ Wystąpił błąd podczas tworzenia meczu: {ex.Message}";
+                        msg.Embed = null;
+                    });
+                }
+                else
+                {
+                    await RespondWithErrorAsync("Wystąpił błąd podczas tworzenia meczu.", ex.Message);
+                }
+            }
+            catch (Discord.Net.HttpException httpEx) when (httpEx.HttpCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Interaction expired, send as followup
+                try
+                {
+                    await FollowupAsync($"❌ Wystąpił błąd podczas tworzenia meczu: {ex.Message}", ephemeral: true);
+                }
+                catch
+                {
+                    // Can't send followup either, just log
+                    _logger.LogError("Nie można wysłać komunikatu o błędzie - interakcja wygasła");
+                }
+            }
         }
     }
 
@@ -2352,7 +2476,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             {
                 // Thread will be created later by ThreadCreationService
                 _logger.LogInformation("Karta meczu będzie utworzona później - ID meczu: {MatchId}, ThreadCreationTime: {Time}", 
-                    match.Id, match.ThreadCreationTime.Value);
+                    match.Id, match.ThreadCreationTime?.ToString() ?? "null");
             }
         }
     }
@@ -2747,7 +2871,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             
             _logger.LogInformation(
                 "Typy ujawnione ręcznie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}",
-                user.Username, user.Id, matchId);
+                user?.Username ?? "Unknown", user?.Id ?? 0, matchId);
         }
         catch (Exception ex)
         {
@@ -3432,17 +3556,20 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Defer immediately to avoid timeout
+        await DeferAsync(ephemeral: true);
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null)
         {
-            await RespondAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
             return;
         }
 
         var rounds = (await _roundRepository.GetBySeasonIdAsync(season.Id)).ToList();
         if (!rounds.Any())
         {
-            await RespondAsync("❌ Brak kolejek w sezonie. Użyj 'Dodaj kolejkę' aby utworzyć pierwszą.", ephemeral: true);
+            await FollowupAsync("❌ Brak kolejek w sezonie. Użyj 'Dodaj kolejkę' aby utworzyć pierwszą.", ephemeral: true);
             return;
         }
 
@@ -3463,7 +3590,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             .WithSelectMenu(selectMenu)
             .Build();
 
-        await RespondAsync("Wybierz kolejkę do zarządzania:", components: component, ephemeral: true);
+        await FollowupAsync("Wybierz kolejkę do zarządzania:", components: component, ephemeral: true);
     }
 
     [ComponentInteraction("admin_manage_kolejka_select")]
@@ -3472,17 +3599,26 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null || selectedValues.Length == 0)
         {
-            await RespondAsync("❌ Nieprawidłowy wybór.", ephemeral: true);
+            if (!Context.Interaction.HasResponded)
+            {
+                await RespondAsync("❌ Nieprawidłowy wybór.", ephemeral: true);
+            }
             return;
         }
 
         if (!int.TryParse(selectedValues[0], out var roundId))
         {
-            await RespondAsync("❌ Nieprawidłowy ID kolejki.", ephemeral: true);
+            if (!Context.Interaction.HasResponded)
+            {
+                await RespondAsync("❌ Nieprawidłowy ID kolejki.", ephemeral: true);
+            }
             return;
         }
 
-        await DeferAsync();
+        if (!Context.Interaction.HasResponded)
+        {
+            await DeferAsync(ephemeral: true);
+        }
 
         var round = await _roundRepository.GetByIdAsync(roundId);
         if (round == null)
@@ -3581,6 +3717,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Get round info - this is a fast query, should complete before timeout
         var round = await _roundRepository.GetByIdAsync(roundId);
         if (round == null)
         {
@@ -3598,7 +3735,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             AwayTeam = "Włókniarz Częstochowa"
         };
         
-        await RespondWithModalAsync("admin_add_match_modal_v2", modal);
+        try
+        {
+            await RespondWithModalAsync("admin_add_match_modal_v2", modal);
+        }
+        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning("Interakcja wygasła przed otwarciem modala dodaj mecz do kolejki");
+            // Interaction expired, can't open modal - user needs to click button again
+        }
     }
 
 
@@ -3760,7 +3905,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         var embed = new EmbedBuilder()
             .WithTitle($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}")
-            .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore.Value}:{match.AwayScore.Value}")
+            .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
             .WithColor(Color.Green)
             .WithCurrentTimestamp();
 
@@ -3778,7 +3923,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             table += "════════════════════════════════════\n";
             
             // Add actual result as first row
-            table += $"🏆 Wynik rzeczywisty  {match.HomeScore.Value,2}:{match.AwayScore.Value,2}     -\n";
+            table += $"🏆 Wynik rzeczywisty  {match.HomeScore?.ToString() ?? "?",2}:{match.AwayScore?.ToString() ?? "?",2}     -\n";
             table += "────────────────────────────────────\n";
 
             foreach (var pred in predictions)
