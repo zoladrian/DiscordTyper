@@ -4,12 +4,15 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
 
 ## Features
 
-- **Secret Predictions**: Predictions are hidden until match results are announced
+- **Secret Predictions**: Predictions are hidden until match results are announced or manually revealed by admin
 - **Automatic Scoring**: Points calculated based on prediction accuracy
-- **PNG Table Generation**: Beautiful standings tables generated as PNG images
+- **Table Generation**: Beautiful standings tables (text format in Discord, PNG for exports)
 - **Admin Panel**: Visual button-based interface for match management
 - **CSV Exports**: Export season and round data
 - **Auto-Channel Creation**: Bot creates required channels on first run
+- **Automatic Reminders**: Reminders for matches without results (3 hours after start)
+- **Prediction Reveal**: Admins can reveal predictions after match start time
+- **Public Warnings**: Public messages when players try invalid predictions (sum ≠ 90)
 
 ## Architecture
 
@@ -79,25 +82,49 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
 
 **Important Rules:**
 - Sum of predicted scores must equal 90 points (speedway rules: 15 races × 6 points)
-- If sum ≠ 90, prediction is rejected
-- Penalty for sum ≠ 90 is already included in difference calculation
-- Predictions are secret until match start time
+- If sum ≠ 90, prediction is rejected and a public warning message is posted in the match thread
+- Penalty for sum ≠ 90 is already included in difference calculation (when calculating scores for valid predictions)
+- Predictions are secret until match start time or manually revealed by admin
 - Predictions can be changed until original match start time (even if match is postponed)
+- Predictions are automatically revealed when match result is entered (for finished matches only)
 
 **Tie-breaks:**
 - During season: Points → P50+P35 count
 - End of season: Points → P50+P35 → P20 → P18 → P16 → ... → P2
 
+## Commands
+
+### Player Commands
+- `/moje-typy [numer kolejki]` - View your predictions (ephemeral)
+- `/tabela-sezonu` - View season standings (ephemeral)
+- `/tabela-kolejki [numer]` - View round standings (ephemeral)
+- `/ping` - Bot health check
+
+### Admin Commands
+- `/start-nowego-sezonu` - Start a new season
+- `/panel-sezonu` - Open season management panel
+- `/admin-tabela-sezonu` - Publish season table to results channel
+- `/admin-tabela-kolejki [numer]` - Publish round table to results channel
+- `/admin-eksport-sezonu` - Export season data to CSV
+- `/admin-eksport-kolejki [numer]` - Export round data to CSV
+- `/wyniki-gracza [użytkownik]` - View detailed player results
+- `/admin-dane-testowe` - Fill database with test data
+
+### Admin Interactions (Buttons/Modals)
+- **Match Cards**: Edit, Delete, Set Result, Reveal Predictions buttons
+- **Panel**: Add Round, Manage Round buttons
+- **Round Creation**: Interactive form with team selection, date picker, time controls
+
 ## Permissions
 
-- **Player Role** (`Typer`): Can view matches, submit predictions
-- **Admin Role** (`TyperAdmin` or Discord `Administrator`): Full access to admin panel
+- **Player Role** (`Typer`): Can view matches, submit predictions, view own standings
+- **Admin Role** (`TyperAdmin` or Discord `Administrator`): Full access to admin panel, can publish tables publicly
 
 ## Channels
 
-- **#typowanie**: Match prediction threads
-- **#wyniki-typera**: Results and standings tables
-- **#typer-admin**: Admin panel
+- **#typowanie**: Match prediction threads (auto-created 2 days before match)
+- **#wyniki-typera**: Results and standings tables (public announcements)
+- **#typer-admin**: Admin panel and reminders
 
 ## License
 

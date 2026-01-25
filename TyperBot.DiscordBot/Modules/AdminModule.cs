@@ -539,76 +539,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild.Id,
             Context.Channel.Id);
 
-        // Calculate default week for modal
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-        DateTime defaultWeekStart;
-        
-        if (season != null)
-        {
-            var allRounds = await _roundRepository.GetBySeasonIdAsync(season.Id);
-            var existingRoundNumbers = allRounds.Select(r => r.Number).OrderBy(n => n).ToList();
-            
-            if (existingRoundNumbers.Any())
-            {
-                var lastRoundNumber = existingRoundNumbers.Max();
-                var lastRound = await _roundRepository.GetByNumberAsync(season.Id, lastRoundNumber);
-                
-                if (lastRound != null)
-                {
-                    var lastRoundMatches = await _matchRepository.GetByRoundIdAsync(lastRound.Id);
-                    var lastMatch = lastRoundMatches.OrderByDescending(m => m.StartTime).FirstOrDefault();
-                    
-                    if (lastMatch != null)
-                    {
-                        var lastMatchDate = TimeZoneInfo.ConvertTimeFromUtc(lastMatch.StartTime.UtcDateTime, tz);
-                        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)lastMatchDate.DayOfWeek + 7) % 7;
-                        if (daysUntilMonday == 0) daysUntilMonday = 7;
-                        defaultWeekStart = lastMatchDate.Date.AddDays(daysUntilMonday);
-                    }
-                    else
-                    {
-                        defaultWeekStart = now.Date.AddDays(7);
-                        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-                        if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-                        defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-                    }
-                }
-                else
-                {
-                    defaultWeekStart = now.Date.AddDays(7);
-                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-                    if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-                    defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-                }
-            }
-            else
-            {
-                // First round: 1st week of April
-                defaultWeekStart = new DateTime(now.Year, 4, 1);
-                var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-                if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-                defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-            }
-        }
-        else
-        {
-            // No season: 1st week of April
-            defaultWeekStart = new DateTime(now.Year, 4, 1);
-            var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-            if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-            defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-        }
-        
-        var modal = new AddKolejkaModal
-        {
-            KolejkaNumber = "",
-            LiczbaMeczow = "",
-            WeekStart = defaultWeekStart.ToString("yyyy-MM-dd")
-        };
-        
-        await RespondWithModalAsync("admin_add_kolejka_modal", modal);
+        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
@@ -698,79 +629,13 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
         
-        // Calculate default week start date
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-        DateTime defaultWeekStart;
-        
-        if (roundNumber == 1)
-        {
-            // First round: 1st week of April
-            defaultWeekStart = new DateTime(now.Year, 4, 1);
-            // Find Monday of that week
-            var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-            if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-            defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-        }
-        else
-        {
-            // Find last round's date
-            var lastRoundNumber = existingRoundNumbers.Any() ? existingRoundNumbers.Max() : roundNumber - 1;
-            var lastRound = await _roundRepository.GetByNumberAsync(season.Id, lastRoundNumber);
-            
-            if (lastRound != null)
-            {
-                var lastRoundMatches = await _matchRepository.GetByRoundIdAsync(lastRound.Id);
-                var lastMatch = lastRoundMatches.OrderByDescending(m => m.StartTime).FirstOrDefault();
-                
-                if (lastMatch != null)
-                {
-                    var lastMatchDate = TimeZoneInfo.ConvertTimeFromUtc(lastMatch.StartTime.UtcDateTime, tz);
-                    // Next week (Monday) after last match
-                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)lastMatchDate.DayOfWeek + 7) % 7;
-                    if (daysUntilMonday == 0) daysUntilMonday = 7;
-                    defaultWeekStart = lastMatchDate.Date.AddDays(daysUntilMonday);
-                }
-                else
-                {
-                    // No matches in last round, use current date + missing rounds weeks
-                    defaultWeekStart = now.Date;
-                    var weeksToAdd = (roundNumber - lastRoundNumber);
-                    defaultWeekStart = defaultWeekStart.AddDays(weeksToAdd * 7);
-                    // Find Monday
-                    var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-                    if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-                    defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-                }
-            }
-            else
-            {
-                // Last round doesn't exist, calculate based on missing rounds
-                var weeksToAdd = missingRounds.Count + 1;
-                defaultWeekStart = now.Date.AddDays(weeksToAdd * 7);
-                // Find Monday
-                var daysUntilMonday = ((int)DayOfWeek.Monday - (int)defaultWeekStart.DayOfWeek + 7) % 7;
-                if (daysUntilMonday == 0 && defaultWeekStart.DayOfWeek != DayOfWeek.Monday) daysUntilMonday = 7;
-                defaultWeekStart = defaultWeekStart.AddDays(daysUntilMonday);
-            }
-        }
-        
-        // Parse week start from modal or use default
-        DateTime weekStartDate = defaultWeekStart;
-        if (!string.IsNullOrWhiteSpace(modal.WeekStart))
-        {
-            if (DateTime.TryParse(modal.WeekStart, out var parsedWeekStart))
-            {
-                weekStartDate = parsedWeekStart.Date;
-            }
-        }
-        
         // Initialize kolejka creation flow
         _stateService.ClearState(Context.Guild.Id, Context.User.Id);
         _stateService.InitializeKolejkaCreation(Context.Guild.Id, Context.User.Id, roundNumber, matchCount);
-        _stateService.SetWeekStartDate(Context.Guild.Id, Context.User.Id, weekStartDate);
 
         // Initialize time and calendar
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
         _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, "18:00");
 
@@ -1762,60 +1627,14 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         var defaultDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var defaultTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : "18:00";
-        // Set default teams - Discord requires at least 1 character for required fields
-        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "Motor Lublin";
-        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "Włókniarz Częstochowa";
-
-        // Calculate default date/time based on match index in kolejka
-        var matchIndex = state.CurrentMatchIndex;
-        var weekStartDate = state.SelectedWeekStartDate ?? now.Date.AddDays(1);
-        
-        // Default dates/times for matches:
-        // 1st match: Friday 18:00
-        // 2nd match: Saturday 16:00
-        // 3rd match: Saturday 19:00
-        // 4th+ match: Sunday 19:00
-        DateTime defaultMatchDate;
-        string defaultMatchTime;
-        
-        if (matchIndex == 0)
-        {
-            // 1st match: Friday
-            var daysUntilFriday = ((int)DayOfWeek.Friday - (int)weekStartDate.DayOfWeek + 7) % 7;
-            if (daysUntilFriday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Friday) daysUntilFriday = 7;
-            defaultMatchDate = weekStartDate.AddDays(daysUntilFriday);
-            defaultMatchTime = "18:00";
-        }
-        else if (matchIndex == 1)
-        {
-            // 2nd match: Saturday 16:00
-            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
-            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
-            defaultMatchDate = weekStartDate.AddDays(daysUntilSaturday);
-            defaultMatchTime = "16:00";
-        }
-        else if (matchIndex == 2)
-        {
-            // 3rd match: Saturday 19:00
-            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
-            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
-            defaultMatchDate = weekStartDate.AddDays(daysUntilSaturday);
-            defaultMatchTime = "19:00";
-        }
-        else
-        {
-            // 4th+ match: Sunday 19:00
-            var daysUntilSunday = ((int)DayOfWeek.Sunday - (int)weekStartDate.DayOfWeek + 7) % 7;
-            if (daysUntilSunday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Sunday) daysUntilSunday = 7;
-            defaultMatchDate = weekStartDate.AddDays(daysUntilSunday);
-            defaultMatchTime = "19:00";
-        }
+        var defaultHomeTeam = !string.IsNullOrEmpty(state.SelectedHomeTeam) ? state.SelectedHomeTeam : "";
+        var defaultAwayTeam = !string.IsNullOrEmpty(state.SelectedAwayTeam) ? state.SelectedAwayTeam : "";
 
         var modal = new AddMatchModalV2
         {
             RoundNumber = state.SelectedRound.Value.ToString(),
-            MatchDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : defaultMatchDate.ToString("yyyy-MM-dd"),
-            MatchTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : defaultMatchTime,
+            MatchDate = defaultDate,
+            MatchTime = defaultTime,
             HomeTeam = defaultHomeTeam,
             AwayTeam = defaultAwayTeam
         };
@@ -2366,56 +2185,14 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                             $"📝 Teraz dodaj mecz {nextMatch}/{totalMatches}",
                             ephemeral: true);
                         
-                        // Calculate default date/time for next match
-                        var tzForNext = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-                        var tzNowForNext = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tzForNext);
-                        var nextMatchIndex = updatedState.CurrentMatchIndex;
-                        var weekStartDate = updatedState.SelectedWeekStartDate ?? tzNowForNext.Date.AddDays(1);
-                        
-                        DateTime nextMatchDate;
-                        string nextMatchTime;
-                        
-                        if (nextMatchIndex == 0)
-                        {
-                            // 1st match: Friday 18:00
-                            var daysUntilFriday = ((int)DayOfWeek.Friday - (int)weekStartDate.DayOfWeek + 7) % 7;
-                            if (daysUntilFriday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Friday) daysUntilFriday = 7;
-                            nextMatchDate = weekStartDate.AddDays(daysUntilFriday);
-                            nextMatchTime = "18:00";
-                        }
-                        else if (nextMatchIndex == 1)
-                        {
-                            // 2nd match: Saturday 16:00
-                            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
-                            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
-                            nextMatchDate = weekStartDate.AddDays(daysUntilSaturday);
-                            nextMatchTime = "16:00";
-                        }
-                        else if (nextMatchIndex == 2)
-                        {
-                            // 3rd match: Saturday 19:00
-                            var daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)weekStartDate.DayOfWeek + 7) % 7;
-                            if (daysUntilSaturday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Saturday) daysUntilSaturday = 7;
-                            nextMatchDate = weekStartDate.AddDays(daysUntilSaturday);
-                            nextMatchTime = "19:00";
-                        }
-                        else
-                        {
-                            // 4th+ match: Sunday 19:00
-                            var daysUntilSunday = ((int)DayOfWeek.Sunday - (int)weekStartDate.DayOfWeek + 7) % 7;
-                            if (daysUntilSunday == 0 && weekStartDate.DayOfWeek != DayOfWeek.Sunday) daysUntilSunday = 7;
-                            nextMatchDate = weekStartDate.AddDays(daysUntilSunday);
-                            nextMatchTime = "19:00";
-                        }
-                        
                         // Show modal for next match
                         var nextModal = new AddMatchModalV2
                         {
                             RoundNumber = roundNum.ToString(),
-                            MatchDate = nextMatchDate.ToString("yyyy-MM-dd"),
-                            MatchTime = nextMatchTime,
-                            HomeTeam = "Motor Lublin",
-                            AwayTeam = "Włókniarz Częstochowa"
+                            MatchDate = matchDate, // Keep same date as default
+                            MatchTime = matchTime, // Keep same time as default
+                            HomeTeam = "",
+                            AwayTeam = ""
                         };
                         
                         await RespondWithModalAsync("admin_add_match_modal_kolejka", nextModal);
@@ -4565,10 +4342,5 @@ public class AddKolejkaModal : IModal
     [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 1)]
     [RequiredInput(true)]
     public string LiczbaMeczow { get; set; } = string.Empty;
-
-    [InputLabel("Tydzień kolejki (YYYY-MM-DD)")]
-    [ModalTextInput("week_start", TextInputStyle.Short, placeholder: "2025-04-07")]
-    [RequiredInput(true)]
-    public string WeekStart { get; set; } = string.Empty;
 }
 

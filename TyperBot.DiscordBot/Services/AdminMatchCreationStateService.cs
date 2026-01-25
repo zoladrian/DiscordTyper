@@ -15,6 +15,7 @@ public class AdminMatchCreationState
     public int CurrentMatchIndex { get; set; }
     public string? SelectedHomeTeam { get; set; }
     public string? SelectedAwayTeam { get; set; }
+    public DateTime? SelectedWeekStartDate { get; set; }
     public List<(string homeTeam, string awayTeam, string date, string time)> CollectedMatches { get; set; } = new();
 }
 
@@ -103,6 +104,12 @@ public class AdminMatchCreationStateService
         var state = GetOrCreateState(guildId, userId);
         state.CollectedMatches.Add((homeTeam, awayTeam, date, time));
         state.CurrentMatchIndex++;
+    }
+
+    public void SetWeekStartDate(ulong guildId, ulong userId, DateTime weekStartDate)
+    {
+        var state = GetOrCreateState(guildId, userId);
+        state.SelectedWeekStartDate = weekStartDate;
     }
 
     private AdminMatchCreationState GetOrCreateState(ulong guildId, ulong userId)
