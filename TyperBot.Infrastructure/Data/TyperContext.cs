@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TyperBot.Domain.Entities;
+using TyperBot.Domain.Enums;
 
 namespace TyperBot.Infrastructure.Data;
 
@@ -25,6 +26,7 @@ public class TyperContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.PreferredTableFormat).HasConversion<int>().HasDefaultValue(TableFormat.Text);
         });
 
         // Round configuration
