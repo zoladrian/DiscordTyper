@@ -41,13 +41,9 @@ public class PredictionService
             return (false, "Oba wyniki muszą być większe lub równe 0.");
         }
 
-        // Validation 2: Sum equals 90
-        if (homeTip + awayTip != 90)
-        {
-            return (false, "Suma obu wyników musi wynosić 90 (np. 50:40, 46:44, 45:45).");
-        }
+        // Note: Sum validation removed - warnings are shown but prediction is allowed
 
-        // Validation 3: Before match start time
+        // Validation 2: Before match start time
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {

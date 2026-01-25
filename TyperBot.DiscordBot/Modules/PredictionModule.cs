@@ -229,66 +229,69 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Check for invalid input (non-numeric or invalid sum)
-        bool hasInvalidInput = false;
-        string? invalidInputError = null;
+        // Parse input - use 0 if not numeric
+        bool hasNonNumericInput = false;
         int homeTip = 0;
         int awayTip = 0;
-
+        
         if (!int.TryParse(modal.HomePoints, out homeTip) || !int.TryParse(modal.AwayPoints, out awayTip))
         {
-            hasInvalidInput = true;
-            invalidInputError = "Wprowadź prawidłowe liczby dla obu wyników.";
+            hasNonNumericInput = true;
+            // Use 0 as default if parsing fails
+            int.TryParse(modal.HomePoints, out homeTip);
+            int.TryParse(modal.AwayPoints, out awayTip);
         }
-        else if (homeTip + awayTip != 90)
+        
+        bool sumNot90 = homeTip + awayTip != 90;
+        
+        // Post "imbecil" message only if non-numeric input
+        if (hasNonNumericInput)
         {
-            hasInvalidInput = true;
-            invalidInputError = $"Suma wyniku musi wynosić 90, a nie {homeTip + awayTip}. Oglądałeś kiedyś żużel?";
-        }
-
-        if (hasInvalidInput)
-        {
-            // Post public message in match thread when sum != 90
-            if (homeTip + awayTip != 90)
+            try
             {
-                try
+                var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+                if (predictionsChannel != null)
                 {
-                    var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-                    if (predictionsChannel != null)
+                    SocketThreadChannel? thread = null;
+                    
+                    // Use ThreadId if available, otherwise fall back to name search
+                    if (match.ThreadId.HasValue)
                     {
-                        SocketThreadChannel? thread = null;
-                        
-                        // Use ThreadId if available, otherwise fall back to name search
-                        if (match.ThreadId.HasValue)
-                        {
-                            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                        }
-                        
-                        // Fallback to name search if ThreadId not found or not set
-                        if (thread == null)
-                        {
-                            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
-                            var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
-                        }
-                        
-                        if (thread != null)
-                        {
-                            await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
-                            _logger.LogInformation(
-                                "Publiczne oznaczenie użytkownika przy błędzie sumy - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}, Suma: {Sum}",
-                                user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints, homeTip + awayTip);
-                        }
+                        thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                    }
+                    
+                    // Fallback to name search if ThreadId not found or not set
+                    if (thread == null)
+                    {
+                        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                        var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                        thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+                    }
+                    
+                    if (thread != null)
+                    {
+                        await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
+                        _logger.LogInformation(
+                            "Publiczne oznaczenie użytkownika - niedozwolone znaki - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}",
+                            user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
                     }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Nie udało się wysłać publicznej wiadomości o błędzie sumy");
-                }
             }
-
-            await RespondAsync($"❌ {invalidInputError}", ephemeral: true);
-            return;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Nie udało się wysłać publicznej wiadomości");
+            }
+        }
+        
+        // Show warnings, but don't block
+        string warningMessage = string.Empty;
+        if (hasNonNumericInput)
+        {
+            warningMessage += $"\n⚠️ Uwaga: Wprowadzono niedozwolone znaki. Zapisano jako {homeTip}:{awayTip}.";
+        }
+        if (sumNot90)
+        {
+            warningMessage += $"\n⚠️ Uwaga: Suma wyniku to {homeTip + awayTip}, a powinna być 90. Oglądałeś kiedyś żużel?";
         }
 
         // Validate prediction using service
@@ -320,12 +323,16 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
+        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**{warningMessage}\nPowodzenia! 🍀", ephemeral: true);
         _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
             user.Id, matchId, homeTip, awayTip);
 
-        // Post message in match thread
-        await PostPredictionMessageInThreadAsync(match, user, isUpdate);
+        // Post normal message in match thread only if input was valid (not non-numeric)
+        // If non-numeric, we already posted "imbecil" message above
+        if (!hasNonNumericInput)
+        {
+            await PostPredictionMessageInThreadAsync(match, user, isUpdate);
+        }
     }
 }
 
