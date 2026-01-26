@@ -52,10 +52,31 @@ public class MatchManagementService
             round = await _roundRepository.AddAsync(round);
         }
 
-        // Set default thread creation time (2 days before match) if not provided
+        // Set default thread creation time (Wednesday 8:00 AM before match) if not provided
         if (!threadCreationTime.HasValue)
         {
-            threadCreationTime = startTime.AddDays(-2);
+            // Find the Wednesday 8:00 AM before the match
+            var matchDate = startTime.Date;
+            var daysUntilWednesday = ((int)DayOfWeek.Wednesday - (int)matchDate.DayOfWeek + 7) % 7;
+            if (daysUntilWednesday == 0 && startTime.TimeOfDay.TotalHours >= 8)
+            {
+                // If match is on Wednesday after 8:00, use next Wednesday
+                daysUntilWednesday = 7;
+            }
+            else if (daysUntilWednesday == 0)
+            {
+                // If match is on Wednesday before 8:00, use that Wednesday
+                daysUntilWednesday = 0;
+            }
+            
+            var wednesdayDate = matchDate.AddDays(-daysUntilWednesday);
+            threadCreationTime = new DateTimeOffset(wednesdayDate.AddHours(8), startTime.Offset);
+            
+            // If calculated time is after match start, use previous Wednesday
+            if (threadCreationTime.Value >= startTime)
+            {
+                threadCreationTime = threadCreationTime.Value.AddDays(-7);
+            }
         }
 
         // Create match

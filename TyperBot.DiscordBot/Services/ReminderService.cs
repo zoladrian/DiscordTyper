@@ -68,12 +68,11 @@ public class ReminderService : BackgroundService
 
         var allMatches = await matchRepository.GetAllAsync();
         
+        // If match has both scores set, it's finished - don't send reminder
         var matchesToRemind = allMatches.Where(m => 
-            m.Status != MatchStatus.Finished &&
             m.Status != MatchStatus.Cancelled &&
             m.StartTime <= threeHoursAgo &&
-            !m.HomeScore.HasValue && // No home score
-            !m.AwayScore.HasValue && // No away score
+            !(m.HomeScore.HasValue && m.AwayScore.HasValue) && // If both scores are set, match is finished
             !_remindedMatches.Contains(m.Id) // Haven't sent reminder for this match yet
         ).ToList();
 

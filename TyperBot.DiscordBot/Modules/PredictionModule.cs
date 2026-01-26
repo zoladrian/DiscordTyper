@@ -229,24 +229,10 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Parse input - use 0 if not numeric
-        bool hasNonNumericInput = false;
-        int homeTip = 0;
-        int awayTip = 0;
-        
-        if (!int.TryParse(modal.HomePoints, out homeTip) || !int.TryParse(modal.AwayPoints, out awayTip))
+        // Parse input - validate that both are valid integers
+        if (!int.TryParse(modal.HomePoints, out var homeTip) || !int.TryParse(modal.AwayPoints, out var awayTip))
         {
-            hasNonNumericInput = true;
-            // Use 0 as default if parsing fails
-            int.TryParse(modal.HomePoints, out homeTip);
-            int.TryParse(modal.AwayPoints, out awayTip);
-        }
-        
-        bool sumNot90 = homeTip + awayTip != 90;
-        
-        // Post "imbecil" message only if non-numeric input
-        if (hasNonNumericInput)
-        {
+            // Post "imbecil" message for invalid input
             try
             {
                 var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
@@ -281,20 +267,12 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             {
                 _logger.LogError(ex, "Nie udało się wysłać publicznej wiadomości");
             }
-        }
-        
-        // Show warnings, but don't block
-        string warningMessage = string.Empty;
-        if (hasNonNumericInput)
-        {
-            warningMessage += $"\n⚠️ Uwaga: Wprowadzono niedozwolone znaki. Zapisano jako {homeTip}:{awayTip}.";
-        }
-        if (sumNot90)
-        {
-            warningMessage += $"\n⚠️ Uwaga: Suma wyniku to {homeTip + awayTip}, a powinna być 90. Oglądałeś kiedyś żużel?";
+            
+            await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
+            return;
         }
 
-        // Validate prediction using service
+        // Validate prediction using service (includes sum=90 validation)
         var (isValid, errorMessage) = await _predictionService.ValidatePrediction(user!.Id, matchId, homeTip, awayTip);
         if (!isValid)
         {
@@ -323,16 +301,12 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**{warningMessage}\nPowodzenia! 🍀", ephemeral: true);
+        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
         _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
             user.Id, matchId, homeTip, awayTip);
 
-        // Post normal message in match thread only if input was valid (not non-numeric)
-        // If non-numeric, we already posted "imbecil" message above
-        if (!hasNonNumericInput)
-        {
-            await PostPredictionMessageInThreadAsync(match, user, isUpdate);
-        }
+        // Post normal message in match thread
+        await PostPredictionMessageInThreadAsync(match, user, isUpdate);
     }
 }
 

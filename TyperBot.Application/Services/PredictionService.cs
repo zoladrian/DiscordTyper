@@ -41,18 +41,23 @@ public class PredictionService
             return (false, "Oba wyniki muszą być większe lub równe 0.");
         }
 
-        // Note: Sum validation removed - warnings are shown but prediction is allowed
+        // Validation 2: Sum must equal 90
+        if (homeTip + awayTip != 90)
+        {
+            return (false, $"Suma punktów musi wynosić 90, a nie {homeTip + awayTip}. Oglądałeś kiedyś żużel?");
+        }
 
-        // Validation 2: Before match start time
+        // Validation 3: Before typing deadline (or match start time if deadline not set)
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
             return (false, "Mecz nie znaleziony.");
         }
 
-        if (DateTimeOffset.UtcNow >= match.StartTime)
+        var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1); // Default: 1 hour before match
+        if (DateTimeOffset.UtcNow >= deadline)
         {
-            return (false, "Czas na typowanie minął. Możesz typować tylko przed rozpoczęciem meczu.");
+            return (false, "Czas na typowanie minął. Możesz typować tylko przed deadline typowania.");
         }
 
         // Validation 4: Match not cancelled
@@ -90,7 +95,8 @@ public class PredictionService
                 return null;
             }
 
-            if (DateTimeOffset.UtcNow >= match.StartTime)
+            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1); // Default: 1 hour before match
+            if (DateTimeOffset.UtcNow >= deadline)
             {
                 await transaction.RollbackAsync();
                 return null;

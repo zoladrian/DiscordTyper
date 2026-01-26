@@ -182,49 +182,7 @@ public class ThreadCreationService : BackgroundService
                 match.ThreadId = thread.Id;
                 await matchRepository.UpdateAsync(match);
                 
-                // Mention all players with Typer role
-                try
-                {
-                    var players = await _lookupService.GetPlayersWithRoleAsync();
-                    var playerMentions = players.Select(p => p.Mention).ToList();
-                    
-                    if (playerMentions.Any())
-                    {
-                        // Discord limit: max 50 mentions per message
-                        const int maxMentionsPerMessage = 50;
-                        
-                        if (playerMentions.Count <= maxMentionsPerMessage)
-                        {
-                            // Single message for all players
-                            var mentionMessage = $"Nowy mecz do zatypowania! {string.Join(" ", playerMentions)}";
-                            await thread.SendMessageAsync(mentionMessage);
-                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu wątku dla meczu {MatchId}", playerMentions.Count, match.Id);
-                        }
-                        else
-                        {
-                            // Split into multiple messages
-                            for (int i = 0; i < playerMentions.Count; i += maxMentionsPerMessage)
-                            {
-                                var batch = playerMentions.Skip(i).Take(maxMentionsPerMessage);
-                                var mentionMessage = i == 0 
-                                    ? $"Nowy mecz do zatypowania! {string.Join(" ", batch)}"
-                                    : string.Join(" ", batch);
-                                await thread.SendMessageAsync(mentionMessage);
-                            }
-                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu wątku dla meczu {MatchId} (w {BatchCount} wiadomościach)", 
-                                playerMentions.Count, match.Id, (int)Math.Ceiling((double)playerMentions.Count / maxMentionsPerMessage));
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Nie znaleziono graczy z rolą '{RoleName}' do wspomnienia przy meczu {MatchId}", 
-                            settings.Value.PlayerRoleName, match.Id);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Nie udało się wspomnieć graczy przy tworzeniu wątku dla meczu {MatchId}", match.Id);
-                }
+                // Don't mention players when creating thread - admin can use button to mention untyped players
                 
                 _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away}), Thread ID: {ThreadId}", 
                     match.Id, match.HomeTeam, match.AwayTeam, thread.Id);

@@ -2451,6 +2451,26 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             componentBuilder.WithButton(revealButton, row: 2);
         }
 
+        // Add "Send Match Table" button for admins if match is finished
+        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
+        {
+            var tableButton = new ButtonBuilder()
+                .WithCustomId($"admin_send_match_table_{match.Id}")
+                .WithLabel("📊 Wyślij tabelę meczu")
+                .WithStyle(ButtonStyle.Secondary);
+            componentBuilder.WithButton(tableButton, row: 2);
+        }
+
+        // Add "Mention Untyped Players" button for admins if match hasn't started yet
+        if (match.Status != MatchStatus.Finished && match.Status != MatchStatus.Cancelled)
+        {
+            var mentionButton = new ButtonBuilder()
+                .WithCustomId($"admin_mention_untyped_{match.Id}")
+                .WithLabel("🔔 Zawołaj niezatypowanych")
+                .WithStyle(ButtonStyle.Secondary);
+            componentBuilder.WithButton(mentionButton, row: 3);
+        }
+
         var component = componentBuilder.Build();
 
         if (existingMessage != null)
@@ -2495,49 +2515,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
                 var cardMessage = await thread.SendMessageAsync(embed: embed, components: component);
                 
-                // Mention all players with Typer role
-                try
-                {
-                    var players = await _lookupService.GetPlayersWithRoleAsync();
-                    var playerMentions = players.Select(p => p.Mention).ToList();
-                    
-                    if (playerMentions.Any())
-                    {
-                        // Discord limit: max 50 mentions per message
-                        const int maxMentionsPerMessage = 50;
-                        
-                        if (playerMentions.Count <= maxMentionsPerMessage)
-                        {
-                            // Single message for all players
-                            var mentionMessage = $"Nowy mecz do zatypowania! {string.Join(" ", playerMentions)}";
-                            await thread.SendMessageAsync(mentionMessage);
-                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu meczu {MatchId}", playerMentions.Count, match.Id);
-                        }
-                        else
-                        {
-                            // Split into multiple messages
-                            for (int i = 0; i < playerMentions.Count; i += maxMentionsPerMessage)
-                            {
-                                var batch = playerMentions.Skip(i).Take(maxMentionsPerMessage);
-                                var mentionMessage = i == 0 
-                                    ? $"Nowy mecz do zatypowania! {string.Join(" ", batch)}"
-                                    : string.Join(" ", batch);
-                                await thread.SendMessageAsync(mentionMessage);
-                            }
-                            _logger.LogInformation("Wspomniano {Count} graczy przy tworzeniu meczu {MatchId} (w {BatchCount} wiadomościach)", 
-                                playerMentions.Count, match.Id, (int)Math.Ceiling((double)playerMentions.Count / maxMentionsPerMessage));
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Nie znaleziono graczy z rolą '{RoleName}' do wspomnienia przy meczu {MatchId}", 
-                            _settings.PlayerRoleName, match.Id);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Nie udało się wspomnieć graczy przy tworzeniu meczu {MatchId}", match.Id);
-                }
+                // Don't mention players when creating thread - admin can use button to mention untyped players
                 
                 _logger.LogInformation("Karta meczu opublikowana w kanale typowań - ID meczu: {MatchId}, Thread ID: {ThreadId}", match.Id, thread.Id);
             }
@@ -2830,8 +2808,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        // Post standings tables
-        await PostStandingsAfterResultAsync(match);
+        // Tables are now sent manually by admin via buttons - no automatic posting
     }
 
     private async Task RevealPredictionsForMatchAsync(Domain.Entities.Match match)
@@ -2964,6 +2941,196 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    [ComponentInteraction("admin_mention_untyped_*")]
+    public async Task HandleMentionUntypedPlayersButtonAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status == MatchStatus.Finished || match.Status == MatchStatus.Cancelled)
+        {
+            await RespondAsync("❌ Nie można wołać graczy dla zakończonego lub odwołanego meczu.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true);
+                return;
+            }
+
+            SocketThreadChannel? thread = null;
+            if (match.ThreadId.HasValue)
+            {
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+            }
+            
+            if (thread == null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+            }
+
+            if (thread == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono wątku meczu.", ephemeral: true);
+                return;
+            }
+
+            // Get all players with Typer role
+            var allPlayers = await _lookupService.GetPlayersWithRoleAsync();
+            var allPlayerIds = allPlayers.Select(p => p.Id).ToHashSet();
+
+            // Get players who made predictions for this match
+            var predictions = await _predictionRepository.GetByMatchIdAsync(match.Id);
+            var playersWithPredictions = predictions
+                .Select(p => p.Player.DiscordUserId)
+                .ToHashSet();
+
+            // Find players who didn't predict
+            var untypedPlayers = allPlayers
+                .Where(p => !playersWithPredictions.Contains(p.Id))
+                .ToList();
+
+            if (!untypedPlayers.Any())
+            {
+                await FollowupAsync("✅ Wszyscy gracze już zatypowali ten mecz!", ephemeral: true);
+                return;
+            }
+
+            var playerMentions = untypedPlayers.Select(p => p.Mention).ToList();
+            
+            // Discord limit: max 50 mentions per message
+            const int maxMentionsPerMessage = 50;
+            
+            if (playerMentions.Count <= maxMentionsPerMessage)
+            {
+                // Single message for all untyped players
+                var mentionMessage = $"Przypomnienie: mecz do zatypowania! {string.Join(" ", playerMentions)}";
+                await thread.SendMessageAsync(mentionMessage);
+            }
+            else
+            {
+                // Split into multiple messages
+                for (int i = 0; i < playerMentions.Count; i += maxMentionsPerMessage)
+                {
+                    var batch = playerMentions.Skip(i).Take(maxMentionsPerMessage);
+                    var mentionMessage = i == 0 
+                        ? $"Przypomnienie: mecz do zatypowania! {string.Join(" ", batch)}"
+                        : string.Join(" ", batch);
+                    await thread.SendMessageAsync(mentionMessage);
+                }
+            }
+
+            await FollowupAsync($"✅ Zawołano {untypedPlayers.Count} niezatypowanych graczy.", ephemeral: true);
+            
+            _logger.LogInformation(
+                "Zawołano niezatypowanych graczy - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Liczba: {Count}",
+                user?.Username ?? "Unknown", user?.Id ?? 0, matchId, untypedPlayers.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd podczas wołania niezatypowanych graczy dla meczu {MatchId}", matchId);
+            await FollowupAsync("❌ Wystąpił błąd podczas wołania graczy.", ephemeral: true);
+        }
+    }
+
+    [ComponentInteraction("admin_send_match_table_*")]
+    public async Task HandleSendMatchTableButtonAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status != MatchStatus.Finished || !match.HomeScore.HasValue || !match.AwayScore.HasValue)
+        {
+            await RespondAsync("❌ Mecz nie ma jeszcze wyniku.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true);
+                return;
+            }
+
+            SocketThreadChannel? thread = null;
+            if (match.ThreadId.HasValue)
+            {
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+            }
+            
+            if (thread == null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+            }
+
+            if (thread == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono wątku meczu.", ephemeral: true);
+                return;
+            }
+
+            await PostMatchResultsTableAsync(match, thread);
+            await FollowupAsync("✅ Tabela meczu została wysłana do wątku meczu.", ephemeral: true);
+            
+            _logger.LogInformation(
+                "Tabela meczu wysłana ręcznie - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}",
+                user?.Username ?? "Unknown", user?.Id ?? 0, matchId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd podczas wysyłania tabeli meczu {MatchId}", matchId);
+            await FollowupAsync("❌ Wystąpił błąd podczas wysyłania tabeli.", ephemeral: true);
+        }
+    }
+
     [ComponentInteraction("admin_reveal_predictions_*")]
     public async Task HandleRevealPredictionsButtonAsync(string matchIdStr)
     {
@@ -3045,12 +3212,18 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
         var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
 
+        var deadlineTime = match.TypingDeadline.HasValue 
+            ? TimeZoneInfo.ConvertTimeFromUtc(match.TypingDeadline.Value.UtcDateTime, tz)
+            : (DateTime?)null;
+        
         var modal = new EditMatchModal
         {
             HomeTeam = match.HomeTeam,
             AwayTeam = match.AwayTeam,
             Date = localTime.ToString("yyyy-MM-dd"),
-            Time = localTime.ToString("HH:mm")
+            Time = localTime.ToString("HH:mm"),
+            TypingDeadlineDate = deadlineTime?.ToString("yyyy-MM-dd") ?? "",
+            TypingDeadlineTime = deadlineTime?.ToString("HH:mm") ?? ""
         };
 
         await RespondWithModalAsync($"admin_edit_match_modal_{matchId}", modal);
@@ -3156,6 +3329,25 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
+        // Parse typing deadline if provided
+        DateTimeOffset? typingDeadline = null;
+        if (!string.IsNullOrWhiteSpace(modal.TypingDeadlineDate) && !string.IsNullOrWhiteSpace(modal.TypingDeadlineTime))
+        {
+            try
+            {
+                if (DateTime.TryParse($"{modal.TypingDeadlineDate} {modal.TypingDeadlineTime}", out var localDeadlineTime))
+                {
+                    var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                    var localDeadlineDateTime = DateTime.SpecifyKind(localDeadlineTime, DateTimeKind.Unspecified);
+                    typingDeadline = TimeZoneInfo.ConvertTimeToUtc(localDeadlineDateTime, tz);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Nie udało się sparsować deadline typowania, używam domyślnego");
+            }
+        }
+
         // Update match
         match.HomeTeam = modal.HomeTeam;
         match.AwayTeam = modal.AwayTeam;
@@ -3167,6 +3359,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
         
         match.StartTime = startTime;
+        match.TypingDeadline = typingDeadline; // null = use default (1h before match)
         await _matchRepository.UpdateAsync(match);
 
         // Update or create match card
@@ -3491,20 +3684,20 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             embed.AddField("Tabela punktowa - Sezon", table, false);
             embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
 
-            var resultsChannel = await _lookupService.GetResultsChannelAsync();
-            if (resultsChannel != null)
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null)
             {
-                await resultsChannel.SendMessageAsync(embed: embed.Build());
+                await predictionsChannel.SendMessageAsync(embed: embed.Build());
                 
                 _logger.LogInformation(
                     "Tabela sezonu wygenerowana przez admina - {Username} (ID: {UserId}), Gracze: {PlayerCount}",
                     Context.User.Username, Context.User.Id, players.Count);
                     
-                await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale wyników.", ephemeral: true);
+                await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale typowanie.", ephemeral: true);
             }
             else
             {
-                await FollowupAsync("❌ Nie znaleziono kanału wyników.", ephemeral: true);
+                await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true);
             }
         }
         catch (Exception ex)
@@ -3666,11 +3859,11 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
             embed.WithFooter($"Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
 
-            var resultsChannel = await _lookupService.GetResultsChannelAsync();
-            if (resultsChannel != null)
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null)
             {
-                await resultsChannel.SendMessageAsync(embed: embed.Build());
-                await FollowupAsync($"✅ Tabela kolejki {Application.Services.RoundHelper.GetRoundLabel(round.Number)} została opublikowana w kanale wyników.", ephemeral: true);
+                await predictionsChannel.SendMessageAsync(embed: embed.Build());
+                await FollowupAsync($"✅ Tabela kolejki {Application.Services.RoundHelper.GetRoundLabel(round.Number)} została opublikowana w kanale typowanie.", ephemeral: true);
             }
             else
             {
@@ -3983,58 +4176,9 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild.Id);
     }
 
-    private async Task PostStandingsAfterResultAsync(Domain.Entities.Match match)
-    {
-        var resultsChannel = await _lookupService.GetResultsChannelAsync();
-        if (resultsChannel == null)
-        {
-            _logger.LogError("Results channel not found, cannot post standings");
-            return;
-        }
+    // Removed PostStandingsAfterResultAsync - tables are now sent manually by admin via buttons
 
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null)
-        {
-            _logger.LogWarning("No active season found");
-            return;
-        }
-
-        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
-        if (!players.Any())
-        {
-            _logger.LogInformation("No active players, skipping table generation");
-            return;
-        }
-
-        // 1. Always post match results table (with player predictions)
-        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
-        {
-            await PostMatchResultsTableAsync(match, resultsChannel);
-        }
-
-        // 2. Check if this is the last match in the round - if so, post round table
-        var round = match.Round;
-        if (round != null)
-        {
-            var roundMatches = await _matchRepository.GetByRoundIdAsync(round.Id);
-            var finishedMatches = roundMatches.Where(m => m.Status == MatchStatus.Finished).ToList();
-            
-            // If all matches in round are finished, post round table
-            if (finishedMatches.Count == roundMatches.Count() && roundMatches.Any())
-            {
-                try
-                {
-                    await PostRoundTableEmbedAsync(season, round, players, resultsChannel, match);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to generate round table");
-                }
-            }
-        }
-    }
-
-    private async Task PostMatchResultsTableAsync(Domain.Entities.Match match, ITextChannel channel)
+    private async Task PostMatchResultsTableAsync(Domain.Entities.Match match, IThreadChannel thread)
     {
         var predictions = (await _predictionRepository.GetValidPredictionsByMatchAsync(match.Id))
             .Where(p => p.PlayerScore != null)
@@ -4096,11 +4240,11 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             embed.AddField("Typy graczy", "*Brak typów dla tego meczu*", false);
         }
 
-        await channel.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Match results table posted for match {MatchId}", match.Id);
+        await thread.SendMessageAsync(embed: embed.Build());
+        _logger.LogInformation("Match results table posted for match {MatchId} in thread", match.Id);
     }
 
-    private async Task PostRoundTableEmbedAsync(Domain.Entities.Season season, Domain.Entities.Round round, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match triggerMatch)
+    private async Task PostRoundTableEmbedAsync(Domain.Entities.Season season, Domain.Entities.Round round, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match? triggerMatch = null)
     {
         var roundMatches = (await _matchRepository.GetByRoundIdAsync(round.Id)).Select(m => m.Id).ToList();
         
@@ -4264,10 +4408,10 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var resultsChannel = await _lookupService.GetResultsChannelAsync();
-            if (resultsChannel == null)
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null)
             {
-                await FollowupAsync("❌ Nie znaleziono kanału wyników.", ephemeral: true);
+                await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true);
                 return;
             }
 
@@ -4279,9 +4423,9 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 HomeScore = 0,
                 AwayScore = 0
             };
-            await PostSeasonTableEmbedAsync(season, players, resultsChannel, dummyMatch);
+            await PostSeasonTableEmbedAsync(season, players, predictionsChannel, dummyMatch);
             
-            await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale wyników.", ephemeral: true);
+            await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale typowanie.", ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -4325,10 +4469,10 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            var resultsChannel = await _lookupService.GetResultsChannelAsync();
-            if (resultsChannel == null)
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null)
             {
-                await FollowupAsync("❌ Nie znaleziono kanału wyników.", ephemeral: true);
+                await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true);
                 return;
             }
 
@@ -4340,9 +4484,9 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 HomeScore = 0,
                 AwayScore = 0
             };
-            await PostRoundTableEmbedAsync(season, roundEntity, players, resultsChannel, dummyMatch);
+            await PostRoundTableEmbedAsync(season, roundEntity, players, predictionsChannel, dummyMatch);
             
-            await FollowupAsync($"✅ Tabela kolejki {Application.Services.RoundHelper.GetRoundLabel(round)} została opublikowana w kanale wyników.", ephemeral: true);
+            await FollowupAsync($"✅ Tabela kolejki {Application.Services.RoundHelper.GetRoundLabel(round)} została opublikowana w kanale typowanie.", ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -4556,6 +4700,16 @@ public class EditMatchModal : IModal
     [ModalTextInput("time", TextInputStyle.Short)]
     [RequiredInput(true)]
     public string Time { get; set; } = string.Empty;
+
+    [InputLabel("Deadline typowania - Data (YYYY-MM-DD, opcjonalne)")]
+    [ModalTextInput("typing_deadline_date", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
+    [RequiredInput(false)]
+    public string TypingDeadlineDate { get; set; } = string.Empty;
+
+    [InputLabel("Deadline typowania - Godzina (HH:mm, opcjonalne)")]
+    [ModalTextInput("typing_deadline_time", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
+    [RequiredInput(false)]
+    public string TypingDeadlineTime { get; set; } = string.Empty;
 }
 
 public class SetResultModal : IModal
