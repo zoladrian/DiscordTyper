@@ -2741,11 +2741,11 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.Guild?.Id,
             Context.Channel.Id);
 
-        // If match was already finished, post notification to public channel
+        // If match was already finished, post notification to predictions channel
         if (wasFinished && oldHomeScore.HasValue && oldAwayScore.HasValue)
         {
-            var resultsChannel = await _lookupService.GetResultsChannelAsync();
-            if (resultsChannel != null)
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null)
             {
                 var embed = new EmbedBuilder()
                     .WithTitle("⚠️ Zmiana wyniku zakończonego meczu")
@@ -2759,9 +2759,9 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                     .WithCurrentTimestamp()
                     .Build();
 
-                await resultsChannel.SendMessageAsync(embed: embed);
+                await predictionsChannel.SendMessageAsync(embed: embed);
                 _logger.LogInformation(
-                    "Opublikowano informację o zmianie wyniku meczu {MatchId} na kanale publicznym",
+                    "Opublikowano informację o zmianie wyniku meczu {MatchId} w kanale typowanie",
                     matchId);
             }
         }

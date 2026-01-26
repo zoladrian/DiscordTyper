@@ -144,6 +144,17 @@ using (var scope = app.Services.CreateScope())
                 Log.Warning("Repairing database: Adding missing column PredictionsRevealed");
                 await context.Database.ExecuteSqlRawAsync("ALTER TABLE Matches ADD COLUMN PredictionsRevealed INTEGER NOT NULL DEFAULT 0");
             }
+
+            // 3. Fix TypingDeadline
+            try 
+            {
+                await context.Database.ExecuteSqlRawAsync("SELECT TypingDeadline FROM Matches LIMIT 1");
+            } 
+            catch 
+            {
+                Log.Warning("Repairing database: Adding missing column TypingDeadline");
+                await context.Database.ExecuteSqlRawAsync("ALTER TABLE Matches ADD COLUMN TypingDeadline TEXT NULL");
+            }
         }
         catch (Exception ex)
         {
