@@ -2187,20 +2187,8 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Check if round already exists (prevent duplicates)
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season != null)
-        {
-            var existingRound = await _roundRepository.GetByNumberAsync(season.Id, roundNum);
-            if (existingRound != null && !isKolejkaCreation)
-            {
-                // Round exists and we're not in kolejka creation flow - prevent duplicate
-                await RespondWithErrorAsync(
-                    $"❌ Kolejka o numerze {roundNum} ({Application.Services.RoundHelper.GetRoundLabel(roundNum)}) już istnieje.",
-                    "Możesz dodać mecz do istniejącej kolejki używając panelu '⚙ Zarządzaj kolejką'.");
-                return;
-            }
-        }
+        // Note: CreateMatchAsync will handle getting/creating season and round
+        // We don't need to check for existing rounds here - it's allowed to add matches to existing rounds
 
         // Handle kolejka creation flow - don't create match yet, just collect data
         if (isKolejkaCreation)
@@ -4700,7 +4688,7 @@ public class EditMatchModal : IModal
     [RequiredInput(true)]
     public string Time { get; set; } = string.Empty;
 
-    [InputLabel("Deadline typowania (YYYY-MM-DD HH:mm, opcjonalne)")]
+    [InputLabel("Deadline (YYYY-MM-DD HH:mm)")]
     [ModalTextInput("typing_deadline", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
     [RequiredInput(false)]
     public string TypingDeadline { get; set; } = string.Empty;
