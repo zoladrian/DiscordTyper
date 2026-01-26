@@ -3222,8 +3222,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             AwayTeam = match.AwayTeam,
             Date = localTime.ToString("yyyy-MM-dd"),
             Time = localTime.ToString("HH:mm"),
-            TypingDeadlineDate = deadlineTime?.ToString("yyyy-MM-dd") ?? "",
-            TypingDeadlineTime = deadlineTime?.ToString("HH:mm") ?? ""
+            TypingDeadline = deadlineTime?.ToString("yyyy-MM-dd HH:mm") ?? ""
         };
 
         await RespondWithModalAsync($"admin_edit_match_modal_{matchId}", modal);
@@ -3331,11 +3330,11 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         // Parse typing deadline if provided
         DateTimeOffset? typingDeadline = null;
-        if (!string.IsNullOrWhiteSpace(modal.TypingDeadlineDate) && !string.IsNullOrWhiteSpace(modal.TypingDeadlineTime))
+        if (!string.IsNullOrWhiteSpace(modal.TypingDeadline))
         {
             try
             {
-                if (DateTime.TryParse($"{modal.TypingDeadlineDate} {modal.TypingDeadlineTime}", out var localDeadlineTime))
+                if (DateTime.TryParse(modal.TypingDeadline, out var localDeadlineTime))
                 {
                     var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
                     var localDeadlineDateTime = DateTime.SpecifyKind(localDeadlineTime, DateTimeKind.Unspecified);
@@ -4701,15 +4700,10 @@ public class EditMatchModal : IModal
     [RequiredInput(true)]
     public string Time { get; set; } = string.Empty;
 
-    [InputLabel("Deadline typowania - Data (YYYY-MM-DD, opcjonalne)")]
-    [ModalTextInput("typing_deadline_date", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
+    [InputLabel("Deadline typowania (YYYY-MM-DD HH:mm, opcjonalne)")]
+    [ModalTextInput("typing_deadline", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
     [RequiredInput(false)]
-    public string TypingDeadlineDate { get; set; } = string.Empty;
-
-    [InputLabel("Deadline typowania - Godzina (HH:mm, opcjonalne)")]
-    [ModalTextInput("typing_deadline_time", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
-    [RequiredInput(false)]
-    public string TypingDeadlineTime { get; set; } = string.Empty;
+    public string TypingDeadline { get; set; } = string.Empty;
 }
 
 public class SetResultModal : IModal
