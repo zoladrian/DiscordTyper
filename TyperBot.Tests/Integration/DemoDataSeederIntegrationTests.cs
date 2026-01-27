@@ -95,12 +95,12 @@ public class DemoDataSeederIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedDemoDataAsync_AllMatchResultsObeySum90Rule()
+    public async Task SeedDemoDataAsync_AllMatchResultsAreNonNegative()
     {
         // Act
         await _seeder.SeedDemoDataAsync();
 
-        // Assert: Every finished match must have home + away = 90
+        // Assert: Every finished match must have non-negative scores
         var finishedMatches = await _context.Matches
             .Where(m => m.Status == MatchStatus.Finished)
             .ToListAsync();
@@ -110,8 +110,8 @@ public class DemoDataSeederIntegrationTests : IDisposable
         {
             Assert.NotNull(match.HomeScore);
             Assert.NotNull(match.AwayScore);
-            var sum = match.HomeScore.Value + match.AwayScore.Value;
-            Assert.Equal(90, sum);
+            Assert.True(match.HomeScore.Value >= 0, "Home score must be non-negative");
+            Assert.True(match.AwayScore.Value >= 0, "Away score must be non-negative");
         });
     }
 

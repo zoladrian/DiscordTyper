@@ -2449,6 +2449,16 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             componentBuilder.WithButton(tableButton, row: 2);
         }
 
+        // Add "Restore Match" button for admins if match is cancelled
+        if (match.Status == MatchStatus.Cancelled)
+        {
+            var restoreButton = new ButtonBuilder()
+                .WithCustomId($"admin_restore_match_{match.Id}")
+                .WithLabel("♻️ Przywróć mecz")
+                .WithStyle(ButtonStyle.Success);
+            componentBuilder.WithButton(restoreButton, row: 2);
+        }
+
         // Add "Mention Untyped Players" button for admins if match hasn't started yet
         if (match.Status != MatchStatus.Finished && match.Status != MatchStatus.Cancelled)
         {
@@ -2675,21 +2685,6 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             _logger.LogWarning("Invalid score format - User: {User}, homeScore: '{Home}', awayScore: '{Away}'", 
                 Context.User.Username, modal.HomeScore, modal.AwayScore);
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników.", ephemeral: true);
-            return;
-        }
-
-        // Validate sum = 90
-        if (home + away != 90)
-        {
-            _logger.LogWarning(
-                "Nieprawidłowa suma punktów w wyniku - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Wynik: {Home}:{Away}, Suma: {Sum}",
-                Context.User.Username,
-                Context.User.Id,
-                matchId,
-                home,
-                away,
-                home + away);
-            await RespondAsync("❌ Suma punktów obu drużyn musi wynosić 90 (np. 50:40, 46:44, 45:45).", ephemeral: true);
             return;
         }
 
@@ -3573,6 +3568,72 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             Context.User.Username, Context.User.Id, matchId, match.HomeTeam, match.AwayTeam);
         
         await RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
+    }
+
+    [ComponentInteraction("admin_restore_match_*")]
+    public async Task HandleRestoreMatchAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status != MatchStatus.Cancelled)
+        {
+            await RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
+            return;
+        }
+
+        // Restore match to Scheduled status
+        match.Status = MatchStatus.Scheduled;
+        await _matchRepository.UpdateAsync(match);
+        
+        _logger.LogInformation(
+            "Mecz przywrócony - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
+            Context.User.Username, Context.User.Id, matchId, match.HomeTeam, match.AwayTeam);
+        
+        await RespondAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
+
+        // Update match card to reflect the restored status
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await PostMatchCardAsync(match, roundNum, cardMessage);
+                        _logger.LogInformation("Zaktualizowano kartę meczu po przywróceniu - Mecz ID: {MatchId}", matchId);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po przywróceniu - ID meczu: {MatchId}", matchId);
+        }
     }
 
     [ComponentInteraction("admin_cancel_action_*")]

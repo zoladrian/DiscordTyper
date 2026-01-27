@@ -136,14 +136,12 @@ public class ModalBindingTests : IDisposable
         // Assert parsing
         Assert.True(parseSuccess, "Parameters should parse successfully when names match modal input IDs");
         
-        // Now validate the parsed values
-        var sumIsValid = home + away == 90;
+        // Now validate the parsed values (only non-negative check, no sum requirement)
         var validationResult = _matchService.ValidateMatchResult(home, away);
         var isValid = validationResult.isValid;
         var errorMessage = validationResult.errorMessage;
 
-        // Assert validation
-        Assert.True(sumIsValid, "Sum should equal 90");
+        // Assert validation (should pass for non-negative values, regardless of sum)
         Assert.True(isValid, $"Validation should pass: {errorMessage}");
     }
 
@@ -201,18 +199,19 @@ public class ModalBindingTests : IDisposable
     }
 
     [Fact]
-    public async Task Sum90Rule_EnforcedInModalValidation()
+    public async Task MatchResultValidation_OnlyChecksNonNegative()
     {
-        // Arrange
+        // Arrange - Match results can have any sum, only non-negative values are required
         var testCases = new[]
         {
-            (home: 50, away: 40, shouldPass: true),   // Sum = 90 ✓
-            (home: 45, away: 45, shouldPass: true),   // Sum = 90 ✓
-            (home: 55, away: 35, shouldPass: true),   // Sum = 90 ✓
-            (home: 50, away: 50, shouldPass: false),  // Sum = 100 ✗
-            (home: 45, away: 40, shouldPass: false),  // Sum = 85 ✗
-            (home: 60, away: 40, shouldPass: false),  // Sum = 100 ✗
+            (home: 50, away: 40, shouldPass: true),   // Any sum is valid ✓
+            (home: 45, away: 45, shouldPass: true),   // Any sum is valid ✓
+            (home: 55, away: 35, shouldPass: true),   // Any sum is valid ✓
+            (home: 50, away: 50, shouldPass: true),   // Sum = 100, but still valid ✓
+            (home: 45, away: 40, shouldPass: true),   // Sum = 85, but still valid ✓
+            (home: 60, away: 40, shouldPass: true),   // Sum = 100, but still valid ✓
             (home: -5, away: 95, shouldPass: false),  // Negative ✗
+            (home: 50, away: -10, shouldPass: false), // Negative ✗
         };
 
         // Act & Assert
