@@ -11,10 +11,9 @@ using TyperBot.Infrastructure.Repositories;
 
 namespace TyperBot.DiscordBot.Modules;
 
-public class AdminModule : InteractionModuleBase<SocketInteractionContext>
+public class AdminModule : BaseAdminModule
 {
     private readonly ILogger<AdminModule> _logger;
-    private readonly DiscordSettings _settings;
     private readonly DiscordLookupService _lookupService;
     private readonly MatchManagementService _matchService;
     private readonly IMatchRepository _matchRepository;
@@ -27,6 +26,12 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     private readonly IRoundRepository _roundRepository;
     private readonly AdminMatchCreationStateService _stateService;
     private readonly DemoDataSeeder _demoDataSeeder;
+    private readonly MatchCardService _matchCardService;
+    private readonly MatchResultHandler _matchResultHandler;
+    private readonly SeasonManagementService _seasonManagementService;
+    private readonly AdminPanelService _adminPanelService;
+    private readonly RoundManagementService _roundManagementService;
+    private readonly MatchCreationService _matchCreationService;
 
     public AdminModule(
         ILogger<AdminModule> logger,
@@ -42,10 +47,15 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         ExportService exportService,
         IRoundRepository roundRepository,
         AdminMatchCreationStateService stateService,
-        DemoDataSeeder demoDataSeeder)
+        DemoDataSeeder demoDataSeeder,
+        MatchCardService matchCardService,
+        MatchResultHandler matchResultHandler,
+        SeasonManagementService seasonManagementService,
+        AdminPanelService adminPanelService,
+        RoundManagementService roundManagementService,
+        MatchCreationService matchCreationService) : base(settings.Value)
     {
         _logger = logger;
-        _settings = settings.Value;
         _lookupService = lookupService;
         _matchService = matchService;
         _matchRepository = matchRepository;
@@ -58,84 +68,12 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         _roundRepository = roundRepository;
         _stateService = stateService;
         _demoDataSeeder = demoDataSeeder;
-    }
-
-    private bool IsAdmin(SocketGuildUser? user)
-    {
-        if (user == null) return false;
-        
-        // Check for admin role
-        if (user.Roles.Any(r => r.Name == _settings.AdminRoleName))
-        {
-            return true;
-        }
-        
-        // Check for Discord Administrator permission
-        if (user.GuildPermissions.Administrator)
-        {
-            return true;
-        }
-        
-        return false;
-    }
-
-    private bool IsAllowedChannel(SocketTextChannel? channel)
-    {
-        if (channel == null) return true; // Allow in DMs for testing
-        
-        var user = Context.User as SocketGuildUser;
-        // Administrators can use commands anywhere
-        if (IsAdmin(user))
-        {
-            return true;
-        }
-        
-        var allowedChannels = new[] 
-        { 
-            _settings.Channels.AdminChannel,
-            _settings.Channels.PredictionsChannel 
-        };
-        
-        return allowedChannels.Contains(channel.Name);
-    }
-
-    private async Task RespondWithErrorAsync(string message, string? details = null)
-    {
-        var embed = new EmbedBuilder()
-            .WithTitle("❌ Błąd")
-            .WithDescription(message)
-            .WithColor(Color.Red);
-        
-        if (!string.IsNullOrEmpty(details))
-        {
-            embed.AddField("Szczegóły", details, false);
-        }
-        
-        if (Context.Interaction.HasResponded)
-        {
-            await FollowupAsync(embed: embed.Build(), ephemeral: true);
-        }
-        else
-        {
-            await RespondAsync(embed: embed.Build(), ephemeral: true);
-        }
-    }
-
-    private async Task RespondWithSuccessAsync(string message)
-    {
-        var embed = new EmbedBuilder()
-            .WithTitle("✅ Sukces")
-            .WithDescription(message)
-            .WithColor(Color.Green);
-        
-        if (Context.Interaction.HasResponded)
-        {
-            await FollowupAsync(embed: embed.Build(), ephemeral: true);
-        }
-        else
-        {
-            await RespondAsync(embed: embed.Build(), ephemeral: true);
-        }
+        _matchCardService = matchCardService;
+        _matchResultHandler = matchResultHandler;
+        _seasonManagementService = seasonManagementService;
+        _adminPanelService = adminPanelService;
+        _roundManagementService = roundManagementService;
+        _matchCreationService = matchCreationService;
     }
 
     [SlashCommand("test-modal", "Testowy modal do debugowania - SUPER SZCZEGÓŁOWE LOGOWANIE")]
@@ -144,79 +82,6 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         await RespondAsync("❌ Komenda testowa została usunięta.", ephemeral: true);
     }
 
-
-    [SlashCommand("start-nowego-sezonu", "Rozpocznij nowy sezon typera.")]
-    public async Task StartNewSeasonAsync()
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user))
-        {
-            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
-            return;
-        }
-
-        await RespondWithModalAsync<StartSeasonModal>("admin_start_season_modal");
-    }
-
-    [ModalInteraction("admin_start_season_modal")]
-    public async Task HandleStartSeasonModalAsync(StartSeasonModal modal)
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        try
-        {
-            if (string.IsNullOrWhiteSpace(modal.SeasonName))
-            {
-                await RespondAsync("❌ Nazwa sezonu nie może być pusta.", ephemeral: true);
-                return;
-            }
-
-            var trimmedName = modal.SeasonName.Trim();
-            if (string.IsNullOrWhiteSpace(trimmedName))
-            {
-                await RespondAsync("❌ Nazwa sezonu nie może składać się tylko ze spacji.", ephemeral: true);
-                return;
-            }
-
-            // Deactivate all existing seasons
-            var allSeasons = await _seasonRepository.GetAllAsync();
-            foreach (var season in allSeasons)
-            {
-                if (season.IsActive)
-                {
-                    season.IsActive = false;
-                    await _seasonRepository.UpdateAsync(season);
-                }
-            }
-
-            // Create new season
-            var newSeason = new Domain.Entities.Season
-            {
-                Name = trimmedName,
-                IsActive = true
-            };
-
-            await _seasonRepository.AddAsync(newSeason);
-
-            _logger.LogInformation(
-                "Nowy sezon utworzony - Użytkownik: {Username} (ID: {UserId}), Nazwa: {Name}, ID: {Id}",
-                Context.User.Username, Context.User.Id, newSeason.Name, newSeason.Id);
-
-            await RespondAsync($"✅ Nowy sezon **{newSeason.Name}** został utworzony i ustawiony jako aktywny.", ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, 
-                "Błąd podczas tworzenia sezonu - Użytkownik: {Username} (ID: {UserId}), Nazwa: {Name}",
-                Context.User.Username, Context.User.Id, modal.SeasonName);
-            await RespondAsync("❌ Wystąpił błąd podczas tworzenia sezonu. Sprawdź logi dla szczegółów.", ephemeral: true);
-        }
-    }
 
     [SlashCommand("panel-sezonu", "Otwórz panel sezonu typera.")]
     public async Task AdminPanelAsync()
@@ -228,71 +93,32 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Check if command is used in allowed channel
         var channel = Context.Channel as SocketTextChannel;
         if (!IsAllowedChannel(channel))
         {
             await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}",
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
         
-        _logger.LogInformation(
-            "Panel sezonu otwarty - Komenda: panel-sezonu, Użytkownik: {Username} (ID: {UserId}), Kanał: {ChannelName} (ID: {ChannelId}), Serwer: {GuildId}",
-            Context.User.Username,
-            Context.User.Id,
-            (Context.Channel as SocketTextChannel)?.Name ?? "DM",
-            Context.Channel?.Id ?? 0,
-            Context.Guild?.Id);
-
         var allSeasons = (await _seasonRepository.GetAllAsync()).ToList();
         
-        // If more than one season, show selection
         if (allSeasons.Count > 1)
         {
-            var seasonOptions = allSeasons.Select(s => new SelectMenuOptionBuilder()
-                .WithLabel(s.Name)
-                .WithValue(s.Id.ToString())
-                .WithDescription(s.IsActive ? "Aktywny" : "Zakończony"))
-                .ToList();
-
-            var selectMenu = new SelectMenuBuilder()
-                .WithCustomId("admin_select_season")
-                .WithPlaceholder("Wybierz sezon")
-                .WithOptions(seasonOptions)
-                .WithMinValues(1)
-                .WithMaxValues(1);
-
-            var embed = new EmbedBuilder()
-                .WithTitle("Panel Sezonu Typera")
-                .WithDescription("Wybierz sezon, którym chcesz zarządzać:")
-                .WithColor(Color.Gold)
-                .Build();
-
-            var component = new ComponentBuilder()
-                .WithSelectMenu(selectMenu)
-                .Build();
-
-            await RespondAsync(embed: embed, components: component, ephemeral: true);
+            var panel = await _adminPanelService.GetSeasonSelectionPanelAsync();
+            await RespondAsync(embed: panel.embed, components: panel.components, ephemeral: true);
             return;
         }
 
-        // Single season or no season - proceed directly
         var season = allSeasons.FirstOrDefault(s => s.IsActive) ?? allSeasons.FirstOrDefault();
-        await ShowSeasonPanelAsync(season);
+        var seasonPanel = await _adminPanelService.GetSeasonPanelAsync(season);
+        await RespondAsync(embed: seasonPanel.embed, components: seasonPanel.components, ephemeral: true);
     }
 
     [ComponentInteraction("admin_select_season")]
     public async Task HandleSelectSeasonAsync(string[] selectedValues)
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
         if (selectedValues.Length == 0 || !int.TryParse(selectedValues[0], out var seasonId))
         {
             await RespondAsync("❌ Nieprawidłowy wybór sezonu.", ephemeral: true);
@@ -300,408 +126,22 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
 
         var season = await _seasonRepository.GetByIdAsync(seasonId);
-        if (season == null)
-        {
-            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        await DeferAsync();
-        await ShowSeasonPanelAsync(season);
-    }
-
-    private async Task ShowSeasonPanelAsync(Domain.Entities.Season? season)
-    {
-        var embed = new EmbedBuilder()
-            .WithTitle("Panel Sezonu Typera")
-            .WithColor(Color.Gold);
-
-        if (season != null)
-        {
-            var rounds = (await _roundRepository.GetBySeasonIdAsync(season.Id))
-                .OrderBy(r => r.Number)
-                .ToList();
-
-            if (rounds.Any())
-            {
-                embed.WithDescription($"**Sezon: {season.Name}**\n\nPoniżej lista kolejek z meczami:");
-                
-                // Show last 5 rounds or upcoming ones
-                var displayRounds = rounds.TakeLast(5).ToList(); 
-                // Better logic: Show rounds that are not finished or just all of them if few.
-                // Let's show up to 10 rounds.
-                displayRounds = rounds.Take(10).ToList();
-
-                foreach (var round in displayRounds)
-                {
-                    var matches = (await _matchRepository.GetByRoundIdAsync(round.Id)).ToList(); // Sorted by date in repo
-
-                    if (matches.Any())
-                    {
-                        var matchList = string.Join("\n", matches.Select(m =>
-                        {
-                            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-                            var localTime = TimeZoneInfo.ConvertTimeFromUtc(m.StartTime.UtcDateTime, tz);
-                            
-                            var statusEmoji = m.Status switch
-                            {
-                                MatchStatus.Scheduled => "⏰",
-                                MatchStatus.InProgress => "▶️",
-                                MatchStatus.Finished => "✅",
-                                MatchStatus.Cancelled => "❌",
-                                _ => "❓"
-                            };
-
-                            var score = "";
-                            if (m.Status == MatchStatus.Finished && m.HomeScore.HasValue && m.AwayScore.HasValue)
-                            {
-                                score = $" **({m.HomeScore.Value}:{m.AwayScore.Value})**";
-                            }
-
-                            return $"{statusEmoji} `{localTime:MM-dd HH:mm}` {m.HomeTeam} vs {m.AwayTeam}{score}";
-                        }));
-
-                        if (matchList.Length > 1024)
-                        {
-                            matchList = matchList.Substring(0, 1020) + "...";
-                        }
-                        
-                        embed.AddField($"📋 Kolejka {round.Number}", matchList, inline: false);
-                    }
-                    else
-                    {
-                        embed.AddField($"📋 Kolejka {round.Number}", "*Brak meczów*", inline: false);
-                    }
-                }
-                
-                if (rounds.Count > 10)
-                {
-                    embed.WithFooter($"Pokazano 10 z {rounds.Count} kolejek");
-                }
-            }
-            else
-            {
-                embed.WithDescription("**Sezon aktywny, ale brak kolejek.**\n\nUżyj przycisków poniżej, aby zarządzać meczami.");
-            }
-        }
-        else
-        {
-            embed.WithDescription("**Brak aktywnego sezonu.**\n\nSystem utworzy sezon automatycznie przy pierwszym dodaniu kolejki.");
-        }
-
-        var addKolejkaButton = new ButtonBuilder()
-            .WithCustomId("admin_add_kolejka")
-            .WithLabel("➕ Dodaj kolejkę")
-            .WithStyle(ButtonStyle.Primary);
-
-        var manageKolejkaButton = new ButtonBuilder()
-            .WithCustomId("admin_manage_kolejka")
-            .WithLabel("⚙ Zarządzaj kolejką")
-            .WithStyle(ButtonStyle.Secondary);
-
-        var addMatchButton = new ButtonBuilder()
-            .WithCustomId("admin_add_match")
-            .WithLabel("➕ Dodaj mecz")
-            .WithStyle(ButtonStyle.Secondary);
-
-        var tableSeasonButton = new ButtonBuilder()
-            .WithCustomId("admin_table_season")
-            .WithLabel("📊 Tabela sezonu")
-            .WithStyle(ButtonStyle.Success);
-
-        var tableRoundButton = new ButtonBuilder()
-            .WithCustomId("admin_table_round")
-            .WithLabel("📊 Tabela kolejki")
-            .WithStyle(ButtonStyle.Success);
-
-        var componentBuilder = new ComponentBuilder()
-            .WithButton(addKolejkaButton, row: 0)
-            .WithButton(manageKolejkaButton, row: 0)
-            .WithButton(addMatchButton, row: 1)
-            .WithButton(tableSeasonButton, row: 2)
-            .WithButton(tableRoundButton, row: 2);
-
-        // Add season management buttons if season exists
-        if (season != null)
-        {
-            if (season.IsActive)
-            {
-                var endSeasonButton = new ButtonBuilder()
-                    .WithCustomId($"admin_end_season_{season.Id}")
-                    .WithLabel("🏁 Zakończ sezon")
-                    .WithStyle(ButtonStyle.Danger);
-                componentBuilder.WithButton(endSeasonButton, row: 3);
-            }
-            else
-            {
-                var reactivateSeasonButton = new ButtonBuilder()
-                    .WithCustomId($"admin_reactivate_season_{season.Id}")
-                    .WithLabel("🔄 Cofnij zakończenie sezonu")
-                    .WithStyle(ButtonStyle.Secondary);
-                componentBuilder.WithButton(reactivateSeasonButton, row: 3);
-            }
-        }
-
-        if (Context.Interaction.HasResponded)
-        {
-            await FollowupAsync(embed: embed.Build(), components: componentBuilder.Build());
-        }
-        else
-        {
-            await RespondAsync(embed: embed.Build(), components: componentBuilder.Build());
-        }
-    }
-
-    [ComponentInteraction("admin_end_season_*")]
-    public async Task HandleEndSeasonAsync(string seasonIdStr)
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        if (!int.TryParse(seasonIdStr, out var seasonId))
-        {
-            await RespondAsync("❌ Nieprawidłowy sezon.", ephemeral: true);
-            return;
-        }
-
-        var season = await _seasonRepository.GetByIdAsync(seasonId);
-        if (season == null)
-        {
-            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        season.IsActive = false;
-        await _seasonRepository.UpdateAsync(season);
-
-        _logger.LogInformation(
-            "Sezon zakończony - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
-            Context.User.Username, Context.User.Id, season.Name, season.Id);
-
-        await RespondAsync($"✅ Sezon **{season.Name}** został oznaczony jako zakończony.", ephemeral: true);
-    }
-
-    [ComponentInteraction("admin_reactivate_season_*")]
-    public async Task HandleReactivateSeasonAsync(string seasonIdStr)
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        if (!int.TryParse(seasonIdStr, out var seasonId))
-        {
-            await RespondAsync("❌ Nieprawidłowy sezon.", ephemeral: true);
-            return;
-        }
-
-        var season = await _seasonRepository.GetByIdAsync(seasonId);
-        if (season == null)
-        {
-            await RespondAsync("❌ Sezon nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        // Deactivate all other seasons
-        var allSeasons = await _seasonRepository.GetAllAsync();
-        foreach (var s in allSeasons)
-        {
-            if (s.Id != seasonId && s.IsActive)
-            {
-                s.IsActive = false;
-                await _seasonRepository.UpdateAsync(s);
-            }
-        }
-
-        season.IsActive = true;
-        await _seasonRepository.UpdateAsync(season);
-
-        _logger.LogInformation(
-            "Sezon reaktywowany - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
-            Context.User.Username, Context.User.Id, season.Name, season.Id);
-
-        await RespondAsync($"✅ Sezon **{season.Name}** został reaktywowany i ustawiony jako aktywny.", ephemeral: true);
+        var panel = await _adminPanelService.GetSeasonPanelAsync(season);
+        await RespondAsync(embed: panel.embed, components: panel.components, ephemeral: true);
     }
 
     [ComponentInteraction("admin_add_kolejka")]
     public async Task HandleAddKolejkaButtonAsync()
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        _logger.LogInformation(
-            "Przycisk dodaj kolejkę kliknięty - Użytkownik: {Username} (ID: {UserId}), Serwer: {GuildId}, Kanał: {ChannelId}",
-            Context.User.Username,
-            Context.User.Id,
-            Context.Guild.Id,
-            Context.Channel.Id);
-
-        try
-        {
-            await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
-        }
-        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
-        {
-            _logger.LogWarning("Interakcja wygasła przed otwarciem modala dodaj kolejkę");
-            // Interaction expired, can't open modal - user needs to click button again
-        }
+        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
     public async Task HandleAddKolejkaModalAsync(AddKolejkaModal modal)
     {
-        var kolejkaNumber = modal.KolejkaNumber;
-        var liczbaMeczow = modal.LiczbaMeczow;
-
-        _logger.LogInformation(
-            "Modal admin_add_kolejka_modal otrzymany - Użytkownik: {Username} (ID: {UserId}), KolejkaNum: '{Num}', MatchCount: '{Count}', Guild: {GuildId}, Channel: {ChannelId}",
-            Context.User.Username, Context.User.Id, kolejkaNumber, liczbaMeczow, Context.Guild?.Id, Context.Channel?.Id);
-        
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
-            return;
-        }
-
-        var channel = Context.Channel as SocketTextChannel;
-        if (!IsAllowedChannel(channel))
-        {
-            await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
-                $"Używasz: #{channel?.Name ?? "DM"}");
-            return;
-        }
-
-        if (!int.TryParse(kolejkaNumber, out var roundNumber) || roundNumber < 1 || roundNumber > 18)
-        {
-            _logger.LogWarning(
-                "Nieprawidłowy numer kolejki - Użytkownik: {Username} (ID: {UserId}), Wprowadzono: '{Num}'",
-                Context.User.Username, Context.User.Id, kolejkaNumber);
-            await RespondWithErrorAsync("Nieprawidłowy numer kolejki.", "Podaj liczbę od 1 do 18.");
-            return;
-        }
-
-        if (!int.TryParse(liczbaMeczow, out var matchCount) || matchCount < 1 || matchCount > 8)
-        {
-            _logger.LogWarning(
-                "Nieprawidłowa liczba meczów - Użytkownik: {Username} (ID: {UserId}), Wprowadzono: '{Count}'",
-                Context.User.Username, Context.User.Id, liczbaMeczow);
-            await RespondWithErrorAsync("Nieprawidłowa liczba meczów.", "Podaj liczbę od 1 do 8.");
-            return;
-        }
-
-        _logger.LogInformation(
-            "Modal dodaj kolejkę przesłany - Użytkownik: {Username} (ID: {UserId}), Kolejka: {Round}, Liczba meczów: {MatchCount}, Serwer: {GuildId}",
-            Context.User.Username,
-            Context.User.Id,
-            roundNumber,
-            matchCount,
-            Context.Guild.Id);
-
-        // Respond immediately to avoid interaction timeout, then do database work
-        bool hasResponded = false;
-        try
-        {
-            await RespondAsync("⏳ Sprawdzam dane...", ephemeral: true);
-            hasResponded = true;
-        }
-        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
-        {
-            // Interaction expired, will use FollowupAsync instead
-            hasResponded = false;
-        }
-
-        // Check if round already exists
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null)
-        {
-            _logger.LogWarning(
-                "Brak aktywnego sezonu - Użytkownik: {Username} (ID: {UserId}), Serwer: {GuildId}, Kanał: {ChannelId}",
-                Context.User.Username, Context.User.Id, Context.Guild?.Id ?? 0, Context.Channel?.Id ?? 0);
-            var errorMsg = "❌ Brak aktywnego sezonu. System automatycznie utworzy sezon przy pierwszym użyciu. Spróbuj ponownie za chwilę.";
-            if (hasResponded)
-            {
-                await ModifyOriginalResponseAsync(msg => msg.Content = errorMsg);
-            }
-            else
-            {
-                await FollowupAsync(errorMsg, ephemeral: true);
-            }
-            return;
-        }
-        
-        var existingRound = await _roundRepository.GetByNumberAsync(season.Id, roundNumber);
-        if (existingRound != null)
-        {
-            var errorMsg = $"❌ Kolejka o numerze {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) już istnieje. " +
-                "Możesz ją edytować z panelu '⚙ Zarządzaj kolejką'.";
-            if (hasResponded)
-            {
-                await ModifyOriginalResponseAsync(msg => msg.Content = errorMsg);
-            }
-            else
-            {
-                await FollowupAsync(errorMsg, ephemeral: true);
-            }
-            return;
-        }
-
-        // Check for missing previous rounds
-        var allRounds = await _roundRepository.GetBySeasonIdAsync(season.Id);
-        var existingRoundNumbers = allRounds.Select(r => r.Number).OrderBy(n => n).ToList();
-        var missingRounds = new List<int>();
-        for (int i = 1; i < roundNumber; i++)
-        {
-            if (!existingRoundNumbers.Contains(i))
-            {
-                missingRounds.Add(i);
-            }
-        }
-        
-        // Initialize kolejka creation flow
-        _stateService.ClearState(Context.Guild.Id, Context.User.Id);
-        _stateService.InitializeKolejkaCreation(Context.Guild.Id, Context.User.Id, roundNumber, matchCount);
-
-        // Initialize time and calendar
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-        _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
-        _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, "18:00");
-
-        // Build response message
-        var responseMessage = $"✅ Rozpoczynam tworzenie kolejki {roundNumber} ({Application.Services.RoundHelper.GetRoundLabel(roundNumber)}) z {matchCount} meczami.\n" +
-            "Wypełnij dane dla każdego meczu.";
-        
-        if (missingRounds.Any())
-        {
-            var missingLabels = missingRounds.Select(n => $"{n} ({Application.Services.RoundHelper.GetRoundLabel(n)})");
-            responseMessage += $"\n\n⚠️ **Uwaga:** Brakuje wcześniejszych kolejek: {string.Join(", ", missingLabels)}.\n" +
-                "Możesz kontynuować, ale zalecamy dodanie brakujących kolejek najpierw.";
-        }
-
-        // Update the initial response or send as followup
-        if (hasResponded)
-        {
-            await ModifyOriginalResponseAsync(msg => msg.Content = responseMessage);
-        }
-        else
-        {
-            await FollowupAsync(responseMessage, ephemeral: true);
-        }
-
-        // Show first match form - use FollowupAsync with button to open modal
-        await ShowKolejkaMatchFormAsync();
+        if (!int.TryParse(modal.KolejkaNumber, out var roundNumber)) return;
+        await _roundManagementService.AddRoundAsync(roundNumber, Context.User.Id, Context.User.Username);
+        await RespondAsync("Kolejka dodana.", ephemeral: true);
     }
 
     private async Task ShowKolejkaMatchFormAsync()
@@ -719,7 +159,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var totalMatches = state.TotalMatchesInKolejka;
         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(state.SelectedRound.Value);
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -919,7 +359,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Get default values
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         var defaultDate = now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var defaultTime = "18:00";
@@ -953,7 +393,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
         if (state == null) return;
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -1174,7 +614,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
         if (state == null) return;
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -1199,7 +639,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
         if (state == null) return;
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -1221,7 +661,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
 
@@ -1535,7 +975,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -1564,7 +1004,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         int year = state.CurrentCalendarYear > 0 ? state.CurrentCalendarYear : now.Year;
         int month = state.CurrentCalendarMonth > 0 ? state.CurrentCalendarMonth : now.Month;
@@ -1586,7 +1026,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
 
@@ -1677,7 +1117,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         var defaultDate = !string.IsNullOrEmpty(state.SelectedDate) ? state.SelectedDate : now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var defaultTime = !string.IsNullOrEmpty(state.SelectedTime) ? state.SelectedTime : "18:00";
@@ -1753,7 +1193,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         var roundNumber = state.SelectedRound.Value;
         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNumber);
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
 
         try
         {
@@ -1788,7 +1228,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 createdMatches.Add(match);
 
                 // Post match card
-                await PostMatchCardAsync(match, roundNumber);
+                await _matchCardService.PostMatchCardAsync(match, roundNumber);
             }
 
             // Check for missing matches BEFORE clearing state
@@ -1959,7 +1399,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             // Convert to configured timezone, then to UTC for storage
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
             startTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
             
@@ -1967,7 +1407,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 "Data/godzina sparsowana - Data lokalna: {LocalTime}, UTC: {UtcTime}, Strefa czasowa: {Timezone}",
                 localDateTime,
                 startTime,
-                _settings.Timezone);
+                Settings.Timezone);
         }
         catch (Exception ex)
         {
@@ -1991,7 +1431,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 Context.User.Username,
                 Context.User.Id,
                 startTime,
-                TimeZoneInfo.ConvertTimeFromUtc(startTime.UtcDateTime, TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone)),
+                TimeZoneInfo.ConvertTimeFromUtc(startTime.UtcDateTime, TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone)),
                 Context.Guild?.Id ?? 0,
                 Context.Channel?.Id ?? 0);
             await RespondAsync("❌ Data rozpoczęcia meczu musi być w przyszłości.", ephemeral: true);
@@ -2044,9 +1484,9 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             // Post match card to predictions channel
             var round = match.Round;
             var roundNumForCard = round?.Number ?? roundNum;
-            await PostMatchCardAsync(match, roundNumForCard);
+            await _matchCardService.PostMatchCardAsync(match, roundNumForCard);
 
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localStartTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
             
             _logger.LogInformation(
@@ -2160,13 +1600,13 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             // Convert to configured timezone, then to UTC for storage
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
             startTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
             
             _logger.LogInformation(
                 "Data/godzina sparsowana - Data lokalna: {LocalTime}, UTC: {UtcTime}, Strefa czasowa: {Timezone}",
-                localDateTime, startTime, _settings.Timezone);
+                localDateTime, startTime, Settings.Timezone);
         }
         catch (Exception ex)
         {
@@ -2280,7 +1720,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             match = createdMatch;
 
             // Normal flow - respond first, then post match card
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localStartTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
             
             _logger.LogInformation(
@@ -2294,7 +1734,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             // Post match card (this might take time)
-            await PostMatchCardAsync(match, roundNum);
+            await _matchCardService.PostMatchCardAsync(match, roundNum);
 
             // Update response with success message
             try
@@ -2351,177 +1791,6 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                     // Can't send followup either, just log
                     _logger.LogError("Nie można wysłać komunikatu o błędzie - interakcja wygasła");
                 }
-            }
-        }
-    }
-
-    private async Task PostMatchCardAsync(Domain.Entities.Match match, int roundNum, IUserMessage? existingMessage = null)
-    {
-        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-        if (predictionsChannel == null)
-        {
-            _logger.LogError("Kanał typowań nie znaleziony, nie można opublikować karty meczu");
-            return;
-        }
-
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
-
-        var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
-        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
-        
-        var embedBuilder = new EmbedBuilder()
-            .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}");
-
-        // Show result if match is finished
-        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
-        {
-            embedBuilder
-                .WithDescription($"✅ **Mecz zakończony**\n\n🏆 **Wynik: {match.HomeScore}:{match.AwayScore}**")
-                .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
-                .WithColor(Color.Green);
-        }
-        else
-        {
-            embedBuilder
-                .WithDescription(
-                    "📋 **Zasady typowania:**\n" +
-                    "• Typy są tajne (tylko ty je widzisz)\n" +
-                    "• Suma musi wynosić 90 punktów (np. 50:40, 46:44, 45:45)\n" +
-                    "• Termin: czas rozpoczęcia meczu"
-                )
-                .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
-                .WithColor(Color.Blue);
-        }
-
-        var embed = embedBuilder.Build();
-
-        var componentBuilder = new ComponentBuilder();
-
-        // Only show "Typuj wynik" button if match doesn't have a result yet
-        if (match.Status != MatchStatus.Finished)
-        {
-            var predictButton = new ButtonBuilder()
-                .WithCustomId($"predict_match_{match.Id}")
-                .WithLabel("🔢 Typuj wynik")
-                .WithStyle(ButtonStyle.Primary);
-            componentBuilder.WithButton(predictButton, row: 0);
-        }
-
-        var setResultButton = new ButtonBuilder()
-            .WithCustomId($"admin_set_result_{match.Id}")
-            .WithLabel($"✅ Wynik {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
-            .WithStyle(ButtonStyle.Success);
-
-        var editButton = new ButtonBuilder()
-            .WithCustomId($"admin_edit_match_{match.Id}")
-            .WithLabel($"✏ {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
-            .WithStyle(ButtonStyle.Secondary);
-
-        var deleteButton = new ButtonBuilder()
-            .WithCustomId($"admin_delete_match_{match.Id}")
-            .WithLabel("🗑 Usuń mecz")
-            .WithStyle(ButtonStyle.Danger);
-
-        componentBuilder
-            .WithButton(setResultButton, row: 0)
-            .WithButton(editButton, row: 1)
-            .WithButton(deleteButton, row: 1);
-
-        // Add "Reveal Predictions" button for admins if match start time has passed and not yet revealed
-        var now = DateTimeOffset.UtcNow;
-        if (now >= match.StartTime && !match.PredictionsRevealed)
-        {
-            var revealButton = new ButtonBuilder()
-                .WithCustomId($"admin_reveal_predictions_{match.Id}")
-                .WithLabel("👁️ Ujawnij typy")
-                .WithStyle(ButtonStyle.Secondary);
-            componentBuilder.WithButton(revealButton, row: 2);
-        }
-
-        // Add "Send Match Table" button for admins if match is finished
-        if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)
-        {
-            var tableButton = new ButtonBuilder()
-                .WithCustomId($"admin_send_match_table_{match.Id}")
-                .WithLabel("📊 Wyślij tabelę meczu")
-                .WithStyle(ButtonStyle.Secondary);
-            componentBuilder.WithButton(tableButton, row: 2);
-        }
-
-        // Add "Restore Match" button for admins if match is cancelled
-        if (match.Status == MatchStatus.Cancelled)
-        {
-            var restoreButton = new ButtonBuilder()
-                .WithCustomId($"admin_restore_match_{match.Id}")
-                .WithLabel("♻️ Przywróć mecz")
-                .WithStyle(ButtonStyle.Success);
-            componentBuilder.WithButton(restoreButton, row: 2);
-        }
-
-        // Add "Mention Untyped Players" button for admins if match hasn't started yet
-        if (match.Status != MatchStatus.Finished && match.Status != MatchStatus.Cancelled)
-        {
-            var mentionButton = new ButtonBuilder()
-                .WithCustomId($"admin_mention_untyped_{match.Id}")
-                .WithLabel("🔔 Zawołaj niezatypowanych")
-                .WithStyle(ButtonStyle.Secondary);
-            componentBuilder.WithButton(mentionButton, row: 3);
-        }
-
-        var component = componentBuilder.Build();
-
-        if (existingMessage != null)
-        {
-            // Update existing message
-            await existingMessage.ModifyAsync(prop => { prop.Embed = embed; prop.Components = component; });
-            _logger.LogInformation("Karta meczu zaktualizowana - ID meczu: {MatchId}", match.Id);
-        }
-        else
-        {
-            // Check if thread should be created now
-            var shouldCreateNow = !match.ThreadCreationTime.HasValue || 
-                                  match.ThreadCreationTime.Value <= DateTimeOffset.UtcNow;
-            
-            if (shouldCreateNow)
-            {
-                // Check if thread already exists
-                SocketThreadChannel? thread = null;
-                if (match.ThreadId.HasValue)
-                {
-                    thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                }
-                
-                if (thread == null)
-                {
-                    var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                    // Validate thread name length (Discord limit is 100 characters)
-                    if (threadName.Length > 100)
-                    {
-                        threadName = threadName.Substring(0, 97) + "...";
-                    }
-                    
-                    thread = await predictionsChannel.CreateThreadAsync(
-                        name: threadName,
-                        type: ThreadType.PublicThread
-                    );
-                    
-                    // Save ThreadId to database
-                    match.ThreadId = thread.Id;
-                    await _matchRepository.UpdateAsync(match);
-                }
-
-                var cardMessage = await thread.SendMessageAsync(embed: embed, components: component);
-                
-                // Don't mention players when creating thread - admin can use button to mention untyped players
-                
-                _logger.LogInformation("Karta meczu opublikowana w kanale typowań - ID meczu: {MatchId}, Thread ID: {ThreadId}", match.Id, thread.Id);
-            }
-            else
-            {
-                // Thread will be created later by ThreadCreationService
-                _logger.LogInformation("Karta meczu będzie utworzona później - ID meczu: {MatchId}, ThreadCreationTime: {Time}", 
-                    match.Id, match.ThreadCreationTime?.ToString() ?? "null");
             }
         }
     }
@@ -2667,131 +1936,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     [ModalInteraction("admin_set_result_modal_*", true)]
     public async Task HandleSetResultModalAsync(string matchIdStr, SetResultModal modal)
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        if (!int.TryParse(matchIdStr, out var matchId))
-        {
-            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
-            return;
-        }
-
-        if (!int.TryParse(modal.HomeScore, out var home) || !int.TryParse(modal.AwayScore, out var away))
-        {
-            _logger.LogWarning("Invalid score format - User: {User}, homeScore: '{Home}', awayScore: '{Away}'", 
-                Context.User.Username, modal.HomeScore, modal.AwayScore);
-            await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników.", ephemeral: true);
-            return;
-        }
-
-        // Validate non-negative
-        if (home < 0 || away < 0)
-        {
-            await RespondAsync("❌ Wyniki muszą być nieujemne.", ephemeral: true);
-            return;
-        }
-
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
-        {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        var wasFinished = match.Status == MatchStatus.Finished;
-        var oldHomeScore = match.HomeScore;
-        var oldAwayScore = match.AwayScore;
-
-        // Update match result
-        match.HomeScore = home;
-        match.AwayScore = away;
-        match.Status = MatchStatus.Finished;
-        await _matchRepository.UpdateAsync(match);
-
-        // Calculate scores for all predictions
-        await _predictionService.RecalculateMatchScoresAsync(matchId);
-
-        await RespondAsync($"✅ Wynik ustawiony: **{home}:{away}**\nPunkty obliczone!", ephemeral: true);
-        _logger.LogInformation(
-            "Wynik meczu ustawiony - ID meczu: {MatchId}, Wynik: {Home}:{Away}, Punkty obliczone. Serwer: {GuildId}, Kanał: {ChannelId}",
-            matchId,
-            home,
-            away,
-            Context.Guild?.Id,
-            Context.Channel.Id);
-
-        // If match was already finished, post notification to predictions channel
-        if (wasFinished && oldHomeScore.HasValue && oldAwayScore.HasValue)
-        {
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel != null)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("⚠️ Zmiana wyniku zakończonego meczu")
-                    .WithDescription(
-                        $"**{match.HomeTeam} vs {match.AwayTeam}**\n\n" +
-                        $"Stary wynik: **{oldHomeScore}:{oldAwayScore}**\n" +
-                        $"Nowy wynik: **{home}:{away}**\n\n" +
-                        $"Punkty wszystkich graczy zostały przeliczone.")
-                    .WithColor(Color.Orange)
-                    .WithFooter($"Zmienione przez: {Context.User.Username}")
-                    .WithCurrentTimestamp()
-                    .Build();
-
-                await predictionsChannel.SendMessageAsync(embed: embed);
-                _logger.LogInformation(
-                    "Opublikowano informację o zmianie wyniku meczu {MatchId} w kanale typowanie",
-                    matchId);
-            }
-        }
-
-        // Update match card in thread to remove "Typuj wynik" button
-        try
-        {
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel != null && match.ThreadId.HasValue)
-            {
-                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                if (thread != null)
-                {
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
-                    if (cardMessage != null)
-                    {
-                        var round = match.Round;
-                        var roundNum = round?.Number ?? 0;
-                        await PostMatchCardAsync(match, roundNum, cardMessage);
-                        _logger.LogInformation("Zaktualizowano kartę meczu w wątku po ustawieniu wyniku - Mecz ID: {MatchId}", matchId);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Błąd podczas aktualizacji karty meczu w wątku - Mecz ID: {MatchId}", matchId);
-            // Don't fail the whole operation if updating the card fails
-        }
-
-        // Automatically reveal predictions if not already revealed and match is not cancelled/postponed
-        if (!match.PredictionsRevealed && match.Status == MatchStatus.Finished)
-        {
-            try
-            {
-                await RevealPredictionsForMatchAsync(match);
-                _logger.LogInformation("Typy automatycznie ujawnione po wpisaniu wyniku - Mecz ID: {MatchId}", matchId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Błąd podczas automatycznego ujawniania typów dla meczu {MatchId}", matchId);
-                // Don't fail the whole operation if revealing fails
-            }
-        }
-
-        // Tables are now sent manually by admin via buttons - no automatic posting
+        await _matchResultHandler.HandleSetResultAsync(Context, matchIdStr, modal.HomeScore, modal.AwayScore);
     }
 
     private async Task RevealPredictionsForMatchAsync(Domain.Entities.Match match)
@@ -2914,7 +2059,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             
             if (cardMessage != null)
             {
-                await PostMatchCardAsync(match, match.Round?.Number ?? 0, cardMessage);
+                await _matchCardService.PostMatchCardAsync(match, match.Round?.Number ?? 0, cardMessage);
                 _logger.LogInformation("Zaktualizowano kartę meczu po ujawnieniu typów - Mecz ID: {MatchId}", match.Id);
             }
         }
@@ -3192,7 +2337,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
         var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
 
         var deadlineTime = match.TypingDeadline.HasValue 
@@ -3296,7 +2441,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
 
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
             startTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
         }
@@ -3319,7 +2464,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
             {
                 if (DateTime.TryParse(modal.TypingDeadline, out var localDeadlineTime))
                 {
-                    var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                    var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
                     var localDeadlineDateTime = DateTime.SpecifyKind(localDeadlineTime, DateTimeKind.Unspecified);
                     typingDeadline = TimeZoneInfo.ConvertTimeToUtc(localDeadlineDateTime, tz);
                 }
@@ -3398,12 +2543,12 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (cardMessage != null)
         {
             // Update existing card
-            await PostMatchCardAsync(match, roundNum, cardMessage);
+            await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
         }
         else if (startTime > DateTimeOffset.UtcNow)
         {
             // Create new card (thread doesn't exist or was deleted)
-            await PostMatchCardAsync(match, roundNum, null);
+            await _matchCardService.PostMatchCardAsync(match, roundNum, null);
         }
 
         // Update thread name if exists and changed (with error handling)
@@ -3540,100 +2685,65 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     [ComponentInteraction("admin_confirm_cancel_match_*")]
     public async Task HandleConfirmCancelMatchAsync(string matchIdStr)
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
-
-        if (!int.TryParse(matchIdStr, out var matchId))
-        {
-            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
-            return;
-        }
-
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
-        {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        match.Status = MatchStatus.Cancelled;
-        await _matchRepository.UpdateAsync(match);
-        
-        _logger.LogInformation(
-            "Mecz odwołany - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
-            Context.User.Username, Context.User.Id, matchId, match.HomeTeam, match.AwayTeam);
-        
-        await RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        await _matchResultHandler.HandleCancelMatchAsync(Context, matchId);
     }
 
     [ComponentInteraction("admin_restore_match_*")]
     public async Task HandleRestoreMatchAsync(string matchIdStr)
     {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
-        {
-            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
-            return;
-        }
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        await _matchResultHandler.HandleRestoreMatchAsync(Context, matchId);
+    }
 
-        if (!int.TryParse(matchIdStr, out var matchId))
-        {
-            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
-            return;
-        }
-
+    [ComponentInteraction("admin_set_cancelled_match_date_*")]
+    public async Task HandleSetCancelledMatchDateButtonAsync(string matchIdStr)
+    {
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        
         var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
+        if (match == null) return;
+
+        // Default value: current full hour + 1 day
+        var now = DateTimeOffset.UtcNow;
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(now.UtcDateTime, tz);
+        var defaultDate = localNow.AddDays(1).Date.AddHours(localNow.Hour);
+
+        var modal = new SetCancelledMatchDateModal
         {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
-        }
+            Date = defaultDate.ToString("yyyy-MM-dd"),
+            Time = defaultDate.ToString("HH:mm")
+        };
 
-        if (match.Status != MatchStatus.Cancelled)
-        {
-            await RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
-            return;
-        }
+        await RespondWithModalAsync<SetCancelledMatchDateModal>($"admin_set_cancelled_match_date_modal_{matchId}", modal);
+    }
 
-        // Restore match to Scheduled status
-        match.Status = MatchStatus.Scheduled;
-        await _matchRepository.UpdateAsync(match);
-        
-        _logger.LogInformation(
-            "Mecz przywrócony - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
-            Context.User.Username, Context.User.Id, matchId, match.HomeTeam, match.AwayTeam);
-        
-        await RespondAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
+    [ModalInteraction("admin_set_cancelled_match_date_modal_*", true)]
+    public async Task HandleSetCancelledMatchDateModalAsync(string matchIdStr, SetCancelledMatchDateModal modal)
+    {
+        if (!int.TryParse(matchIdStr, out var matchId)) return;
 
-        // Update match card to reflect the restored status
+        DateTimeOffset newStartTime;
         try
         {
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel != null && match.ThreadId.HasValue)
+            if (!DateTime.TryParse($"{modal.Date} {modal.Time}", out var localTime))
             {
-                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                if (thread != null)
-                {
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
-                    if (cardMessage != null)
-                    {
-                        var round = match.Round;
-                        var roundNum = round?.Number ?? 0;
-                        await PostMatchCardAsync(match, roundNum, cardMessage);
-                        _logger.LogInformation("Zaktualizowano kartę meczu po przywróceniu - Mecz ID: {MatchId}", matchId);
-                    }
-                }
+                await RespondAsync("❌ Nieprawidłowy format daty lub godziny.", ephemeral: true);
+                return;
             }
+
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
+            var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
+            newStartTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po przywróceniu - ID meczu: {MatchId}", matchId);
+            await RespondAsync("❌ Błąd podczas parsowania daty/godziny.", ephemeral: true);
+            return;
         }
+
+        await _matchResultHandler.HandleSetCancelledMatchDateAsync(Context, matchId, newStartTime);
     }
 
     [ComponentInteraction("admin_cancel_action_*")]
@@ -3646,10 +2756,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
     public async Task HandleConfirmHardDeleteMatchAsync(string matchIdStr)
     {
         if (!int.TryParse(matchIdStr, out var matchId)) return;
-        
-        await _matchRepository.DeleteAsync(matchId);
-        
-        await RespondAsync("✅ Mecz został trwale usunięty z bazy danych.", ephemeral: true);
+        await _matchResultHandler.HandleHardDeleteMatchAsync(Context, matchId);
     }
 
 
@@ -4017,7 +3124,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
 
         foreach (var match in matches)
         {
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
             var status = match.Status switch
             {
@@ -4141,7 +3248,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (!IsAllowedChannel(channel))
         {
             await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}",
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
@@ -4557,7 +3664,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (!IsAllowedChannel(channel))
         {
             await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}",
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
@@ -4614,7 +3721,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (!IsAllowedChannel(channel))
         {
             await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}",
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
@@ -4680,7 +3787,7 @@ public class AdminModule : InteractionModuleBase<SocketInteractionContext>
         if (!IsAllowedChannel(channel))
         {
             await RespondWithErrorAsync(
-                $"Ta komenda może być używana tylko w kanałach: #{_settings.Channels.AdminChannel} lub #{_settings.Channels.PredictionsChannel}",
+                $"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}",
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
@@ -4749,79 +3856,7 @@ public class EditMatchModal : IModal
     [RequiredInput(true)]
     public string Time { get; set; } = string.Empty;
 
-    [InputLabel("Deadline (YYYY-MM-DD HH:mm)")]
-    [ModalTextInput("typing_deadline", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
-    [RequiredInput(false)]
-    public string TypingDeadline { get; set; } = string.Empty;
-}
+// End of AdminModule
 
-public class SetResultModal : IModal
-{
-    public string Title => "Ustaw wynik meczu";
-
-    [InputLabel("Wynik drużyny domowej")]
-    [ModalTextInput("home_score", TextInputStyle.Short, placeholder: "50")]
-    [RequiredInput(true)]
-    public string HomeScore { get; set; } = string.Empty;
-
-    [InputLabel("Wynik drużyny wyjazdowej")]
-    [ModalTextInput("away_score", TextInputStyle.Short, placeholder: "40")]
-    [RequiredInput(true)]
-    public string AwayScore { get; set; } = string.Empty;
-}
-
-public class AddMatchModalV2 : IModal
-{
-    public virtual string Title => "Dodaj mecz";
-
-    [InputLabel("Nr Kolejki")]
-    [ModalTextInput("round_number", TextInputStyle.Short)]
-    [RequiredInput(true)]
-    public string RoundNumber { get; set; } = string.Empty;
-
-    [InputLabel("Drużyna domowa")]
-    [ModalTextInput("home_team", TextInputStyle.Short)]
-    [RequiredInput(true)]
-    public string HomeTeam { get; set; } = string.Empty;
-
-    [InputLabel("Drużyna wyjazdowa")]
-    [ModalTextInput("away_team", TextInputStyle.Short)]
-    [RequiredInput(true)]
-    public string AwayTeam { get; set; } = string.Empty;
-
-    [InputLabel("Data (YYYY-MM-DD)")]
-    [ModalTextInput("match_date", TextInputStyle.Short, placeholder: "2023-05-01")]
-    [RequiredInput(true)]
-    public string MatchDate { get; set; } = string.Empty;
-
-    [InputLabel("Godzina (HH:mm)")]
-    [ModalTextInput("match_time", TextInputStyle.Short, placeholder: "18:00")]
-    [RequiredInput(true)]
-    public string MatchTime { get; set; } = string.Empty;
-}
-
-public class StartSeasonModal : IModal
-{
-    public string Title => "Rozpocznij nowy sezon";
-
-    [InputLabel("Nazwa sezonu")]
-    [ModalTextInput("season_name", TextInputStyle.Short, placeholder: "PGE Ekstraliga 2025", maxLength: 200, minLength: 1)]
-    [RequiredInput(true)]
-    public string SeasonName { get; set; } = string.Empty;
-}
-
-public class AddKolejkaModal : IModal
-{
-    public string Title => "Dodaj kolejkę";
-
-    [InputLabel("Numer kolejki (1-18)")]
-    [ModalTextInput("kolejka_number", TextInputStyle.Short, placeholder: "1", minLength: 1, maxLength: 2)]
-    [RequiredInput(true)]
-    public string KolejkaNumber { get; set; } = string.Empty;
-
-    [InputLabel("Liczba meczów w kolejce")]
-    [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 1)]
-    [RequiredInput(true)]
-    public string LiczbaMeczow { get; set; } = string.Empty;
-}
+// End of AdminModule
 

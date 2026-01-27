@@ -18,6 +18,7 @@ public class ReminderService : BackgroundService
     private readonly DiscordLookupService _lookupService;
     private readonly DiscordSocketClient _client;
     private readonly HashSet<int> _remindedMatches = new(); // Track matches that already received reminders
+    private bool _isFirstCheck = true; // Track if this is the first check after startup
 
     public ReminderService(
         ILogger<ReminderService> logger,
@@ -65,16 +66,32 @@ public class ReminderService : BackgroundService
         // Get matches that started > 3 hours ago, are not finished, not cancelled, and don't have results
         var now = DateTimeOffset.UtcNow;
         var threeHoursAgo = now.AddHours(-3);
+        var oneDayAgo = now.AddDays(-1);
 
         var allMatches = await matchRepository.GetAllAsync();
         
-        // If match has both scores set, it's finished - don't send reminder
+        // Filter matches that should receive reminders
         var matchesToRemind = allMatches.Where(m => 
             m.Status != MatchStatus.Cancelled &&
+            m.Status != MatchStatus.Finished && // Don't send reminders for finished matches
             m.StartTime <= threeHoursAgo &&
             !(m.HomeScore.HasValue && m.AwayScore.HasValue) && // If both scores are set, match is finished
-            !_remindedMatches.Contains(m.Id) // Haven't sent reminder for this match yet
+            !_remindedMatches.Contains(m.Id) && // Haven't sent reminder for this match yet
+            // On first check after startup, skip very old matches (>24h) to avoid spam after restart
+            (!_isFirstCheck || m.StartTime >= oneDayAgo)
         ).ToList();
+
+        // Mark that first check is done
+        if (_isFirstCheck)
+        {
+            _isFirstCheck = false;
+            if (matchesToRemind.Any())
+            {
+                _logger.LogInformation(
+                    "Pierwsze sprawdzenie po starcie - pominięto bardzo stare mecze (>24h), znaleziono {Count} meczów do przypomnienia",
+                    matchesToRemind.Count);
+            }
+        }
 
         if (!matchesToRemind.Any()) return;
 

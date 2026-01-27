@@ -1,0 +1,413 @@
+using Discord;
+using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TyperBot.Application.Services;
+using TyperBot.DiscordBot.Models;
+using TyperBot.Domain.Enums;
+using TyperBot.Infrastructure.Repositories;
+
+namespace TyperBot.DiscordBot.Services;
+
+public class MatchResultHandler
+{
+    private readonly ILogger<MatchResultHandler> _logger;
+    private readonly DiscordSettings _settings;
+    private readonly DiscordLookupService _lookupService;
+    private readonly IMatchRepository _matchRepository;
+    private readonly PredictionService _predictionService;
+    private readonly MatchCardService _matchCardService;
+
+    public MatchResultHandler(
+        ILogger<MatchResultHandler> logger,
+        IOptions<DiscordSettings> settings,
+        DiscordLookupService lookupService,
+        IMatchRepository matchRepository,
+        PredictionService predictionService,
+        MatchCardService matchCardService)
+    {
+        _logger = logger;
+        _settings = settings.Value;
+        _lookupService = lookupService;
+        _matchRepository = matchRepository;
+        _predictionService = predictionService;
+        _matchCardService = matchCardService;
+    }
+
+    public async Task HandleSetResultAsync(SocketInteractionContext context, string matchIdStr, string homeScore, string awayScore)
+    {
+        var user = context.User as SocketGuildUser;
+        if (user == null || context.Guild == null)
+        {
+            await context.Interaction.RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await context.Interaction.RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(homeScore, out var home) || !int.TryParse(awayScore, out var away))
+        {
+            _logger.LogWarning("Invalid score format - User: {User}, homeScore: '{Home}', awayScore: '{Away}'", 
+                user.Username, homeScore, awayScore);
+            await context.Interaction.RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników.", ephemeral: true);
+            return;
+        }
+
+        // Validate non-negative
+        if (home < 0 || away < 0)
+        {
+            await context.Interaction.RespondAsync("❌ Wyniki muszą być nieujemne.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var wasFinished = match.Status == MatchStatus.Finished;
+        var oldHomeScore = match.HomeScore;
+        var oldAwayScore = match.AwayScore;
+
+        // Update match result
+        match.HomeScore = home;
+        match.AwayScore = away;
+        match.Status = MatchStatus.Finished;
+        await _matchRepository.UpdateAsync(match);
+
+        // Calculate scores for all predictions
+        await _predictionService.RecalculateMatchScoresAsync(matchId);
+
+        await context.Interaction.RespondAsync($"✅ Wynik ustawiony: **{home}:{away}**\nPunkty obliczone!", ephemeral: true);
+        _logger.LogInformation(
+            "Wynik meczu ustawiony - ID meczu: {MatchId}, Wynik: {Home}:{Away}, Punkty obliczone. Serwer: {GuildId}, Kanał: {ChannelId}",
+            matchId,
+            home,
+            away,
+            context.Guild?.Id,
+            context.Channel.Id);
+
+        // If match was already finished, post notification to predictions channel
+        if (wasFinished && oldHomeScore.HasValue && oldAwayScore.HasValue)
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null)
+            {
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚠️ Zmiana wyniku zakończonego meczu")
+                    .WithDescription(
+                        $"**{match.HomeTeam} vs {match.AwayTeam}**\n\n" +
+                        $"Stary wynik: **{oldHomeScore}:{oldAwayScore}**\n" +
+                        $"Nowy wynik: **{home}:{away}**\n\n" +
+                        $"Punkty wszystkich graczy zostały przeliczone.")
+                    .WithColor(Color.Orange)
+                    .WithFooter($"Zmienione przez: {user.Username}")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                await predictionsChannel.SendMessageAsync(embed: embed);
+                _logger.LogInformation(
+                    "Opublikowano informację o zmianie wyniku meczu {MatchId} w kanale typowanie",
+                    matchId);
+            }
+        }
+
+        // Update match card in thread
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
+                        _logger.LogInformation("Zaktualizowano kartę meczu w wątku po ustawieniu wyniku - Mecz ID: {MatchId}", matchId);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd podczas aktualizacji karty meczu w wątku - Mecz ID: {MatchId}", matchId);
+        }
+    }
+
+    public async Task HandleCancelMatchAsync(SocketInteractionContext context, int matchId)
+    {
+        var user = context.User as SocketGuildUser;
+        if (user == null || context.Guild == null)
+        {
+            await context.Interaction.RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        match.Status = MatchStatus.Cancelled;
+        await _matchRepository.UpdateAsync(match);
+        
+        _logger.LogInformation(
+            "Mecz odwołany - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
+            user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
+        
+        await context.Interaction.RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
+
+        // Update match card
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
+                    }
+
+                    // Send message to all users in thread
+                    var publicEmbed = new EmbedBuilder()
+                        .WithTitle("❌ Mecz odwołany")
+                        .WithDescription(
+                            $"Mecz **{match.HomeTeam} vs {match.AwayTeam}** został odwołany.\n\n" +
+                            $"✅ **Typy zostały zachowane**\n" +
+                            $"📅 **Nowa data meczu:** jeszcze nie ustawiona")
+                        .WithColor(Color.Orange)
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    await thread.SendMessageAsync(embed: publicEmbed);
+
+                    // Send admin-only embed with buttons
+                    var adminEmbed = new EmbedBuilder()
+                        .WithTitle("🔧 Panel administracyjny - Mecz odwołany")
+                        .WithDescription(
+                            $"Mecz **{match.HomeTeam} vs {match.AwayTeam}** został odwołany.\n\n" +
+                            $"**Dostępne akcje:**")
+                        .WithColor(Color.Blue)
+                        .Build();
+
+                    var restoreButton = new ButtonBuilder()
+                        .WithCustomId($"admin_restore_match_{match.Id}")
+                        .WithLabel("♻️ Przywróć mecz")
+                        .WithStyle(ButtonStyle.Success);
+
+                    var setDateButton = new ButtonBuilder()
+                        .WithCustomId($"admin_set_cancelled_match_date_{match.Id}")
+                        .WithLabel("📅 Ustaw datę meczu")
+                        .WithStyle(ButtonStyle.Primary);
+
+                    var adminComponents = new ComponentBuilder()
+                        .WithButton(restoreButton, row: 0)
+                        .WithButton(setDateButton, row: 0)
+                        .Build();
+
+                    // Send admin message (only visible to admins)
+                    await thread.SendMessageAsync(embed: adminEmbed, components: adminComponents);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po odwołaniu - ID meczu: {MatchId}", matchId);
+        }
+    }
+
+    public async Task HandleHardDeleteMatchAsync(SocketInteractionContext context, int matchId)
+    {
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        // Send message to thread before deletion if thread exists
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var embed = new EmbedBuilder()
+                        .WithTitle("⚠️ Mecz usunięty z bazy danych")
+                        .WithDescription(
+                            $"Mecz **{match.HomeTeam} vs {match.AwayTeam}** został trwale usunięty z bazy danych.\n\n" +
+                            $"❌ **Wszystkie typy użytkowników przepadły**")
+                        .WithColor(Color.Red)
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    await thread.SendMessageAsync(embed: embed);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się wysłać wiadomości o usunięciu meczu - ID meczu: {MatchId}", matchId);
+        }
+
+        await _matchRepository.DeleteAsync(matchId);
+        await context.Interaction.RespondAsync("✅ Mecz został trwale usunięty z bazy danych. ⚠️ Wszystkie typy użytkowników przepadły.", ephemeral: true);
+    }
+
+    public async Task HandleRestoreMatchAsync(SocketInteractionContext context, int matchId)
+    {
+        var user = context.User as SocketGuildUser;
+        if (user == null || context.Guild == null)
+        {
+            await context.Interaction.RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status != MatchStatus.Cancelled)
+        {
+            await context.Interaction.RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
+            return;
+        }
+
+        // Restore match to Scheduled status
+        match.Status = MatchStatus.Scheduled;
+        await _matchRepository.UpdateAsync(match);
+        
+        _logger.LogInformation(
+            "Mecz przywrócony - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
+            user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
+        
+        await context.Interaction.RespondAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
+
+        // Update match card
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
+                        _logger.LogInformation("Zaktualizowano kartę meczu po przywróceniu - Mecz ID: {MatchId}", matchId);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po przywróceniu - ID meczu: {MatchId}", matchId);
+        }
+    }
+
+    public async Task HandleSetCancelledMatchDateAsync(SocketInteractionContext context, int matchId, DateTimeOffset newStartTime)
+    {
+        var user = context.User as SocketGuildUser;
+        if (user == null || context.Guild == null)
+        {
+            await context.Interaction.RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status != MatchStatus.Cancelled)
+        {
+            await context.Interaction.RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
+            return;
+        }
+
+        var oldStartTime = match.StartTime;
+        match.StartTime = newStartTime;
+        match.Status = MatchStatus.Scheduled; // Restore to scheduled
+        await _matchRepository.UpdateAsync(match);
+
+        _logger.LogInformation(
+            "Ustawiono nową datę dla odwołanego meczu - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Nowa data: {NewDate}",
+            user.Username, user.Id, matchId, newStartTime);
+
+        await context.Interaction.RespondAsync($"✅ Ustawiono nową datę meczu: **{newStartTime:yyyy-MM-dd HH:mm}**", ephemeral: true);
+
+        // Notify all users in thread
+        try
+        {
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel != null && match.ThreadId.HasValue)
+            {
+                var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (thread != null)
+                {
+                    var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
+                    var localTime = TimeZoneInfo.ConvertTimeFromUtc(newStartTime.UtcDateTime, tz);
+                    var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
+
+                    var embed = new EmbedBuilder()
+                        .WithTitle("📅 Nowa data meczu")
+                        .WithDescription(
+                            $"Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przełożony.\n\n" +
+                            $"**Nowa data:** <t:{timestamp}:F> (<t:{timestamp}:R>)\n\n" +
+                            $"✅ Typy zostały zachowane")
+                        .WithColor(Color.Green)
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    await thread.SendMessageAsync(embed: embed);
+
+                    // Update match card
+                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
+                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    if (cardMessage != null)
+                    {
+                        var round = match.Round;
+                        var roundNum = round?.Number ?? 0;
+                        await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Nie udało się powiadomić użytkowników o nowej dacie - ID meczu: {MatchId}", matchId);
+        }
+    }
+}
