@@ -82,14 +82,14 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
 
-// Configure Serilog
+// Configure Serilog (async file sink avoids blocking threads that Discord gateway may share under load)
 builder.Services.AddSerilog((services, lc) => lc
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .WriteTo.Console()
-    .WriteTo.File(
+    .WriteTo.Async(a => a.File(
         Path.Combine(AppContext.BaseDirectory, "logs", "typerbot-.txt"),
-        rollingInterval: RollingInterval.Day));
+        rollingInterval: RollingInterval.Day)));
 
 // Register settings
 builder.Services.Configure<DiscordSettings>(
@@ -104,17 +104,21 @@ builder.Services.AddInfrastructure(connectionString);
 // Register application services
 builder.Services.AddApplication();
 
-// Configure Discord client
+// Configure Discord client (explicit client factory so Gateway config is always applied)
 var discordConfig = new DiscordSocketConfig
 {
     GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMembers,
     AlwaysDownloadUsers = false, // We'll download users on-demand when needed
     MessageCacheSize = 100,
-    LogLevel = LogSeverity.Info
+    LogLevel = LogSeverity.Info,
+    // Avoid stalling the gateway when a handler is slow; heartbeat/reconnect is handled separately.
+    HandlerTimeout = null,
+    // Slower networks / busy VPS: allow more time before aborting the initial gateway handshake.
+    ConnectionTimeout = 60_000
 };
 
 builder.Services.AddSingleton(discordConfig);
-builder.Services.AddSingleton<DiscordSocketClient>();
+builder.Services.AddSingleton(sp => new DiscordSocketClient(sp.GetRequiredService<DiscordSocketConfig>()));
 
 // Configure InteractionService with proper config to enable modal detection
 var interactionServiceConfig = new InteractionServiceConfig

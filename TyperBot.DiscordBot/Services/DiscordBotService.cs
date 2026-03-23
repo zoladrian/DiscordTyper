@@ -143,93 +143,142 @@ public class DiscordBotService : IHostedService
 
     private Task LogAsync(LogMessage log)
     {
-        var logLevel = log.Severity switch
+        // Discord awaits this delegate; offload so slow I/O (e.g. Serilog file) cannot delay the gateway.
+        _ = Task.Run(() =>
         {
-            LogSeverity.Critical => LogLevel.Critical,
-            LogSeverity.Error => LogLevel.Error,
-            LogSeverity.Warning => LogLevel.Warning,
-            LogSeverity.Info => LogLevel.Information,
-            LogSeverity.Verbose => LogLevel.Debug,
-            LogSeverity.Debug => LogLevel.Trace,
-            _ => LogLevel.Information
-        };
+            try
+            {
+                var logLevel = log.Severity switch
+                {
+                    LogSeverity.Critical => LogLevel.Critical,
+                    LogSeverity.Error => LogLevel.Error,
+                    LogSeverity.Warning => LogLevel.Warning,
+                    LogSeverity.Info => LogLevel.Information,
+                    LogSeverity.Verbose => LogLevel.Debug,
+                    LogSeverity.Debug => LogLevel.Trace,
+                    _ => LogLevel.Information
+                };
 
-        _logger.Log(logLevel, log.Exception, "[{Source}] {Message}", log.Source, log.Message);
+                _logger.Log(logLevel, log.Exception, "[{Source}] {Message}", log.Source, log.Message);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    _logger.LogError(ex, "Failed while forwarding Discord client log");
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        });
+
         return Task.CompletedTask;
     }
 
-    private async Task ReadyAsync()
+    private Task ReadyAsync()
     {
-        _logger.LogInformation("Bot connected as {Username}#{Discriminator}", 
-            _client.CurrentUser.Username, 
-            _client.CurrentUser.Discriminator);
+        // Heavy post-ready work must not block the gateway heartbeat loop.
+        _ = RunReadyInitializationAsync();
+        return Task.CompletedTask;
+    }
 
-        // Resolve and log guild, channels, and roles
-        var guild = await _lookupService.GetGuildAsync();
-        if (guild != null)
-        {
-            _logger.LogInformation("Connected to guild: {GuildName} (ID: {GuildId})", guild.Name, guild.Id);
-        }
-
-        var adminChannel = await _lookupService.GetAdminChannelAsync();
-        if (adminChannel != null)
-        {
-            _logger.LogInformation("Admin channel found: #{ChannelName}", adminChannel.Name);
-        }
-
-        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-        if (predictionsChannel != null)
-        {
-            _logger.LogInformation("Predictions channel found: #{ChannelName}", predictionsChannel.Name);
-        }
-
-        var resultsChannel = await _lookupService.GetResultsChannelAsync();
-        if (resultsChannel != null)
-        {
-            _logger.LogInformation("Results channel found: #{ChannelName}", resultsChannel.Name);
-        }
-
-        if (guild != null)
-        {
-            var playerRole = _lookupService.GetPlayerRole(guild);
-            if (playerRole != null)
-            {
-                _logger.LogInformation("Player role found: {RoleName}", playerRole.Name);
-            }
-
-            var adminRole = _lookupService.GetAdminRole(guild);
-            if (adminRole != null)
-            {
-                _logger.LogInformation("Admin role found: {RoleName}", adminRole.Name);
-            }
-        }
-
-        // Register commands to guild (not global)
-        if (_settings.GuildId != 0)
-        {
-            await _interactionService.RegisterCommandsToGuildAsync(_settings.GuildId);
-            _logger.LogInformation("Registered commands to guild {GuildId}", _settings.GuildId);
-        }
-        else
-        {
-            _logger.LogWarning("GuildId is 0, commands not registered");
-        }
-
-        // Send welcome messages when bot connects to server
+    private async Task RunReadyInitializationAsync()
+    {
         try
         {
-            _logger.LogInformation("Checking and sending welcome messages...");
-            await _welcomeMessageService.SendWelcomeMessagesIfNeededAsync();
-            _logger.LogInformation("Welcome messages check completed");
+            await Task.Yield();
+
+            _logger.LogInformation("Bot connected as {Username}#{Discriminator}",
+                _client.CurrentUser.Username,
+                _client.CurrentUser.Discriminator);
+
+            // Resolve and log guild, channels, and roles
+            var guild = await _lookupService.GetGuildAsync().ConfigureAwait(false);
+            if (guild != null)
+            {
+                _logger.LogInformation("Connected to guild: {GuildName} (ID: {GuildId})", guild.Name, guild.Id);
+            }
+
+            var adminChannel = await _lookupService.GetAdminChannelAsync().ConfigureAwait(false);
+            if (adminChannel != null)
+            {
+                _logger.LogInformation("Admin channel found: #{ChannelName}", adminChannel.Name);
+            }
+
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync().ConfigureAwait(false);
+            if (predictionsChannel != null)
+            {
+                _logger.LogInformation("Predictions channel found: #{ChannelName}", predictionsChannel.Name);
+            }
+
+            var resultsChannel = await _lookupService.GetResultsChannelAsync().ConfigureAwait(false);
+            if (resultsChannel != null)
+            {
+                _logger.LogInformation("Results channel found: #{ChannelName}", resultsChannel.Name);
+            }
+
+            if (guild != null)
+            {
+                var playerRole = _lookupService.GetPlayerRole(guild);
+                if (playerRole != null)
+                {
+                    _logger.LogInformation("Player role found: {RoleName}", playerRole.Name);
+                }
+
+                var adminRole = _lookupService.GetAdminRole(guild);
+                if (adminRole != null)
+                {
+                    _logger.LogInformation("Admin role found: {RoleName}", adminRole.Name);
+                }
+            }
+
+            // Register commands to guild (not global)
+            if (_settings.GuildId != 0)
+            {
+                await _interactionService.RegisterCommandsToGuildAsync(_settings.GuildId).ConfigureAwait(false);
+                _logger.LogInformation("Registered commands to guild {GuildId}", _settings.GuildId);
+            }
+            else
+            {
+                _logger.LogWarning("GuildId is 0, commands not registered");
+            }
+
+            // Send welcome messages when bot connects to server
+            try
+            {
+                _logger.LogInformation("Checking and sending welcome messages...");
+                await _welcomeMessageService.SendWelcomeMessagesIfNeededAsync().ConfigureAwait(false);
+                _logger.LogInformation("Welcome messages check completed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send welcome messages during startup");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send welcome messages during startup");
+            _logger.LogError(ex, "Post-Ready initialization failed");
         }
     }
 
-    private async Task HandleInteractionAsync(SocketInteraction interaction)
+    private Task HandleInteractionAsync(SocketInteraction interaction)
     {
+        _ = ProcessInteractionAsync(interaction).ContinueWith(
+            t =>
+            {
+                if (t.IsFaulted)
+                    _logger.LogError(t.Exception!.GetBaseException(), "Interaction pipeline faulted");
+            },
+            TaskScheduler.Default);
+        return Task.CompletedTask;
+    }
+
+    private async Task ProcessInteractionAsync(SocketInteraction interaction)
+    {
+        await Task.Yield();
+
         var guildId = interaction switch
         {
             SocketSlashCommand s => s.GuildId,
@@ -274,7 +323,7 @@ public class DiscordBotService : IHostedService
             _logger.LogDebug("Dispatching ExecuteCommandAsync for interaction {InteractionId}", interaction.Id);
 
             var sw = Stopwatch.StartNew();
-            var result = await _interactionService.ExecuteCommandAsync(context, scope.ServiceProvider);
+            var result = await _interactionService.ExecuteCommandAsync(context, scope.ServiceProvider).ConfigureAwait(false);
             sw.Stop();
 
             if (!result.IsSuccess)
@@ -371,7 +420,7 @@ public class DiscordBotService : IHostedService
                         errorEmbed.AddField("Szczegóły", details, false);
                     }
 
-                    await interaction.RespondAsync(embed: errorEmbed.Build(), ephemeral: true);
+                    await interaction.RespondAsync(embed: errorEmbed.Build(), ephemeral: true).ConfigureAwait(false);
                 }
                 catch (Exception respondEx)
                 {
@@ -392,7 +441,7 @@ public class DiscordBotService : IHostedService
                             .WithDescription("Wystąpił błąd podczas przetwarzania żądania.")
                             .WithColor(Color.Red)
                             .Build();
-                        await socketInteraction.FollowupAsync(embed: errorEmbed, ephemeral: true);
+                        await socketInteraction.FollowupAsync(embed: errorEmbed, ephemeral: true).ConfigureAwait(false);
                     }
                 }
                 catch (Exception followupEx)
