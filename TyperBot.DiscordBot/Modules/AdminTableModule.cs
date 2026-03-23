@@ -152,10 +152,11 @@ public class AdminTableModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-sezonu-obraz", "Wyślij tabelę sezonu jako PNG; opcjonalnie wybierz kanał")]
+    [SlashCommand("admin-tabela-sezonu-obraz", "Wyślij tabelę sezonu jako PNG; opcjonalnie kanał lub wątek")]
     public async Task AdminPostSeasonTablePngAsync(
-        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
-        SocketTextChannel? kanał = null)
+        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
+        ITextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -197,11 +198,12 @@ public class AdminTableModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki-obraz", "Wyślij tabelę kolejki jako PNG; opcjonalnie wybierz kanał")]
+    [SlashCommand("admin-tabela-kolejki-obraz", "Wyślij tabelę kolejki jako PNG; opcjonalnie kanał lub wątek")]
     public async Task AdminPostRoundTablePngAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
-        SocketTextChannel? kanał = null)
+        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
+        ITextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)

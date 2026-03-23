@@ -793,10 +793,11 @@ public class AdminModule : BaseAdminModule
 
     #region Slash Commands - Tables & Export
 
-    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu (tekst); opcjonalnie wybierz kanał docelowy")]
+    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu (tekst); opcjonalnie kanał lub wątek docelowy")]
     public async Task AdminPostSeasonTableAsync(
-        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
-        SocketTextChannel? kanał = null)
+        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
+        ITextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -819,11 +820,12 @@ public class AdminModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki (tekst); opcjonalnie wybierz kanał docelowy")]
+    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki (tekst); opcjonalnie kanał lub wątek docelowy")]
     public async Task AdminPostRoundTableAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
-        SocketTextChannel? kanał = null)
+        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
+        ITextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }

@@ -61,7 +61,7 @@ public class MatchResultsTableService
     /// <summary>
     /// Posts the match results embed to any text channel (e.g. admin-chosen destination).
     /// </summary>
-    public Task PostToTextChannelAsync(Match match, SocketTextChannel channel) => PostEmbedAsync(match, channel);
+    public Task PostToTextChannelAsync(Match match, ITextChannel channel) => PostEmbedAsync(match, channel);
 
     private static SocketThreadChannel? ResolveThread(Match match, SocketTextChannel predictionsChannel)
     {

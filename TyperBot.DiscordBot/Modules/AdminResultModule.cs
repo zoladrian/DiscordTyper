@@ -173,11 +173,12 @@ public class AdminResultModule : BaseAdminModule
         await _matchResultHandler.HandleSetResultAsync(Context, matchIdStr, modal.HomeScore, modal.AwayScore);
     }
 
-    [SlashCommand("admin-tabela-meczu", "Wyślij tabelę wyników meczu (embed); opcjonalnie na wskazany kanał")]
+    [SlashCommand("admin-tabela-meczu", "Wyślij tabelę wyników meczu (embed); opcjonalnie kanał lub wątek")]
     public async Task AdminPostMatchTableSlashAsync(
         [Summary(description: "ID meczu (z bazy / z przycisku na karcie)")] int mecz,
-        [Summary(description: "Kanał docelowy — puste = wątek meczu przy typowaniu")]
-        SocketTextChannel? kanał = null)
+        [Summary(description: "Kanał lub wątek — puste = wątek meczu przy typowaniu")]
+        [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
+        ITextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
