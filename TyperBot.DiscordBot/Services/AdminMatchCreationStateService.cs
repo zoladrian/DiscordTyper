@@ -93,6 +93,7 @@ public class AdminMatchCreationStateService
     public void InitializeBatchRoundCreation(ulong guildId, ulong userId, int roundNumber, int totalMatches)
     {
         var state = GetOrCreateState(guildId, userId);
+        state.CreatedAt = DateTimeOffset.UtcNow;
         state.IsBatchRoundCreation = true;
         state.SelectedRound = roundNumber;
         state.TotalMatchesInBatch = totalMatches;

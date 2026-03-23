@@ -24,22 +24,23 @@ public class MatchRepository : IMatchRepository
 
     public async Task<IEnumerable<Match>> GetByRoundIdAsync(int roundId)
     {
-        return await _context.Matches
+        // SQLite: ORDER BY DateTimeOffset is not supported — sort after materialization.
+        var list = await _context.Matches
             .AsNoTracking()
             .Where(m => m.RoundId == roundId)
-            .OrderBy(m => m.StartTime)
             .ToListAsync();
+        return list.OrderBy(m => m.StartTime).ToList();
     }
 
     public async Task<IEnumerable<Match>> GetUpcomingMatchesAsync()
     {
         var now = DateTimeOffset.UtcNow;
-        return await _context.Matches
+        var list = await _context.Matches
             .AsNoTracking()
             .Include(m => m.Round)
             .Where(m => m.Status == MatchStatus.Scheduled && m.StartTime > now)
-            .OrderBy(m => m.StartTime)
             .ToListAsync();
+        return list.OrderBy(m => m.StartTime).ToList();
     }
 
     public async Task<IEnumerable<Match>> GetMatchesReadyForThreadCreationAsync(DateTimeOffset now)

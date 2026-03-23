@@ -67,6 +67,44 @@ public class MatchRepositorySqliteIntegrationTests : IDisposable
         reminders.Should().ContainSingle(m => m.HomeTeam == "NeedsReminder");
     }
 
+    [Fact]
+    public async Task GetByRoundIdAsync_orders_by_start_time_on_sqlite()
+    {
+        var season = new Season { Name = "Order Test", IsActive = true };
+        _context.Seasons.Add(season);
+        await _context.SaveChangesAsync();
+
+        var round = new Round { SeasonId = season.Id, Number = 1, Description = "R1" };
+        _context.Rounds.Add(round);
+        await _context.SaveChangesAsync();
+
+        var t1 = DateTimeOffset.Parse("2025-03-01T12:00:00Z");
+        var t2 = DateTimeOffset.Parse("2025-03-01T18:00:00Z");
+        _context.Matches.AddRange(
+            new Match
+            {
+                RoundId = round.Id,
+                HomeTeam = "Later",
+                AwayTeam = "B",
+                StartTime = t2,
+                Status = MatchStatus.Scheduled
+            },
+            new Match
+            {
+                RoundId = round.Id,
+                HomeTeam = "Earlier",
+                AwayTeam = "A",
+                StartTime = t1,
+                Status = MatchStatus.Scheduled
+            });
+        await _context.SaveChangesAsync();
+
+        var ordered = (await _repository.GetByRoundIdAsync(round.Id)).ToList();
+        ordered.Should().HaveCount(2);
+        ordered[0].HomeTeam.Should().Be("Earlier");
+        ordered[1].HomeTeam.Should().Be("Later");
+    }
+
     public void Dispose()
     {
         _context.Dispose();

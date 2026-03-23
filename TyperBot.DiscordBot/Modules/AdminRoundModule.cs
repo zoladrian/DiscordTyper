@@ -19,6 +19,7 @@ public class AdminRoundModule : BaseAdminModule
     private readonly IMatchRepository _matchRepository;
     private readonly RoundManagementService _roundManagementService;
     private readonly AdminPanelService _adminPanelService;
+    private readonly AdminMatchCreationStateService _matchCreationState;
 
     public AdminRoundModule(
         ILogger<AdminRoundModule> logger,
@@ -27,7 +28,8 @@ public class AdminRoundModule : BaseAdminModule
         IRoundRepository roundRepository,
         IMatchRepository matchRepository,
         RoundManagementService roundManagementService,
-        AdminPanelService adminPanelService) : base(settings.Value)
+        AdminPanelService adminPanelService,
+        AdminMatchCreationStateService matchCreationState) : base(settings.Value)
     {
         _logger = logger;
         _seasonRepository = seasonRepository;
@@ -35,6 +37,7 @@ public class AdminRoundModule : BaseAdminModule
         _matchRepository = matchRepository;
         _roundManagementService = roundManagementService;
         _adminPanelService = adminPanelService;
+        _matchCreationState = matchCreationState;
     }
 
     [ComponentInteraction("admin_add_kolejka")]
@@ -54,11 +57,13 @@ public class AdminRoundModule : BaseAdminModule
     public async Task HandleAddRoundModalAsync(AddRoundModal modal)
     {
         var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user) || Context.Guild == null)
+        if (!IsAdmin(user) || Context.Guild == null || user == null)
         {
             await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
             return;
         }
+
+        var guild = Context.Guild;
 
         if (!int.TryParse(modal.RoundNumber, out var roundNumber))
         {
@@ -66,10 +71,43 @@ public class AdminRoundModule : BaseAdminModule
             return;
         }
 
+        if (!int.TryParse(modal.MatchCount.Trim(), out var matchCount) || matchCount < 0 || matchCount > 18)
+        {
+            await RespondAsync("❌ Liczba meczów musi być z zakresu 0–18.", ephemeral: true);
+            return;
+        }
+
         await DeferAsync(ephemeral: true);
 
         var result = await _roundManagementService.AddRoundAsync(roundNumber, user.Id, user.Username);
-        await FollowupAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
+        if (!result.success)
+        {
+            await FollowupAsync($"❌ {result.message}", ephemeral: true);
+            return;
+        }
+
+        if (matchCount == 0)
+        {
+            await FollowupAsync(
+                $"✅ {result.message}\n\nKolejka jest pusta — dodaj mecze przyciskiem **⚽ Dodaj mecz** lub **Zarządzaj kolejką**.",
+                ephemeral: true);
+            return;
+        }
+
+        _matchCreationState.ClearState(guild.Id, user.Id);
+        _matchCreationState.InitializeBatchRoundCreation(guild.Id, user.Id, roundNumber, matchCount);
+
+        var roundLabel = RoundHelper.GetRoundLabel(roundNumber);
+        var openModalButton = new ButtonBuilder()
+            .WithCustomId("admin_kolejka_open_match_modal_1")
+            .WithLabel($"📝 Dodaj mecz 1/{matchCount}")
+            .WithStyle(ButtonStyle.Primary);
+        var component = new ComponentBuilder().WithButton(openModalButton).Build();
+
+        await FollowupAsync(
+            $"✅ {result.message}\n\n📝 **{roundLabel} — mecz 1/{matchCount}**\nKliknij przycisk, aby wypełnić dane meczu (powtórz dla każdego meczu w kolejce).",
+            components: component,
+            ephemeral: true);
     }
 
     [ComponentInteraction("admin_manage_kolejka")]
