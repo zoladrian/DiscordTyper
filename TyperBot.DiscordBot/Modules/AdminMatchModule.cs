@@ -111,10 +111,25 @@ public class AdminMatchModule : BaseAdminModule
     [ComponentInteraction("admin_delete_match_*")]
     public async Task HandleDeleteMatchButtonAsync(string matchIdStr)
     {
-        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
         
         var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null) return;
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
 
         var embed = new EmbedBuilder()
             .WithTitle("🗑️ Usuń mecz")
@@ -142,21 +157,51 @@ public class AdminMatchModule : BaseAdminModule
     [ComponentInteraction("admin_confirm_cancel_match_*")]
     public async Task HandleConfirmCancelMatchAsync(string matchIdStr)
     {
-        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
         await _matchResultHandler.HandleCancelMatchAsync(Context, matchId);
     }
 
     [ComponentInteraction("admin_restore_match_*")]
     public async Task HandleRestoreMatchAsync(string matchIdStr)
     {
-        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
         await _matchResultHandler.HandleRestoreMatchAsync(Context, matchId);
     }
 
     [ComponentInteraction("admin_set_cancelled_match_date_*")]
     public async Task HandleSetCancelledMatchDateButtonAsync(string matchIdStr)
     {
-        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
         
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null) return;
@@ -205,7 +250,17 @@ public class AdminMatchModule : BaseAdminModule
     [ComponentInteraction("admin_confirm_hard_delete_match_*")]
     public async Task HandleConfirmHardDeleteMatchAsync(string matchIdStr)
     {
-        if (!int.TryParse(matchIdStr, out var matchId)) return;
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
         await _matchResultHandler.HandleHardDeleteMatchAsync(Context, matchId);
     }
 }

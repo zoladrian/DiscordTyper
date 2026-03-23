@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using TyperBot.Application.Services;
@@ -31,11 +32,14 @@ public class PredictionServiceTests
         _playerScoreRepo = new Mock<IPlayerScoreRepository>();
         _scoreCalculator = new ScoreCalculator();
         
-        // Create in-memory database context for testing
+        // SQLite :memory: — obsługuje transakcje używane w CreateOrUpdatePredictionAsync (InMemory nie)
+        var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
         var options = new DbContextOptionsBuilder<TyperContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseSqlite(connection)
             .Options;
         _context = new TyperContext(options);
+        _context.Database.EnsureCreated();
         
         _service = new PredictionService(
             _predictionRepo.Object,
@@ -54,7 +58,7 @@ public class PredictionServiceTests
 
         // Assert
         result.isValid.Should().BeFalse();
-        result.errorMessage.Should().Contain("greater than or equal to 0");
+        result.errorMessage.Should().Contain("większe lub równe 0");
     }
 
     [Theory]
@@ -68,7 +72,7 @@ public class PredictionServiceTests
 
         // Assert
         result.isValid.Should().BeFalse();
-        result.errorMessage.Should().Contain("must equal 90");
+        result.errorMessage.Should().Contain("90").And.Contain($"{home + away}");
     }
 
     [Fact]
@@ -83,7 +87,7 @@ public class PredictionServiceTests
 
         // Assert
         result.isValid.Should().BeFalse();
-        result.errorMessage.Should().Contain("not found");
+        result.errorMessage.Should().Contain("nie znaleziony");
     }
 
     [Fact]
@@ -103,7 +107,7 @@ public class PredictionServiceTests
 
         // Assert
         result.isValid.Should().BeFalse();
-        result.errorMessage.Should().Contain("expired");
+        result.errorMessage.Should().Contain("minął");
     }
 
     [Fact]
@@ -113,7 +117,8 @@ public class PredictionServiceTests
         var match = new DomainMatch
         {
             Id = 1,
-            StartTime = DateTimeOffset.UtcNow.AddHours(1),
+            StartTime = DateTimeOffset.UtcNow.AddHours(3),
+            TypingDeadline = DateTimeOffset.UtcNow.AddDays(1),
             Status = MatchStatus.Cancelled
         };
         _matchRepo.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(match);
@@ -123,7 +128,7 @@ public class PredictionServiceTests
 
         // Assert
         result.isValid.Should().BeFalse();
-        result.errorMessage.Should().Contain("cancelled");
+        result.errorMessage.Should().Contain("odwołany");
     }
 
     [Fact]
@@ -133,7 +138,8 @@ public class PredictionServiceTests
         var match = new DomainMatch
         {
             Id = 1,
-            StartTime = DateTimeOffset.UtcNow.AddHours(1),
+            StartTime = DateTimeOffset.UtcNow.AddHours(3),
+            TypingDeadline = DateTimeOffset.UtcNow.AddDays(1),
             Status = MatchStatus.Scheduled
         };
         _matchRepo.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(match);
@@ -164,6 +170,14 @@ public class PredictionServiceTests
     public async Task CreateOrUpdatePredictionAsync_NewPrediction_CreatesSuccessfully()
     {
         // Arrange
+        var match = new DomainMatch
+        {
+            Id = 1,
+            StartTime = DateTimeOffset.UtcNow.AddHours(3),
+            TypingDeadline = DateTimeOffset.UtcNow.AddDays(1),
+            Status = MatchStatus.Scheduled
+        };
+        _matchRepo.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(match);
         var player = new DomainPlayer { Id = 1, DiscordUserId = 123 };
         _playerRepo.Setup(x => x.GetByDiscordUserIdAsync(123)).ReturnsAsync(player);
         _predictionRepo.Setup(x => x.GetByMatchAndPlayerAsync(1, 1))
@@ -185,6 +199,14 @@ public class PredictionServiceTests
     public async Task CreateOrUpdatePredictionAsync_ExistingPrediction_UpdatesSuccessfully()
     {
         // Arrange
+        var match = new DomainMatch
+        {
+            Id = 1,
+            StartTime = DateTimeOffset.UtcNow.AddHours(3),
+            TypingDeadline = DateTimeOffset.UtcNow.AddDays(1),
+            Status = MatchStatus.Scheduled
+        };
+        _matchRepo.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(match);
         var player = new DomainPlayer { Id = 1, DiscordUserId = 123 };
         var existing = new DomainPrediction { Id = 1, MatchId = 1, PlayerId = 1, HomeTip = 45, AwayTip = 45 };
         _playerRepo.Setup(x => x.GetByDiscordUserIdAsync(123)).ReturnsAsync(player);

@@ -18,7 +18,6 @@ public class MatchRepository : IMatchRepository
     {
         return await _context.Matches
             .Include(m => m.Round)
-            .Include(m => m.Predictions)
             .FirstOrDefaultAsync(m => m.Id == id);
     }
 
@@ -50,7 +49,9 @@ public class MatchRepository : IMatchRepository
 
     public async Task<IEnumerable<Match>> GetAllAsync()
     {
-        return await _context.Matches.ToListAsync();
+        return await _context.Matches
+            .Include(m => m.Round)
+            .ToListAsync();
     }
 
     public async Task<Match> AddAsync(Match match)

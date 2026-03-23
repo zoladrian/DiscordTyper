@@ -111,9 +111,7 @@ public class ThreadCreationService : BackgroundService
                 }
 
                 // Create thread and post match card
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(settings.Value.Timezone);
-                var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
-                var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
+                var timestamp = match.StartTime.ToUnixTimeSeconds();
 
                 var embed = new EmbedBuilder()
                     .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}")

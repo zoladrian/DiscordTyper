@@ -38,10 +38,7 @@ public class MatchCardService
             return;
         }
 
-        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-        var localTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
-
-        var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
+        var timestamp = match.StartTime.ToUnixTimeSeconds();
         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
         
         var embedBuilder = new EmbedBuilder()

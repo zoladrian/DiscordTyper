@@ -182,20 +182,45 @@ public class TableGenerator
         canvas.DrawText(footerText, TableWidth / 2, totalHeight - FooterHeight / 2 + 5, textPaint);
     }
 
+    private static HashSet<int> ResolveSeasonMatchIds(Season season)
+    {
+        var set = new HashSet<int>();
+        if (season.Rounds == null) return set;
+        foreach (var r in season.Rounds)
+        {
+            if (r.Matches == null) continue;
+            foreach (var m in r.Matches)
+                set.Add(m.Id);
+        }
+        return set;
+    }
+
     private List<PlayerStanding> CalculateSeasonStandings(List<Player> players, Season season)
     {
         var standings = new List<PlayerStanding>();
+        var seasonMatchIds = ResolveSeasonMatchIds(season);
+        var filterBySeason = seasonMatchIds.Count > 0;
 
         foreach (var player in players.Where(p => p.IsActive))
         {
+            IEnumerable<PlayerScore> scores = player.PlayerScores;
+            if (filterBySeason)
+            {
+                scores = scores.Where(s =>
+                    s.Prediction != null
+                    && s.Prediction.IsValid
+                    && seasonMatchIds.Contains(s.Prediction.MatchId));
+            }
+
+            var scoreList = scores.ToList();
             var standing = new PlayerStanding
             {
                 PlayerName = player.DiscordUsername,
-                TotalPoints = player.PlayerScores.Sum(ps => ps.Points),
+                TotalPoints = scoreList.Sum(ps => ps.Points),
                 BucketCounts = new Dictionary<string, int>()
             };
 
-            foreach (var score in player.PlayerScores)
+            foreach (var score in scoreList)
             {
                 string bucketKey = score.Bucket.ToString();
                 if (!standing.BucketCounts.ContainsKey(bucketKey))

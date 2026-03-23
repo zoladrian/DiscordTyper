@@ -54,27 +54,37 @@ public class PredictionService
             return (false, "Mecz nie znaleziony.");
         }
 
-        var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1); // Default: 1 hour before match
-        if (DateTimeOffset.UtcNow >= deadline)
-        {
-            return (false, "Czas na typowanie minął. Możesz typować tylko przed deadline typowania.");
-        }
-
-        // Validation 4: Match not cancelled
+        // Validation 4: Match status checks
         if (match.Status == MatchStatus.Cancelled)
         {
             return (false, "Ten mecz został odwołany.");
         }
 
-        // Validation 5: Allow postponed matches (user can change prediction)
+        if (match.Status == MatchStatus.Finished)
+        {
+            return (false, "Ten mecz już się zakończył.");
+        }
+
+        if (match.Status == MatchStatus.InProgress)
+        {
+            return (false, "Ten mecz jest w trakcie rozgrywania.");
+        }
+
+        // Validation 5: Timing — postponed uses StartTime, others use TypingDeadline
         if (match.Status == MatchStatus.Postponed)
         {
-            // Postponed matches can still be predicted/updated before their original start time
             if (DateTimeOffset.UtcNow >= match.StartTime)
             {
                 return (false, "Czas na typowanie minął. Możesz typować tylko przed pierwotną godziną rozpoczęcia meczu.");
             }
-            // Allow prediction for postponed matches
+        }
+        else
+        {
+            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                return (false, "Czas na typowanie minął. Możesz typować tylko przed deadline typowania.");
+            }
         }
 
         return (true, null);
@@ -162,6 +172,18 @@ public class PredictionService
         }
     }
 
+    public async Task ClearMatchScoresAsync(int matchId)
+    {
+        var predictions = await _predictionRepository.GetValidPredictionsByMatchAsync(matchId);
+        foreach (var prediction in predictions)
+        {
+            if (prediction.PlayerScore != null)
+            {
+                await _playerScoreRepository.DeleteAsync(prediction.PlayerScore.Id);
+            }
+        }
+    }
+
     public async Task RecalculateMatchScoresAsync(int matchId)
     {
         var match = await _matchRepository.GetByIdAsync(matchId);
@@ -170,35 +192,46 @@ public class PredictionService
             return;
         }
 
-        var predictions = await _predictionRepository.GetValidPredictionsByMatchAsync(matchId);
-
-        foreach (var prediction in predictions)
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            var (points, bucket) = _scoreCalculator.CalculateScore(
-                match.HomeScore.Value,
-                match.AwayScore.Value,
-                prediction.HomeTip,
-                prediction.AwayTip
-            );
+            var predictions = await _predictionRepository.GetValidPredictionsByMatchAsync(matchId);
 
-            if (prediction.PlayerScore == null)
+            foreach (var prediction in predictions)
             {
-                var playerScore = new PlayerScore
+                var (points, bucket) = _scoreCalculator.CalculateScore(
+                    match.HomeScore.Value,
+                    match.AwayScore.Value,
+                    prediction.HomeTip,
+                    prediction.AwayTip
+                );
+
+                if (prediction.PlayerScore == null)
                 {
-                    PredictionId = prediction.Id,
-                    PlayerId = prediction.PlayerId, // ← CRITICAL FIX: Set PlayerId for direct relationship
-                    Points = points,
-                    Bucket = bucket
-                };
-                await _playerScoreRepository.AddAsync(playerScore);
+                    var playerScore = new PlayerScore
+                    {
+                        PredictionId = prediction.Id,
+                        PlayerId = prediction.PlayerId,
+                        Points = points,
+                        Bucket = bucket
+                    };
+                    await _playerScoreRepository.AddAsync(playerScore);
+                }
+                else
+                {
+                    prediction.PlayerScore.Points = points;
+                    prediction.PlayerScore.Bucket = bucket;
+                    prediction.PlayerScore.PlayerId = prediction.PlayerId;
+                    await _playerScoreRepository.UpdateAsync(prediction.PlayerScore);
+                }
             }
-            else
-            {
-                prediction.PlayerScore.Points = points;
-                prediction.PlayerScore.Bucket = bucket;
-                prediction.PlayerScore.PlayerId = prediction.PlayerId; // ← Ensure consistency
-                await _playerScoreRepository.UpdateAsync(prediction.PlayerScore);
-            }
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 }

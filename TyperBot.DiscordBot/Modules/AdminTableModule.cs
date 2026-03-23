@@ -39,92 +39,10 @@ public class AdminTableModule : BaseAdminModule
         _tableGenerator = tableGenerator;
     }
 
-    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu do kanału wyników (tylko dla adminów)")]
-    public async Task SendSeasonTableAsync()
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user))
-        {
-            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
-            return;
-        }
-
-        await DeferAsync(ephemeral: true);
-
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null)
-        {
-            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
-            return;
-        }
-
-        var resultsChannel = await _lookupService.GetResultsChannelAsync();
-        if (resultsChannel == null)
-        {
-            await FollowupAsync("❌ Kanał wyników nie został znaleziony.", ephemeral: true);
-            return;
-        }
-
-        try
-        {
-            var imageStream = await _tableGenerator.GenerateSeasonTableImageAsync(season.Id);
-            await resultsChannel.SendFileAsync(imageStream, $"tabela_sezonu_{DateTime.Now:yyyyMMdd}.png", $"🏆 **Aktualna tabela sezonu: {season.Name}**");
-            await FollowupAsync("✅ Tabela sezonu została wysłana na kanał wyników.", ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Błąd podczas generowania tabeli sezonu");
-            await FollowupAsync($"❌ Wystąpił błąd podczas generowania tabeli: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki do kanału wyników (tylko dla adminów)")]
-    public async Task SendRoundTableAsync(int roundNumber)
-    {
-        var user = Context.User as SocketGuildUser;
-        if (!IsAdmin(user))
-        {
-            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
-            return;
-        }
-
-        await DeferAsync(ephemeral: true);
-
-        var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null)
-        {
-            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
-            return;
-        }
-
-        var round = await _roundRepository.GetByNumberAsync(season.Id, roundNumber);
-        if (round == null)
-        {
-            await FollowupAsync($"❌ Kolejka {roundNumber} nie została znaleziona.", ephemeral: true);
-            return;
-        }
-
-        var resultsChannel = await _lookupService.GetResultsChannelAsync();
-        if (resultsChannel == null)
-        {
-            await FollowupAsync("❌ Kanał wyników nie został znaleziony.", ephemeral: true);
-            return;
-        }
-
-        try
-        {
-            var imageStream = await _tableGenerator.GenerateRoundTableImageAsync(round.Id);
-            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNumber);
-            await resultsChannel.SendFileAsync(imageStream, $"tabela_kolejki_{roundNumber}_{DateTime.Now:yyyyMMdd}.png", $"📊 **Tabela kolejki: {roundLabel}**");
-            await FollowupAsync("✅ Tabela kolejki została wysłana na kanał wyników.", ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Błąd podczas generowania tabeli kolejki");
-            await FollowupAsync($"❌ Wystąpił błąd podczas generowania tabeli: {ex.Message}", ephemeral: true);
-        }
-    }
-
+    /// <summary>
+    /// Komendy <c>admin-tabela-sezonu</c> / <c>admin-tabela-kolejki</c> (tabela tekstowa na kanał) są w <c>AdminModule</c>.
+    /// Przyciski panelu tutaj generują PNG (ephemeral).
+    /// </summary>
     [ComponentInteraction("admin_table_season")]
     public async Task HandleTableSeasonButtonAsync()
     {
@@ -146,7 +64,7 @@ public class AdminTableModule : BaseAdminModule
 
         try
         {
-            var imageStream = await _tableGenerator.GenerateSeasonTableImageAsync(season.Id);
+            using var imageStream = await CreateSeasonTablePngStreamAsync(season.Id);
             await FollowupWithFileAsync(imageStream, $"tabela_sezonu_{DateTime.Now:yyyyMMdd}.png", $"🏆 **Aktualna tabela sezonu: {season.Name}**", ephemeral: true);
         }
         catch (Exception ex)
@@ -219,7 +137,7 @@ public class AdminTableModule : BaseAdminModule
 
         try
         {
-            var imageStream = await _tableGenerator.GenerateRoundTableImageAsync(roundId);
+            using var imageStream = await CreateRoundTablePngStreamAsync(roundId);
             await FollowupWithFileAsync(imageStream, $"tabela_kolejki_{roundId}_{DateTime.Now:yyyyMMdd}.png", $"📊 **Tabela kolejki**", ephemeral: true);
         }
         catch (Exception ex)
@@ -293,5 +211,25 @@ public class AdminTableModule : BaseAdminModule
             _logger.LogError(ex, "Błąd podczas pobierania wyników gracza");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
+    }
+
+    private async Task<MemoryStream> CreateSeasonTablePngStreamAsync(int seasonId)
+    {
+        var season = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(seasonId)
+            ?? throw new InvalidOperationException("Sezon nie został znaleziony.");
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var bytes = _tableGenerator.GenerateSeasonTable(season, players);
+        return new MemoryStream(bytes, writable: false);
+    }
+
+    private async Task<MemoryStream> CreateRoundTablePngStreamAsync(int roundId)
+    {
+        var round = await _roundRepository.GetByIdAsync(roundId)
+            ?? throw new InvalidOperationException("Kolejka nie została znaleziona.");
+        var season = await _seasonRepository.GetByIdAsync(round.SeasonId)
+            ?? throw new InvalidOperationException("Sezon nie został znaleziony.");
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var bytes = _tableGenerator.GenerateRoundTable(season, round, players);
+        return new MemoryStream(bytes, writable: false);
     }
 }

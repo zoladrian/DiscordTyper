@@ -23,7 +23,7 @@ public class ExportService
         for (int i = 0; i < standings.Count; i++)
         {
             var standing = standings[i];
-            sb.Append($"{i + 1},{standing.PlayerName},{standing.TotalPoints}");
+            sb.Append($"{i + 1},{CsvEscape(standing.PlayerName)},{standing.TotalPoints}");
             foreach (var bucket in new[] { "P50", "P35", "P20", "P18", "P16", "P14", "P12", "P10", "P8", "P6", "P4", "P2", "P0" })
             {
                 sb.Append($",{standing.BucketCounts.GetValueOrDefault(bucket, 0)}");
@@ -43,17 +43,20 @@ public class ExportService
                 .Where(p => p.IsValid)
                 .ToList();
 
+            var matchLookup = round.Matches.ToDictionary(m => m.Id);
             foreach (var prediction in roundPredictions.OrderBy(p => p.MatchId))
             {
-                var match = prediction.Match;
+                var match = matchLookup.GetValueOrDefault(prediction.MatchId) ?? prediction.Match;
+                if (match == null) continue;
                 var actualScore = match.Status == Domain.Enums.MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue
                     ? $"{match.HomeScore}:{match.AwayScore}"
                     : "N/A";
 
                 var points = prediction.PlayerScore?.Points ?? 0;
                 var bucket = prediction.PlayerScore?.Bucket.ToString() ?? "N/A";
+                var playerName = prediction.Player?.DiscordUsername ?? "?";
 
-                sb.AppendLine($"{match.HomeTeam} vs {match.AwayTeam},{prediction.Player.DiscordUsername},{prediction.HomeTip},{prediction.AwayTip},{actualScore},{points},{bucket}");
+                sb.AppendLine($"{CsvEscape($"{match.HomeTeam} vs {match.AwayTeam}")},{CsvEscape(playerName)},{prediction.HomeTip},{prediction.AwayTip},{actualScore},{points},{bucket}");
             }
         }
 
@@ -95,36 +98,54 @@ public class ExportService
             .Where(p => p.IsValid)
             .ToList();
 
+        var matchLookup = round.Matches.ToDictionary(m => m.Id);
         foreach (var prediction in roundPredictions.OrderBy(p => p.MatchId))
         {
-            var match = prediction.Match;
+            var match = matchLookup.GetValueOrDefault(prediction.MatchId) ?? prediction.Match;
+            if (match == null) continue;
             var actualScore = match.Status == Domain.Enums.MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue
                 ? $"{match.HomeScore}:{match.AwayScore}"
                 : "N/A";
 
             var points = prediction.PlayerScore?.Points ?? 0;
             var bucket = prediction.PlayerScore?.Bucket.ToString() ?? "N/A";
+            var playerName = prediction.Player?.DiscordUsername ?? "?";
 
-            sb.AppendLine($"{match.HomeTeam} vs {match.AwayTeam},{prediction.Player.DiscordUsername},{prediction.HomeTip},{prediction.AwayTip},{actualScore},{points},{bucket}");
+            sb.AppendLine($"{CsvEscape($"{match.HomeTeam} vs {match.AwayTeam}")},{CsvEscape(playerName)},{prediction.HomeTip},{prediction.AwayTip},{actualScore},{points},{bucket}");
         }
 
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
+    private static string CsvEscape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
+
     private List<PlayerStanding> CalculateSeasonStandings(List<Player> players, Season season)
     {
+        var seasonMatchIds = EnhancedTableGenerator.ResolveSeasonMatchIdsPublic(season);
+        var filterBySeason = seasonMatchIds.Count > 0;
         var standings = new List<PlayerStanding>();
 
         foreach (var player in players.Where(p => p.IsActive))
         {
+            var scores = player.PlayerScores
+                .Where(ps => ps.Prediction != null && ps.Prediction.IsValid);
+            if (filterBySeason)
+                scores = scores.Where(ps => seasonMatchIds.Contains(ps.Prediction!.MatchId));
+            var scoreList = scores.ToList();
+
             var standing = new PlayerStanding
             {
                 PlayerName = player.DiscordUsername,
-                TotalPoints = player.PlayerScores.Sum(ps => ps.Points),
+                TotalPoints = scoreList.Sum(ps => ps.Points),
                 BucketCounts = new Dictionary<string, int>()
             };
 
-            foreach (var score in player.PlayerScores)
+            foreach (var score in scoreList)
             {
                 string bucketKey = score.Bucket.ToString();
                 if (!standing.BucketCounts.ContainsKey(bucketKey))

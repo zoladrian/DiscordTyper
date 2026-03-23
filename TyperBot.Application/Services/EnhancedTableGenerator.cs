@@ -36,16 +36,35 @@ public class EnhancedTableGenerator
         }
     }
 
+    public static HashSet<int> ResolveSeasonMatchIdsPublic(Season season) => ResolveSeasonMatchIds(season);
+
+    private static HashSet<int> ResolveSeasonMatchIds(Season season)
+    {
+        var set = new HashSet<int>();
+        if (season.Rounds == null) return set;
+        foreach (var r in season.Rounds)
+        {
+            if (r.Matches == null) continue;
+            foreach (var m in r.Matches)
+                set.Add(m.Id);
+        }
+        return set;
+    }
+
     private string GenerateTextTable(Season season, List<Player> players)
     {
+        var seasonMatchIds = ResolveSeasonMatchIds(season);
+        var filterBySeason = seasonMatchIds.Count > 0;
+
         // Calculate season scores
         var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
 
         foreach (var player in players)
         {
-            var playerScores = player.PlayerScores
-                .Where(s => s.Prediction != null && s.Prediction.IsValid)
-                .ToList();
+            var q = player.PlayerScores.Where(s => s.Prediction != null && s.Prediction.IsValid);
+            if (filterBySeason)
+                q = q.Where(s => seasonMatchIds.Contains(s.Prediction!.MatchId));
+            var playerScores = q.ToList();
 
             var totalPoints = playerScores.Sum(s => s.Points);
             // Exact scores = P35 (exact match) or P50 (perfect draw)

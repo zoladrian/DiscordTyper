@@ -89,7 +89,7 @@ public class DemoDataSeederTests
     }
 
     [Fact]
-    public async Task SeedDemoDataAsync_DeactivatesPreviousActiveSeason()
+    public async Task SeedDemoDataAsync_RemovesPreviousDataAndCreatesDemoSeason()
     {
         // Arrange
         var oldSeason = new Season { Name = "Old Active Season", IsActive = true };
@@ -98,10 +98,9 @@ public class DemoDataSeederTests
         // Act
         await _seeder.SeedDemoDataAsync();
 
-        // Assert
+        // Assert — seeder usuwa wszystkie istniejące rekordy przed założeniem demo
         var oldSeasonAfterSeed = await _seasonRepository.GetByIdAsync(oldSeason.Id);
-        Assert.NotNull(oldSeasonAfterSeed);
-        Assert.False(oldSeasonAfterSeed.IsActive);
+        Assert.Null(oldSeasonAfterSeed);
 
         var newSeason = await _context.Seasons.SingleOrDefaultAsync(s => s.IsActive);
         Assert.NotNull(newSeason);

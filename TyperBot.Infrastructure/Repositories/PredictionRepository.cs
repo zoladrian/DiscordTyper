@@ -26,6 +26,7 @@ public class PredictionRepository : IPredictionRepository
         return await _context.Predictions
             .Include(p => p.Match)
             .Include(p => p.Player)
+            .Include(p => p.PlayerScore)
             .FirstOrDefaultAsync(p => p.MatchId == matchId && p.PlayerId == playerId);
     }
 
@@ -64,6 +65,7 @@ public class PredictionRepository : IPredictionRepository
     {
         return await _context.Predictions
             .Include(p => p.Player)
+            .Include(p => p.PlayerScore)
             .Where(p => p.MatchId == matchId && p.IsValid)
             .ToListAsync();
     }

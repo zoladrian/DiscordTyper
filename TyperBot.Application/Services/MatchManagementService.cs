@@ -57,22 +57,17 @@ public class MatchManagementService
         {
             // Find the Wednesday 8:00 AM before the match
             var matchDate = startTime.Date;
-            var daysUntilWednesday = ((int)DayOfWeek.Wednesday - (int)matchDate.DayOfWeek + 7) % 7;
-            if (daysUntilWednesday == 0 && startTime.TimeOfDay.TotalHours >= 8)
+            var daysSinceWednesday = ((int)matchDate.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+
+            if (daysSinceWednesday == 0 && startTime.TimeOfDay.TotalHours < 8)
             {
-                // If match is on Wednesday after 8:00, use next Wednesday
-                daysUntilWednesday = 7;
+                // Match is on Wednesday before 8:00 — use previous Wednesday
+                daysSinceWednesday = 7;
             }
-            else if (daysUntilWednesday == 0)
-            {
-                // If match is on Wednesday before 8:00, use that Wednesday
-                daysUntilWednesday = 0;
-            }
-            
-            var wednesdayDate = matchDate.AddDays(-daysUntilWednesday);
+
+            var wednesdayDate = matchDate.AddDays(-daysSinceWednesday);
             threadCreationTime = new DateTimeOffset(wednesdayDate.AddHours(8), startTime.Offset);
-            
-            // If calculated time is after match start, use previous Wednesday
+
             if (threadCreationTime.Value >= startTime)
             {
                 threadCreationTime = threadCreationTime.Value.AddDays(-7);
@@ -100,6 +95,11 @@ public class MatchManagementService
         if (homeScore < 0 || awayScore < 0)
         {
             return (false, "Wyniki nie mogą być ujemne.");
+        }
+
+        if (homeScore + awayScore != 90)
+        {
+            return (false, $"Suma wyników musi wynosić 90 (aktualnie: {homeScore + awayScore}).");
         }
 
         return (true, null);

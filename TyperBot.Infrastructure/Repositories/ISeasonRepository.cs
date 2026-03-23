@@ -5,6 +5,7 @@ namespace TyperBot.Infrastructure.Repositories;
 public interface ISeasonRepository
 {
     Task<Season?> GetByIdAsync(int id);
+    Task<Season?> GetByIdWithRoundsAndMatchesAsync(int id);
     Task<Season?> GetActiveSeasonAsync();
     Task<IEnumerable<Season>> GetAllActiveSeasonsAsync();
     Task<IEnumerable<Season>> GetAllAsync(); // ← Already exists

@@ -1,4 +1,5 @@
 using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,6 +18,7 @@ public class MatchResultHandler
     private readonly IMatchRepository _matchRepository;
     private readonly PredictionService _predictionService;
     private readonly MatchCardService _matchCardService;
+    private readonly MatchManagementService _matchService;
 
     public MatchResultHandler(
         ILogger<MatchResultHandler> logger,
@@ -24,7 +26,8 @@ public class MatchResultHandler
         DiscordLookupService lookupService,
         IMatchRepository matchRepository,
         PredictionService predictionService,
-        MatchCardService matchCardService)
+        MatchCardService matchCardService,
+        MatchManagementService matchService)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -32,6 +35,7 @@ public class MatchResultHandler
         _matchRepository = matchRepository;
         _predictionService = predictionService;
         _matchCardService = matchCardService;
+        _matchService = matchService;
     }
 
     public async Task HandleSetResultAsync(SocketInteractionContext context, string matchIdStr, string homeScore, string awayScore)
@@ -57,10 +61,10 @@ public class MatchResultHandler
             return;
         }
 
-        // Validate non-negative
-        if (home < 0 || away < 0)
+        var (isValid, errorMessage) = _matchService.ValidateMatchResult(home, away);
+        if (!isValid)
         {
-            await context.Interaction.RespondAsync("❌ Wyniki muszą być nieujemne.", ephemeral: true);
+            await context.Interaction.RespondAsync($"❌ {errorMessage}", ephemeral: true);
             return;
         }
 
@@ -127,8 +131,7 @@ public class MatchResultHandler
                 var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
                 if (thread != null)
                 {
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    var cardMessage = await _lookupService.FindMatchCardMessageAsync(thread);
                     if (cardMessage != null)
                     {
                         var round = match.Round;
@@ -179,8 +182,7 @@ public class MatchResultHandler
                 var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
                 if (thread != null)
                 {
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    var cardMessage = await _lookupService.FindMatchCardMessageAsync(thread);
                     if (cardMessage != null)
                     {
                         var round = match.Round;
@@ -298,9 +300,15 @@ public class MatchResultHandler
             return;
         }
 
-        // Restore match to Scheduled status
+        // Restore match to Scheduled status and clear any old result
         match.Status = MatchStatus.Scheduled;
+        match.HomeScore = null;
+        match.AwayScore = null;
+        match.PredictionsRevealed = false;
         await _matchRepository.UpdateAsync(match);
+
+        // Remove stale PlayerScore rows for this match's predictions
+        await _predictionService.ClearMatchScoresAsync(matchId);
         
         _logger.LogInformation(
             "Mecz przywrócony - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
@@ -317,8 +325,7 @@ public class MatchResultHandler
                 var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
                 if (thread != null)
                 {
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    var cardMessage = await _lookupService.FindMatchCardMessageAsync(thread);
                     if (cardMessage != null)
                     {
                         var round = match.Round;
@@ -359,7 +366,8 @@ public class MatchResultHandler
 
         var oldStartTime = match.StartTime;
         match.StartTime = newStartTime;
-        match.Status = MatchStatus.Scheduled; // Restore to scheduled
+        match.TypingDeadline = null; // Reset — nowy deadline domyślny: newStartTime - 1h
+        match.Status = MatchStatus.Scheduled;
         await _matchRepository.UpdateAsync(match);
 
         _logger.LogInformation(
@@ -377,9 +385,7 @@ public class MatchResultHandler
                 var thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
                 if (thread != null)
                 {
-                    var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
-                    var localTime = TimeZoneInfo.ConvertTimeFromUtc(newStartTime.UtcDateTime, tz);
-                    var timestamp = ((DateTimeOffset)localTime).ToUnixTimeSeconds();
+                    var timestamp = newStartTime.ToUnixTimeSeconds();
 
                     var embed = new EmbedBuilder()
                         .WithTitle("📅 Nowa data meczu")
@@ -394,8 +400,7 @@ public class MatchResultHandler
                     await thread.SendMessageAsync(embed: embed);
 
                     // Update match card
-                    var messages = await thread.GetMessagesAsync(1).FlattenAsync();
-                    var cardMessage = messages.FirstOrDefault() as IUserMessage;
+                    var cardMessage = await _lookupService.FindMatchCardMessageAsync(thread);
                     if (cardMessage != null)
                     {
                         var round = match.Round;

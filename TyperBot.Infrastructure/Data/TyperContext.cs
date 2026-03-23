@@ -43,7 +43,7 @@ public class TyperContext : DbContext
 
             // Add index for frequently queried columns
             entity.HasIndex(e => e.SeasonId);
-            entity.HasIndex(e => new { e.SeasonId, e.Number });
+            entity.HasIndex(e => new { e.SeasonId, e.Number }).IsUnique();
         });
 
         // Match configuration
@@ -75,7 +75,7 @@ public class TyperContext : DbContext
             entity.Property(e => e.DiscordUserId).IsRequired();
             entity.Property(e => e.DiscordUsername).IsRequired().HasMaxLength(200);
 
-            entity.HasIndex(e => e.DiscordUserId);
+            entity.HasIndex(e => e.DiscordUserId).IsUnique();
         });
 
         // Prediction configuration

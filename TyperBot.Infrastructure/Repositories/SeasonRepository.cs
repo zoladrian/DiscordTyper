@@ -18,10 +18,19 @@ public class SeasonRepository : ISeasonRepository
         return await _context.Seasons.FindAsync(id);
     }
 
+    public async Task<Season?> GetByIdWithRoundsAndMatchesAsync(int id)
+    {
+        return await _context.Seasons
+            .Include(s => s.Rounds)
+                .ThenInclude(r => r.Matches)
+            .FirstOrDefaultAsync(s => s.Id == id);
+    }
+
     public async Task<Season?> GetActiveSeasonAsync()
     {
         return await _context.Seasons
             .Include(s => s.Rounds)
+                .ThenInclude(r => r.Matches)
             .FirstOrDefaultAsync(s => s.IsActive);
     }
 

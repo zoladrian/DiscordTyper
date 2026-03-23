@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -246,6 +247,7 @@ public class DiscordBotService : IHostedService
 
         try
         {
+            using var scope = _serviceProvider.CreateScope();
             var context = new SocketInteractionContext(_client, interaction);
             
             if (interaction is SocketModal modalInteraction)
@@ -255,7 +257,7 @@ public class DiscordBotService : IHostedService
                     modalInteraction.Data.CustomId);
             }
             
-            var result = await _interactionService.ExecuteCommandAsync(context, _serviceProvider);
+            var result = await _interactionService.ExecuteCommandAsync(context, scope.ServiceProvider);
             
             if (!result.IsSuccess)
             {

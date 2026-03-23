@@ -22,6 +22,7 @@ public class PlayerRepository : IPlayerRepository
     {
         return await _context.Players
             .Include(p => p.PlayerScores)
+                .ThenInclude(ps => ps.Prediction)
             .Include(p => p.Predictions)
                 .ThenInclude(pr => pr.PlayerScore)
             .FirstOrDefaultAsync(p => p.DiscordUserId == discordUserId);
@@ -32,6 +33,7 @@ public class PlayerRepository : IPlayerRepository
         return await _context.Players
             .Where(p => p.IsActive)
             .Include(p => p.PlayerScores)
+                .ThenInclude(ps => ps.Prediction)
             .Include(p => p.Predictions)
                 .ThenInclude(pr => pr.PlayerScore)
             .ToListAsync();

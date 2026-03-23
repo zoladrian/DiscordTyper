@@ -157,7 +157,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Validate match status and timing
+        // Validate match status and timing — mirrors PredictionService.ValidatePrediction
         if (match.Status == MatchStatus.Finished)
         {
             await RespondAsync("❌ Ten mecz już się zakończył.", ephemeral: true);
@@ -170,7 +170,12 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Allow postponed matches to be predicted before original start time
+        if (match.Status == MatchStatus.InProgress)
+        {
+            await RespondAsync("❌ Ten mecz jest w trakcie rozgrywania.", ephemeral: true);
+            return;
+        }
+
         if (match.Status == MatchStatus.Postponed)
         {
             if (DateTimeOffset.UtcNow >= match.StartTime)
@@ -178,12 +183,15 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 await RespondAsync("❌ Typowanie dla tego meczu zostało zamknięte (mecz przełożony, ale minęła pierwotna godzina rozpoczęcia).", ephemeral: true);
                 return;
             }
-            // Allow prediction for postponed matches before original start time
         }
-        else if (DateTimeOffset.UtcNow >= match.StartTime)
+        else
         {
-            await RespondAsync("❌ Typowanie dla tego meczu zostało zamknięte.", ephemeral: true);
-            return;
+            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                await RespondAsync("❌ Czas na typowanie minął.", ephemeral: true);
+                return;
+            }
         }
 
         // Ensure player exists
@@ -288,12 +296,9 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Check if this is an update (prediction already exists)
-        var existingPrediction = await _predictionRepository.GetByMatchAndPlayerAsync(matchId, player.Id);
-        var isUpdate = existingPrediction != null;
-
-        // Create or update prediction
+        // Create or update prediction (UpdatedAt != null means it was an existing prediction)
         var prediction = await _predictionService.CreateOrUpdatePredictionAsync(user.Id, matchId, homeTip, awayTip);
+        var isUpdate = prediction?.UpdatedAt != null;
         
         if (prediction == null)
         {

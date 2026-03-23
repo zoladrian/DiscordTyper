@@ -158,9 +158,9 @@ public class AdminPredictionModule : BaseAdminModule
                 return;
             }
 
-            // Get all predictions for this match
+            // Get valid predictions for this match
             var predictions = await _predictionRepository.GetByMatchIdAsync(match.Id);
-            var predictionsList = predictions.ToList();
+            var predictionsList = predictions.Where(p => p.IsValid).ToList();
 
             // Build predictions table
             var tableLines = new List<string>();

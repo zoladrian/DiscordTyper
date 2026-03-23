@@ -60,15 +60,26 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         
         if (round.HasValue)
         {
-            // Filter by round - get matches first, then get predictions only for those matches
-            var upcomingMatches = await _matchRepository.GetUpcomingMatchesAsync();
-            var roundMatches = upcomingMatches.Where(m => m.Round?.Number == round.Value).ToList();
+            // Show all predictions for a specific round (any status)
+            var season = await _seasonRepository.GetActiveSeasonAsync();
+            if (season == null)
+            {
+                await RespondAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+                return;
+            }
+            var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round.Value);
+            if (roundEntity == null)
+            {
+                await RespondAsync($"❌ Kolejka {round.Value} nie znaleziona.", ephemeral: true);
+                return;
+            }
+            var roundMatches = await _matchRepository.GetByRoundIdAsync(roundEntity.Id);
             var matchIds = roundMatches.Select(m => m.Id).ToList();
             predictions = await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds);
         }
         else
         {
-            // Show all upcoming - get matches first, then get predictions only for those matches
+            // Show upcoming predictions
             var upcomingMatches = await _matchRepository.GetUpcomingMatchesAsync();
             var matchIds = upcomingMatches.Select(m => m.Id).ToList();
             predictions = await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds);
@@ -298,13 +309,21 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            // Get all player scores for the season
+            var rounds = await _roundRepository.GetBySeasonIdAsync(season.Id);
+            var seasonMatchIds = new HashSet<int>();
+            foreach (var r in rounds)
+            {
+                foreach (var m in await _matchRepository.GetByRoundIdAsync(r.Id))
+                    seasonMatchIds.Add(m.Id);
+            }
+
             var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
             
             foreach (var player in players)
             {
-                var playerScores = player.PlayerScores
-                    .Where(s => s.Prediction != null && s.Prediction.IsValid)
+                var playerScores = player.Predictions
+                    .Where(p => seasonMatchIds.Contains(p.MatchId) && p.IsValid && p.PlayerScore != null)
+                    .Select(p => p.PlayerScore!)
                     .ToList();
                 
                 var totalPoints = playerScores.Sum(s => s.Points);

@@ -92,12 +92,12 @@ builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<D
 builder.Services.AddSingleton<DiscordLookupService>();
 builder.Services.AddSingleton<AdminMatchCreationStateService>();
 builder.Services.AddSingleton<WelcomeMessageService>();
-builder.Services.AddSingleton<MatchCardService>();
-builder.Services.AddSingleton<MatchResultHandler>();
-builder.Services.AddSingleton<SeasonManagementService>();
-builder.Services.AddSingleton<AdminPanelService>();
-builder.Services.AddSingleton<RoundManagementService>();
-builder.Services.AddSingleton<MatchCreationService>();
+builder.Services.AddScoped<MatchCardService>();
+builder.Services.AddScoped<MatchResultHandler>();
+builder.Services.AddScoped<SeasonManagementService>();
+builder.Services.AddScoped<AdminPanelService>();
+builder.Services.AddScoped<RoundManagementService>();
+builder.Services.AddScoped<MatchCreationService>();
 
 // Add Discord bot service
 builder.Services.AddHostedService<DiscordBotService>();

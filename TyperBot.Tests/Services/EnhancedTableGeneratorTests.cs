@@ -10,16 +10,15 @@ namespace TyperBot.Tests.Services;
 
 public class EnhancedTableGeneratorTests
 {
-    private readonly Mock<TableGenerator> _tableGenerator;
+    private readonly TableGenerator _tableGenerator = new();
     private readonly Mock<ISeasonRepository> _seasonRepository;
     private readonly EnhancedTableGenerator _enhancedGenerator;
 
     public EnhancedTableGeneratorTests()
     {
-        _tableGenerator = new Mock<TableGenerator>(null!, null!);
         _seasonRepository = new Mock<ISeasonRepository>();
         _enhancedGenerator = new EnhancedTableGenerator(
-            _tableGenerator.Object,
+            _tableGenerator,
             _seasonRepository.Object);
     }
 
@@ -61,7 +60,6 @@ public class EnhancedTableGeneratorTests
         result.textTable.Should().Contain("Player1");
         result.textTable.Should().Contain("35");
         result.imageBytes.Should().BeNull();
-        _tableGenerator.Verify(x => x.GenerateSeasonTable(It.IsAny<Season>(), It.IsAny<List<Player>>()), Times.Never);
     }
 
     [Fact]
@@ -85,19 +83,15 @@ public class EnhancedTableGeneratorTests
             }
         };
 
-        var fakeImageBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47 }; // PNG header
-        _tableGenerator.Setup(x => x.GenerateSeasonTable(season, players))
-            .Returns(fakeImageBytes);
-
-        // Act
+        // Act — prawdziwy TableGenerator zwraca PNG (SkiaSharp)
         var result = await _enhancedGenerator.GenerateSeasonTableAsync(season, players);
 
         // Assert
         result.format.Should().Be(TableFormat.Image);
         result.imageBytes.Should().NotBeNull();
-        result.imageBytes.Should().BeEquivalentTo(fakeImageBytes);
+        result.imageBytes!.Length.Should().BeGreaterThan(8);
+        result.imageBytes.Should().StartWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
         result.textTable.Should().BeNull();
-        _tableGenerator.Verify(x => x.GenerateSeasonTable(season, players), Times.Once);
     }
 
     [Fact]

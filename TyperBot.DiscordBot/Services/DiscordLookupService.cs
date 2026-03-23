@@ -1,3 +1,4 @@
+using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -170,6 +171,25 @@ public class DiscordLookupService
         }
         
         return role;
+    }
+
+    /// <summary>
+    /// Finds the match card message in a thread. The card is the first bot message with an embed.
+    /// GetMessagesAsync(limit) returns most-recent-first, so we need to search further back.
+    /// </summary>
+    public async Task<Discord.IUserMessage?> FindMatchCardMessageAsync(Discord.WebSocket.SocketThreadChannel thread)
+    {
+        // Fetch the oldest messages in the thread (card is typically the very first message)
+        var messages = await thread.GetMessagesAsync(limit: 20).FlattenAsync();
+        var orderedByOldest = messages.OrderBy(m => m.CreatedAt);
+
+        foreach (var msg in orderedByOldest)
+        {
+            if (msg.Author.Id == _client.CurrentUser.Id && msg is Discord.IUserMessage userMsg && userMsg.Embeds.Any())
+                return userMsg;
+        }
+
+        return null;
     }
 
     public async Task<IEnumerable<SocketGuildUser>> GetPlayersWithRoleAsync()
