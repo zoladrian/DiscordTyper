@@ -90,7 +90,7 @@ public class MatchResultHandler
 
         await context.Interaction.RespondAsync($"✅ Wynik ustawiony: **{home}:{away}**\nPunkty obliczone!", ephemeral: true);
         _logger.LogInformation(
-            "Wynik meczu ustawiony - ID meczu: {MatchId}, Wynik: {Home}:{Away}, Punkty obliczone. Serwer: {GuildId}, Kanał: {ChannelId}",
+            "Match result set - Match ID: {MatchId}, Score: {Home}:{Away}, Points calculated. Guild: {GuildId}, Channel: {ChannelId}",
             matchId,
             home,
             away,
@@ -117,7 +117,7 @@ public class MatchResultHandler
 
                 await predictionsChannel.SendMessageAsync(embed: embed);
                 _logger.LogInformation(
-                    "Opublikowano informację o zmianie wyniku meczu {MatchId} w kanale typowanie",
+                    "Published score change notice for match {MatchId} in predictions channel",
                     matchId);
             }
         }
@@ -137,14 +137,14 @@ public class MatchResultHandler
                         var round = match.Round;
                         var roundNum = round?.Number ?? 0;
                         await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
-                        _logger.LogInformation("Zaktualizowano kartę meczu w wątku po ustawieniu wyniku - Mecz ID: {MatchId}", matchId);
+                        _logger.LogInformation("Updated match card in thread after setting result - Match ID: {MatchId}", matchId);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas aktualizacji karty meczu w wątku - Mecz ID: {MatchId}", matchId);
+            _logger.LogError(ex, "Error updating match card in thread - Match ID: {MatchId}", matchId);
         }
     }
 
@@ -168,7 +168,7 @@ public class MatchResultHandler
         await _matchRepository.UpdateAsync(match);
         
         _logger.LogInformation(
-            "Mecz odwołany - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
+            "Match cancelled - User: {Username} (ID: {UserId}), Match ID: {MatchId}, {Home} vs {Away}",
             user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
         
         await context.Interaction.RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
@@ -234,7 +234,7 @@ public class MatchResultHandler
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po odwołaniu - ID meczu: {MatchId}", matchId);
+            _logger.LogWarning(ex, "Failed to update match card after cancellation - Match ID: {MatchId}", matchId);
         }
     }
 
@@ -271,7 +271,7 @@ public class MatchResultHandler
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się wysłać wiadomości o usunięciu meczu - ID meczu: {MatchId}", matchId);
+            _logger.LogWarning(ex, "Failed to send deletion notification - Match ID: {MatchId}", matchId);
         }
 
         await _matchRepository.DeleteAsync(matchId);
@@ -311,7 +311,7 @@ public class MatchResultHandler
         await _predictionService.ClearMatchScoresAsync(matchId);
         
         _logger.LogInformation(
-            "Mecz przywrócony - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, {Home} vs {Away}",
+            "Match restored - User: {Username} (ID: {UserId}), Match ID: {MatchId}, {Home} vs {Away}",
             user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
         
         await context.Interaction.RespondAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
@@ -331,14 +331,14 @@ public class MatchResultHandler
                         var round = match.Round;
                         var roundNum = round?.Number ?? 0;
                         await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
-                        _logger.LogInformation("Zaktualizowano kartę meczu po przywróceniu - Mecz ID: {MatchId}", matchId);
+                        _logger.LogInformation("Updated match card after restoration - Match ID: {MatchId}", matchId);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się zaktualizować karty meczu po przywróceniu - ID meczu: {MatchId}", matchId);
+            _logger.LogWarning(ex, "Failed to update match card after restoration - Match ID: {MatchId}", matchId);
         }
     }
 
@@ -366,12 +366,12 @@ public class MatchResultHandler
 
         var oldStartTime = match.StartTime;
         match.StartTime = newStartTime;
-        match.TypingDeadline = null; // Reset — nowy deadline domyślny: newStartTime - 1h
+        match.TypingDeadline = null; // Reset — default deadline: newStartTime - 1h
         match.Status = MatchStatus.Scheduled;
         await _matchRepository.UpdateAsync(match);
 
         _logger.LogInformation(
-            "Ustawiono nową datę dla odwołanego meczu - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Nowa data: {NewDate}",
+            "Set new date for cancelled match - User: {Username} (ID: {UserId}), Match ID: {MatchId}, New date: {NewDate}",
             user.Username, user.Id, matchId, newStartTime);
 
         await context.Interaction.RespondAsync($"✅ Ustawiono nową datę meczu: **{newStartTime:yyyy-MM-dd HH:mm}**", ephemeral: true);
@@ -412,7 +412,7 @@ public class MatchResultHandler
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Nie udało się powiadomić użytkowników o nowej dacie - ID meczu: {MatchId}", matchId);
+            _logger.LogWarning(ex, "Failed to notify users about new date - Match ID: {MatchId}", matchId);
         }
     }
 }

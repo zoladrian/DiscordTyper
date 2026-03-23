@@ -49,7 +49,7 @@ public class AdminUtilityModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas generowania danych testowych");
+            _logger.LogError(ex, "Error generating demo data");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
     }

@@ -150,7 +150,7 @@ public class AdminMatchModule : BaseAdminModule
         }
 
         _logger.LogInformation(
-            "Modal edytuj mecz przesłany - Użytkownik: {Username}, ID meczu: {MatchId}, Stare: {OldHome} vs {OldAway}, Nowe: {NewHome} vs {NewAway}",
+            "Edit match modal submitted - User: {Username}, Match ID: {MatchId}, Old: {OldHome} vs {OldAway}, New: {NewHome} vs {NewAway}",
             Context.User.Username, matchId, oldHomeTeam, oldAwayTeam, modal.HomeTeam, modal.AwayTeam);
 
         DateTimeOffset startTime;
@@ -168,7 +168,7 @@ public class AdminMatchModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wyjątek podczas parsowania daty/godziny w edycji - Mecz ID: {MatchId}", matchId);
+            _logger.LogError(ex, "Exception parsing date/time in edit - Match ID: {MatchId}", matchId);
             await RespondAsync("❌ Błąd podczas parsowania daty/godziny.", ephemeral: true);
             return;
         }
@@ -187,7 +187,7 @@ public class AdminMatchModule : BaseAdminModule
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Nie udało się sparsować deadline typowania, używam domyślnego");
+                _logger.LogWarning(ex, "Failed to parse typing deadline, using default");
             }
         }
 
@@ -251,13 +251,13 @@ public class AdminMatchModule : BaseAdminModule
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Nie udało się zaktualizować nazwy wątku - Thread ID: {ThreadId}", targetThread.Id);
+                    _logger.LogWarning(ex, "Failed to update thread name - Thread ID: {ThreadId}", targetThread.Id);
                 }
             }
         }
 
         _logger.LogInformation(
-            "Mecz zaktualizowany - ID: {MatchId}, {NewHome} vs {NewAway}, StartTime: {NewTime}",
+            "Match updated - ID: {MatchId}, {NewHome} vs {NewAway}, StartTime: {NewTime}",
             matchId, match.HomeTeam, match.AwayTeam, startTime);
 
         await RespondAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
@@ -348,7 +348,7 @@ public class AdminMatchModule : BaseAdminModule
         }
         catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
         {
-            _logger.LogWarning("Interakcja wygasła przed otwarciem modala dodaj mecz do kolejki");
+            _logger.LogWarning("Interaction expired before opening add-match-to-round modal");
         }
     }
 

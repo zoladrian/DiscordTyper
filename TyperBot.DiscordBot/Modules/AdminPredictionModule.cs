@@ -120,7 +120,7 @@ public class AdminPredictionModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas wołania niezatypowanych graczy dla meczu {MatchId}", matchId);
+            _logger.LogError(ex, "Error mentioning players without predictions for match {MatchId}", matchId);
             await FollowupAsync("❌ Wystąpił błąd podczas wołania graczy.", ephemeral: true);
         }
     }
@@ -229,7 +229,7 @@ public class AdminPredictionModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas ujawniania typów dla meczu {MatchId}", matchId);
+            _logger.LogError(ex, "Error revealing predictions for match {MatchId}", matchId);
             await FollowupAsync("❌ Wystąpił błąd podczas ujawniania typów.", ephemeral: true);
         }
     }

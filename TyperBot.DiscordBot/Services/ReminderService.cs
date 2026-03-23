@@ -88,7 +88,7 @@ public class ReminderService : BackgroundService
             if (matchesToRemind.Any())
             {
                 _logger.LogInformation(
-                    "Pierwsze sprawdzenie po starcie - pominięto bardzo stare mecze (>24h), znaleziono {Count} meczów do przypomnienia",
+                    "First check after startup - skipped very old matches (>24h), found {Count} matches to remind",
                     matchesToRemind.Count);
             }
         }
@@ -152,12 +152,12 @@ public class ReminderService : BackgroundService
                 _remindedMatches.Add(match.Id); // Mark as reminded
                 
                 _logger.LogInformation(
-                    "Wysłano przypomnienie o wyniku dla meczu {MatchId} ({Home} vs {Away}), rozpoczął się {HoursAgo}h temu",
+                    "Sent result reminder for match {MatchId} ({Home} vs {Away}), started {HoursAgo}h ago",
                     match.Id, home, away, hoursSinceStart);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Błąd podczas wysyłania przypomnienia dla meczu {MatchId}", match.Id);
+                _logger.LogError(ex, "Error sending reminder for match {MatchId}", match.Id);
             }
         }
     }

@@ -53,14 +53,14 @@ public class RoundManagementService
             await _roundRepository.AddAsync(newRound);
 
             _logger.LogInformation(
-                "Nowa kolejka utworzona - Użytkownik: {Username} (ID: {UserId}), Sezon: {SeasonId}, Kolejka: {Round}",
+                "New round created - User: {Username} (ID: {UserId}), Season: {SeasonId}, Round: {Round}",
                 username, userId, activeSeason.Id, roundNumber);
 
             return (true, $"Kolejka **{roundNumber}** została pomyślnie dodana do sezonu **{activeSeason.Name}**.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas dodawania kolejki - Użytkownik: {Username} (ID: {UserId}), Kolejka: {Round}",
+            _logger.LogError(ex, "Error adding round - User: {Username} (ID: {UserId}), Round: {Round}",
                 username, userId, roundNumber);
             return (false, "Wystąpił błąd podczas dodawania kolejki. Sprawdź logi dla szczegółów.");
         }

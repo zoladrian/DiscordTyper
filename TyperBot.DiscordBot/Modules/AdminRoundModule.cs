@@ -38,7 +38,7 @@ public class AdminRoundModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_add_kolejka")]
-    public async Task HandleAddKolejkaButtonAsync()
+    public async Task HandleAddRoundButtonAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -47,11 +47,11 @@ public class AdminRoundModule : BaseAdminModule
             return;
         }
 
-        await RespondWithModalAsync<AddKolejkaModal>("admin_add_kolejka_modal");
+        await RespondWithModalAsync<AddRoundModal>("admin_add_kolejka_modal");
     }
 
     [ModalInteraction("admin_add_kolejka_modal")]
-    public async Task HandleAddKolejkaModalAsync(AddKolejkaModal modal)
+    public async Task HandleAddRoundModalAsync(AddRoundModal modal)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -60,7 +60,7 @@ public class AdminRoundModule : BaseAdminModule
             return;
         }
 
-        if (!int.TryParse(modal.KolejkaNumber, out var roundNumber))
+        if (!int.TryParse(modal.RoundNumber, out var roundNumber))
         {
             await RespondAsync("❌ Nieprawidłowy numer kolejki.", ephemeral: true);
             return;
@@ -71,7 +71,7 @@ public class AdminRoundModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_manage_kolejka")]
-    public async Task HandleManageKolejkaButtonAsync()
+    public async Task HandleManageRoundButtonAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -120,7 +120,7 @@ public class AdminRoundModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_manage_kolejka_select")]
-    public async Task HandleManageKolejkaSelectAsync(string[] selectedValues)
+    public async Task HandleManageRoundSelectAsync(string[] selectedValues)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null || selectedValues.Length == 0)

@@ -111,7 +111,7 @@ public class AdminResultModule : BaseAdminModule
         await RespondWithModalAsync(modal);
 
         _logger.LogInformation(
-            "Przycisk ustaw wynik kliknięty - Użytkownik: {Username}, ID meczu: {MatchId}",
+            "Set result button clicked - User: {Username}, Match ID: {MatchId}",
             Context.User.Username, matchId);
     }
 
@@ -233,12 +233,12 @@ public class AdminResultModule : BaseAdminModule
             await FollowupAsync("✅ Tabela meczu została wysłana do wątku meczu.", ephemeral: true);
 
             _logger.LogInformation(
-                "Tabela meczu wysłana ręcznie - Użytkownik: {Username}, Mecz ID: {MatchId}",
+                "Match table sent manually - User: {Username}, Match ID: {MatchId}",
                 user?.Username ?? "?", matchId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas wysyłania tabeli meczu {MatchId}", matchId);
+            _logger.LogError(ex, "Error sending match table for match {MatchId}", matchId);
             await FollowupAsync("❌ Wystąpił błąd podczas wysyłania tabeli.", ephemeral: true);
         }
     }
@@ -300,6 +300,6 @@ public class AdminResultModule : BaseAdminModule
         }
 
         await thread.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Tabela wyników meczu opublikowana - Mecz ID: {MatchId}", match.Id);
+        _logger.LogInformation("Match results table published - Match ID: {MatchId}", match.Id);
     }
 }

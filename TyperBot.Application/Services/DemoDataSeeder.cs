@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
@@ -38,12 +38,12 @@ public class DemoDataSeeder
 
     public async Task<SeedResult> SeedDemoDataAsync(CancellationToken ct = default)
     {
-        _logger.LogInformation("Rozpoczynam tworzenie danych testowych...");
+        _logger.LogInformation("Starting demo data seed...");
 
         var result = new SeedResult();
 
         // CRITICAL FIX: Delete ALL existing data to prevent conflicts
-        _logger.LogInformation("Usuwam wszystkie istniejące dane...");
+        _logger.LogInformation("Deleting all existing data...");
         
         try
         {
@@ -53,48 +53,48 @@ public class DemoDataSeeder
             {
                 await _playerScoreRepository.DeleteAsync(score.Id);
             }
-            _logger.LogInformation("Usunięto {Count} wyników punktowych", allScores.Count());
+            _logger.LogInformation("Deleted {Count} player scores", allScores.Count());
             
             var allPredictions = await _predictionRepository.GetAllAsync();
             foreach (var pred in allPredictions)
             {
                 await _predictionRepository.DeleteAsync(pred.Id);
             }
-            _logger.LogInformation("Usunięto {Count} typów", allPredictions.Count());
+            _logger.LogInformation("Deleted {Count} predictions", allPredictions.Count());
             
             var existingMatches = await _matchRepository.GetAllAsync();
             foreach (var match in existingMatches)
             {
                 await _matchRepository.DeleteAsync(match.Id);
             }
-            _logger.LogInformation("Usunięto {Count} meczów", existingMatches.Count());
+            _logger.LogInformation("Deleted {Count} matches", existingMatches.Count());
             
             var allRounds = await _roundRepository.GetAllAsync();
             foreach (var round in allRounds)
             {
                 await _roundRepository.DeleteAsync(round.Id);
             }
-            _logger.LogInformation("Usunięto {Count} kolejek", allRounds.Count());
+            _logger.LogInformation("Deleted {Count} rounds", allRounds.Count());
             
             var allPlayers = await _playerRepository.GetAllAsync();
             foreach (var player in allPlayers)
             {
                 await _playerRepository.DeleteAsync(player.Id);
             }
-            _logger.LogInformation("Usunięto {Count} graczy", allPlayers.Count());
+            _logger.LogInformation("Deleted {Count} players", allPlayers.Count());
             
             var existingSeasons = await _seasonRepository.GetAllAsync();
             foreach (var existingSeason in existingSeasons)
             {
                 await _seasonRepository.DeleteAsync(existingSeason.Id);
             }
-            _logger.LogInformation("Usunięto {Count} sezonów", existingSeasons.Count());
+            _logger.LogInformation("Deleted {Count} seasons", existingSeasons.Count());
             
-            _logger.LogInformation("Wszystkie stare dane zostały usunięte");
+            _logger.LogInformation("All old data removed");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Błąd podczas usuwania starych danych - kontynuuję tworzenie nowych");
+            _logger.LogWarning(ex, "Error deleting old data - continuing with new data creation");
         }
 
         // Create demo season
@@ -105,7 +105,7 @@ public class DemoDataSeeder
         };
         season = await _seasonRepository.AddAsync(season);
         result.SeasonsCreated = 1;
-        _logger.LogInformation("Utworzono sezon testowy: {SeasonName} (ID: {SeasonId})", season.Name, season.Id);
+        _logger.LogInformation("Created test season: {SeasonName} (ID: {SeasonId})", season.Name, season.Id);
 
         // Create 5 rounds
         var rounds = new List<Round>();
@@ -121,7 +121,7 @@ public class DemoDataSeeder
             rounds.Add(round);
             result.RoundsCreated++;
         }
-        _logger.LogInformation("Utworzono {Count} kolejek", result.RoundsCreated);
+        _logger.LogInformation("Created {Count} rounds", result.RoundsCreated);
 
         // Create matches (3-4 per round, with dates in the near future)
         var baseDate = DateTime.UtcNow.AddDays(1);
@@ -184,7 +184,7 @@ public class DemoDataSeeder
                 matchIndex++;
             }
         }
-        _logger.LogInformation("Utworzono {Count} meczów", result.MatchesCreated);
+        _logger.LogInformation("Created {Count} matches", result.MatchesCreated);
 
         // Create 5 demo players
         var playerNames = new[]
@@ -209,7 +209,7 @@ public class DemoDataSeeder
             players.Add(player);
             result.PlayersCreated++;
         }
-        _logger.LogInformation("Utworzono {Count} graczy", result.PlayersCreated);
+        _logger.LogInformation("Created {Count} players", result.PlayersCreated);
 
         // Create predictions for all matches (each player predicts for most matches)
         var finishedMatches = allMatches.Where(m => m.Status == MatchStatus.Finished).ToList();
@@ -291,11 +291,11 @@ public class DemoDataSeeder
                 }
             }
         }
-        _logger.LogInformation("Utworzono {Count} typów", result.PredictionsCreated);
-        _logger.LogInformation("Utworzono {Count} wyników punktowych", result.ScoresCreated);
+        _logger.LogInformation("Created {Count} predictions", result.PredictionsCreated);
+        _logger.LogInformation("Created {Count} player scores", result.ScoresCreated);
 
         _logger.LogInformation(
-            "Tworzenie danych testowych zakończone - Sezony: {Seasons}, Kolejki: {Rounds}, Mecze: {Matches}, Gracze: {Players}, Typy: {Predictions}, Wyniki punktowe: {Scores}",
+            "Demo data seed complete - Seasons: {Seasons}, Rounds: {Rounds}, Matches: {Matches}, Players: {Players}, Predictions: {Predictions}, Scores: {Scores}",
             result.SeasonsCreated,
             result.RoundsCreated,
             result.MatchesCreated,

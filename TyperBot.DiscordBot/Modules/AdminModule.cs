@@ -12,7 +12,7 @@ using TyperBot.Infrastructure.Repositories;
 namespace TyperBot.DiscordBot.Modules;
 
 /// <summary>
-/// Handles match creation wizard (calendar/time UI), kolejka batch creation,
+/// Handles match creation wizard (calendar/time UI), batch round creation,
 /// and admin-only slash commands for tables and exports.
 /// All other admin handlers live in focused modules (AdminMatchModule, AdminResultModule, etc.).
 /// </summary>
@@ -160,7 +160,7 @@ public class AdminModule : BaseAdminModule
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         if (selectedValues.Length == 0 || !int.TryParse(selectedValues[0], out var round)) { await RespondAsync("❌ Nieprawidłowy wybór rundy.", ephemeral: true); return; }
         _stateService.UpdateRound(Context.Guild.Id, Context.User.Id, round);
-        _logger.LogInformation("Wybrano rundę {Round} - Użytkownik: {Username}", round, Context.User.Username);
+        _logger.LogInformation("Round {Round} selected - User: {Username}", round, Context.User.Username);
         await DeferAsync();
         await ShowAddMatchCalendarAsync();
     }
@@ -172,7 +172,7 @@ public class AdminModule : BaseAdminModule
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         if (selectedValues.Length == 0) { await RespondAsync("❌ Nieprawidłowy wybór daty.", ephemeral: true); return; }
         _stateService.UpdateDate(Context.Guild.Id, Context.User.Id, selectedValues[0]);
-        _logger.LogInformation("Wybrano datę {Date} - Użytkownik: {Username}", selectedValues[0], Context.User.Username);
+        _logger.LogInformation("Date {Date} selected - User: {Username}", selectedValues[0], Context.User.Username);
         await DeferAsync();
         await ShowAddMatchCalendarAsync();
     }
@@ -268,23 +268,23 @@ public class AdminModule : BaseAdminModule
         var modal = new ModalBuilder()
             .WithTitle("Ustaw godzinę")
             .WithCustomId("admin_time_modal")
-            .AddTextInput("Godzina", "godzina", TextInputStyle.Short, placeholder: "18:30", value: defaultTime, required: true)
+            .AddTextInput("Godzina", "time", TextInputStyle.Short, placeholder: "18:30", value: defaultTime, required: true)
             .Build();
         await RespondWithModalAsync(modal);
     }
 
     [ModalInteraction("admin_time_modal")]
-    public async Task HandleTimeModalAsync(string godzina)
+    public async Task HandleTimeModalAsync(string time)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
-        if (!TimeSpan.TryParse(godzina, out var time) || time.TotalHours >= 24)
+        if (!TimeSpan.TryParse(time, out var parsedTime) || parsedTime.TotalHours >= 24)
         {
             await RespondAsync("❌ Nieprawidłowy format godziny. Użyj HH:mm, np. 18:30.", ephemeral: true);
             return;
         }
-        _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)time.TotalHours:D2}:{time.Minutes:D2}");
-        await RespondAsync($"✅ Godzina ustawiona na: {godzina}", ephemeral: true);
+        _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)parsedTime.TotalHours:D2}:{parsedTime.Minutes:D2}");
+        await RespondAsync($"✅ Godzina ustawiona na: {time}", ephemeral: true);
     }
 
     [ComponentInteraction("admin_add_match_continue")]
@@ -310,7 +310,7 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas wyświetlania modala - Użytkownik: {Username}", Context.User.Username);
+            _logger.LogError(ex, "Error showing modal - User: {Username}", Context.User.Username);
             if (!Context.Interaction.HasResponded)
                 await RespondAsync("❌ Wystąpił błąd podczas wyświetlania formularza. Spróbuj ponownie.", ephemeral: true);
         }
@@ -346,7 +346,7 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wyjątek podczas parsowania daty/godziny");
+            _logger.LogError(ex, "Exception parsing date/time");
             await RespondAsync("❌ Nie udało się sparsować daty/godziny meczu. Spróbuj ponownie.", ephemeral: true);
             return;
         }
@@ -375,28 +375,28 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wyjątek podczas tworzenia meczu");
+            _logger.LogError(ex, "Exception creating match");
             await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach.", ephemeral: true);
         }
     }
 
     #endregion
 
-    #region Kolejka (Batch) Match Creation
+    #region Batch Round Match Creation
 
-    private async Task ShowKolejkaMatchFormAsync()
+    private async Task ShowBatchRoundMatchFormAsync()
     {
         if (Context.Guild == null) return;
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        if (state == null || !state.IsBatchRoundCreation || !state.SelectedRound.HasValue)
         {
             await FollowupAsync("❌ Stan formularza wygasł. Rozpocznij ponownie z /panel-admina.", ephemeral: true);
             return;
         }
 
         var currentMatch = state.CurrentMatchIndex + 1;
-        var totalMatches = state.TotalMatchesInKolejka;
+        var totalMatches = state.TotalMatchesInBatch;
         var roundLabel = RoundHelper.GetRoundLabel(state.SelectedRound.Value);
 
         var openModalButton = new ButtonBuilder()
@@ -415,7 +415,7 @@ public class AdminModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_kolejka_home_team")]
-    public async Task HandleKolejkaHomeTeamSelectAsync(string[] selectedValues)
+    public async Task HandleBatchRoundHomeTeamSelectAsync(string[] selectedValues)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -424,7 +424,7 @@ public class AdminModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_kolejka_away_team")]
-    public async Task HandleKolejkaAwayTeamSelectAsync(string[] selectedValues)
+    public async Task HandleBatchRoundAwayTeamSelectAsync(string[] selectedValues)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -433,7 +433,7 @@ public class AdminModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_kolejka_match_date")]
-    public async Task HandleKolejkaMatchDateSelectAsync(string[] selectedValues)
+    public async Task HandleBatchRoundMatchDateSelectAsync(string[] selectedValues)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -442,27 +442,27 @@ public class AdminModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_kolejka_time_minus_15")]
-    public async Task HandleKolejkaTimeMinus15Async()
+    public async Task HandleBatchRoundTimeMinus15Async()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         AdjustTime(-15);
         await DeferAsync();
-        await ShowKolejkaMatchFormAsync();
+        await ShowBatchRoundMatchFormAsync();
     }
 
     [ComponentInteraction("admin_kolejka_time_plus_15")]
-    public async Task HandleKolejkaTimePlus15Async()
+    public async Task HandleBatchRoundTimePlus15Async()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         AdjustTime(15);
         await DeferAsync();
-        await ShowKolejkaMatchFormAsync();
+        await ShowBatchRoundMatchFormAsync();
     }
 
     [ComponentInteraction("admin_kolejka_time_manual")]
-    public async Task HandleKolejkaTimeManualAsync()
+    public async Task HandleBatchRoundTimeManualAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -471,35 +471,35 @@ public class AdminModule : BaseAdminModule
         var modal = new ModalBuilder()
             .WithTitle("Ustaw godzinę")
             .WithCustomId("admin_kolejka_time_modal")
-            .AddTextInput("Godzina", "godzina", TextInputStyle.Short, placeholder: "18:30", value: defaultTime, required: true)
+            .AddTextInput("Godzina", "time", TextInputStyle.Short, placeholder: "18:30", value: defaultTime, required: true)
             .Build();
         await RespondWithModalAsync(modal);
     }
 
     [ModalInteraction("admin_kolejka_time_modal")]
-    public async Task HandleKolejkaTimeModalAsync(string godzina)
+    public async Task HandleBatchRoundTimeModalAsync(string time)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
 
-        if (!DateTime.TryParseExact(godzina, "HH:mm", null, System.Globalization.DateTimeStyles.None, out var parsedTime))
+        if (!DateTime.TryParseExact(time, "HH:mm", null, System.Globalization.DateTimeStyles.None, out var parsedTime))
         {
-            if (!TimeSpan.TryParse(godzina, out var time) || time.TotalHours >= 24)
+            if (!TimeSpan.TryParse(time, out var parsedSpan) || parsedSpan.TotalHours >= 24)
             {
                 await RespondAsync("❌ Nieprawidłowy format godziny. Użyj HH:mm, np. 18:30.", ephemeral: true);
                 return;
             }
-            _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)time.TotalHours:D2}:{time.Minutes:D2}");
+            _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, $"{(int)parsedSpan.TotalHours:D2}:{parsedSpan.Minutes:D2}");
         }
         else
         {
             _stateService.UpdateTime(Context.Guild.Id, Context.User.Id, parsedTime.ToString("HH:mm"));
         }
-        await RespondAsync($"✅ Godzina ustawiona na: {godzina}", ephemeral: true);
+        await RespondAsync($"✅ Godzina ustawiona na: {time}", ephemeral: true);
     }
 
     [ComponentInteraction("admin_kolejka_calendar_prev")]
-    public async Task HandleKolejkaCalendarPrevAsync()
+    public async Task HandleBatchRoundCalendarPrevAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -512,11 +512,11 @@ public class AdminModule : BaseAdminModule
         var date = new DateTime(year, month, 1).AddMonths(-1);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, date.Year, date.Month);
         await DeferAsync();
-        await ShowKolejkaMatchFormAsync();
+        await ShowBatchRoundMatchFormAsync();
     }
 
     [ComponentInteraction("admin_kolejka_calendar_next")]
-    public async Task HandleKolejkaCalendarNextAsync()
+    public async Task HandleBatchRoundCalendarNextAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -529,11 +529,11 @@ public class AdminModule : BaseAdminModule
         var date = new DateTime(year, month, 1).AddMonths(1);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, date.Year, date.Month);
         await DeferAsync();
-        await ShowKolejkaMatchFormAsync();
+        await ShowBatchRoundMatchFormAsync();
     }
 
     [ComponentInteraction("admin_kolejka_calendar_today")]
-    public async Task HandleKolejkaCalendarTodayAsync()
+    public async Task HandleBatchRoundCalendarTodayAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -541,17 +541,17 @@ public class AdminModule : BaseAdminModule
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         _stateService.UpdateCalendarMonth(Context.Guild.Id, Context.User.Id, now.Year, now.Month);
         await DeferAsync();
-        await ShowKolejkaMatchFormAsync();
+        await ShowBatchRoundMatchFormAsync();
     }
 
     [ComponentInteraction("admin_kolejka_submit_match")]
-    public async Task HandleKolejkaSubmitMatchAsync()
+    public async Task HandleBatchRoundSubmitMatchAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        if (state == null || !state.IsBatchRoundCreation || !state.SelectedRound.HasValue)
         {
             await RespondAsync("❌ Stan formularza wygasł. Rozpocznij ponownie.", ephemeral: true);
             return;
@@ -570,33 +570,33 @@ public class AdminModule : BaseAdminModule
             return;
         }
 
-        _stateService.AddMatchToKolejka(Context.Guild.Id, Context.User.Id,
+        _stateService.AddMatchToBatch(Context.Guild.Id, Context.User.Id,
             state.SelectedHomeTeam, state.SelectedAwayTeam, state.SelectedDate, state.SelectedTime);
 
         _stateService.UpdateHomeTeam(Context.Guild.Id, Context.User.Id, "");
         _stateService.UpdateAwayTeam(Context.Guild.Id, Context.User.Id, "");
 
         var updatedState = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (updatedState != null && updatedState.CurrentMatchIndex >= updatedState.TotalMatchesInKolejka)
+        if (updatedState != null && updatedState.CurrentMatchIndex >= updatedState.TotalMatchesInBatch)
         {
             await DeferAsync();
-            await CreateKolejkaMatchesAsync();
+            await CreateBatchRoundMatchesAsync();
         }
         else
         {
             await DeferAsync();
-            await ShowKolejkaMatchFormAsync();
+            await ShowBatchRoundMatchFormAsync();
         }
     }
 
     [ComponentInteraction("admin_kolejka_open_match_modal_*")]
-    public async Task HandleOpenMatchModalForKolejkaAsync(string matchIndexStr)
+    public async Task HandleOpenMatchModalForBatchRoundAsync(string matchIndexStr)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        if (state == null || !state.IsBatchRoundCreation || !state.SelectedRound.HasValue)
         {
             await RespondAsync("❌ Stan formularza wygasł. Rozpocznij ponownie.", ephemeral: true);
             return;
@@ -616,24 +616,24 @@ public class AdminModule : BaseAdminModule
     }
 
     [ComponentInteraction("admin_kolejka_finish")]
-    public async Task HandleFinishKolejkaAsync()
+    public async Task HandleFinishBatchRoundAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        if (state == null || !state.IsBatchRoundCreation || !state.SelectedRound.HasValue)
         {
             await RespondAsync("❌ Stan formularza wygasł. Rozpocznij ponownie.", ephemeral: true);
             return;
         }
 
-        var missingMatches = state.TotalMatchesInKolejka - state.CollectedMatches.Count;
+        var missingMatches = state.TotalMatchesInBatch - state.CollectedMatches.Count;
         if (missingMatches > 0)
         {
             await DeferAsync();
             state.CurrentMatchIndex = state.CollectedMatches.Count + 1;
-            await ShowKolejkaMatchFormAsync();
+            await ShowBatchRoundMatchFormAsync();
             await FollowupAsync(
                 $"⚠️ **Uwaga:** Brakuje jeszcze {missingMatches} mecz(ów) w kolejce. " +
                 $"Możesz je dodać teraz lub zatwierdzić kolejkę bez nich używając przycisku '✅ Zatwierdź kolejkę'.",
@@ -642,16 +642,16 @@ public class AdminModule : BaseAdminModule
         }
 
         await DeferAsync();
-        await CreateKolejkaMatchesAsync();
+        await CreateBatchRoundMatchesAsync();
     }
 
     [ModalInteraction("admin_add_match_modal_kolejka", true)]
-    public async Task HandleAddMatchModalKolejkaAsync(AddMatchModalV2 modal)
+    public async Task HandleAddMatchModalBatchRoundAsync(AddMatchModalV2 modal)
     {
-        await HandleKolejkaModalV2Async(modal);
+        await HandleBatchRoundModalV2Async(modal);
     }
 
-    private async Task HandleKolejkaModalV2Async(AddMatchModalV2 modal)
+    private async Task HandleBatchRoundModalV2Async(AddMatchModalV2 modal)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondWithErrorAsync("Nie masz uprawnień."); return; }
@@ -675,7 +675,7 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wyjątek podczas parsowania daty/godziny kolejki");
+            _logger.LogError(ex, "Exception parsing date/time in batch round");
             await RespondWithErrorAsync("Nie udało się sparsować daty/godziny meczu.");
             return;
         }
@@ -683,25 +683,25 @@ public class AdminModule : BaseAdminModule
         if (startTime <= DateTimeOffset.UtcNow) { await RespondWithErrorAsync("Data rozpoczęcia meczu musi być w przyszłości."); return; }
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation)
+        if (state == null || !state.IsBatchRoundCreation)
         {
             await RespondWithErrorAsync("Błąd: stan formularza wygasł.");
             return;
         }
 
-        _stateService.AddMatchToKolejka(Context.Guild.Id, Context.User.Id, modal.HomeTeam, modal.AwayTeam, modal.MatchDate, modal.MatchTime);
+        _stateService.AddMatchToBatch(Context.Guild.Id, Context.User.Id, modal.HomeTeam, modal.AwayTeam, modal.MatchDate, modal.MatchTime);
 
         var updatedState = _stateService.GetState(Context.Guild.Id, Context.User.Id);
         if (updatedState == null) { await RespondWithErrorAsync("Błąd: stan formularza wygasł."); return; }
 
         var currentMatch = updatedState.CurrentMatchIndex;
-        var totalMatches = updatedState.TotalMatchesInKolejka;
+        var totalMatches = updatedState.TotalMatchesInBatch;
         var roundLabel = RoundHelper.GetRoundLabel(roundNum);
 
         if (currentMatch >= totalMatches)
         {
             await DeferAsync();
-            await CreateKolejkaMatchesAsync();
+            await CreateBatchRoundMatchesAsync();
             return;
         }
 
@@ -725,19 +725,19 @@ public class AdminModule : BaseAdminModule
         }
         catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
         {
-            _logger.LogWarning("Interakcja wygasła podczas dodawania meczu do kolejki");
+            _logger.LogWarning("Interaction expired while adding match to batch round");
         }
     }
 
-    private async Task CreateKolejkaMatchesAsync()
+    private async Task CreateBatchRoundMatchesAsync()
     {
         if (Context.Guild == null) return;
 
         var state = _stateService.GetState(Context.Guild.Id, Context.User.Id);
-        if (state == null || !state.IsKolejkaCreation || !state.SelectedRound.HasValue)
+        if (state == null || !state.IsBatchRoundCreation || !state.SelectedRound.HasValue)
         {
             try { await FollowupAsync("❌ Błąd: stan formularza wygasł.", ephemeral: true); }
-            catch (Exception ex) { _logger.LogError(ex, "Nie udało się wysłać odpowiedzi - interakcja wygasła"); }
+            catch (Exception ex) { _logger.LogError(ex, "Failed to send response - interaction expired"); }
             return;
         }
 
@@ -764,11 +764,11 @@ public class AdminModule : BaseAdminModule
                 await _matchCardService.PostMatchCardAsync(match, roundNumber);
             }
 
-            var totalMatchesExpected = state.TotalMatchesInKolejka;
+            var totalMatchesExpected = state.TotalMatchesInBatch;
             var missingMatches = totalMatchesExpected - createdMatches.Count;
             _stateService.ClearState(Context.Guild.Id, Context.User.Id);
 
-            _logger.LogInformation("Kolejka utworzona - {Label}, Meczów: {Count}/{Total}", roundLabel, createdMatches.Count, totalMatchesExpected);
+            _logger.LogInformation("Batch round created - {Label}, Matches: {Count}/{Total}", roundLabel, createdMatches.Count, totalMatchesExpected);
 
             var responseMessage = $"✅ Kolejka {roundLabel} została dodana z {createdMatches.Count} meczami.";
             if (missingMatches > 0)
@@ -777,13 +777,13 @@ public class AdminModule : BaseAdminModule
                 responseMessage += $"\n\n⚠️ Wystąpiły błędy:\n{string.Join("\n", errors)}";
 
             try { await FollowupAsync(responseMessage, ephemeral: true); }
-            catch (Exception ex) { _logger.LogError(ex, "Nie udało się wysłać odpowiedzi - interakcja wygasła, ale mecze zostały utworzone"); }
+            catch (Exception ex) { _logger.LogError(ex, "Failed to send response - interaction expired, but matches were created"); }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Wyjątek podczas tworzenia meczów kolejki {Round}", roundNumber);
+            _logger.LogError(ex, "Exception creating batch round matches for round {Round}", roundNumber);
             try { await FollowupAsync("❌ Wystąpił błąd podczas tworzenia kolejki. Szczegóły w logach.", ephemeral: true); }
-            catch { _logger.LogError("Nie udało się wysłać odpowiedzi o błędzie - interakcja wygasła"); }
+            catch { _logger.LogError("Failed to send error response - interaction expired"); }
         }
     }
 
@@ -810,7 +810,7 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd generowania tabeli sezonu");
+            _logger.LogError(ex, "Error generating season table");
             await FollowupAsync("❌ Wystąpił błąd podczas generowania tabeli.", ephemeral: true);
         }
     }
@@ -836,7 +836,7 @@ public class AdminModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd generowania tabeli kolejki");
+            _logger.LogError(ex, "Error generating round table");
             await FollowupAsync("❌ Wystąpił błąd podczas generowania tabeli.", ephemeral: true);
         }
     }
@@ -856,11 +856,11 @@ public class AdminModule : BaseAdminModule
         {
             var csv = _exportService.ExportSeasonToCsv(season, players);
             await RespondWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-sezonu-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
-            _logger.LogInformation("Eksport sezonu wygenerowany - Użytkownik: {Username}", Context.User.Username);
+            _logger.LogInformation("Season export generated - User: {Username}", Context.User.Username);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Nie udało się wygenerować eksportu sezonu");
+            _logger.LogError(ex, "Failed to generate season export");
             await RespondAsync("❌ Nie udało się wygenerować eksportu sezonu.", ephemeral: true);
         }
     }
@@ -882,11 +882,11 @@ public class AdminModule : BaseAdminModule
         {
             var csv = _exportService.ExportRoundToCsv(roundEntity, players);
             await RespondWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-kolejki-{round}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
-            _logger.LogInformation("Eksport kolejki {Round} wygenerowany - Użytkownik: {Username}", round, Context.User.Username);
+            _logger.LogInformation("Round {Round} export generated - User: {Username}", round, Context.User.Username);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Nie udało się wygenerować eksportu kolejki {Round}", round);
+            _logger.LogError(ex, "Failed to generate round {Round} export", round);
             await RespondAsync("❌ Nie udało się wygenerować eksportu kolejki.", ephemeral: true);
         }
     }
@@ -936,7 +936,7 @@ public class AdminModule : BaseAdminModule
 
         embed.WithFooter("Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
         await channel.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Tabela kolejki {Round} opublikowana", round.Number);
+        _logger.LogInformation("Round {Round} table published", round.Number);
     }
 
     public async Task PostSeasonTableEmbedAsync(Domain.Entities.Season season, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match? triggerMatch = null)
@@ -971,7 +971,7 @@ public class AdminModule : BaseAdminModule
         embed.WithFooter("Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
 
         await channel.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Tabela sezonu opublikowana");
+        _logger.LogInformation("Season table published");
     }
 
     private static string BuildStandingsTable(List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)> sortedScores)

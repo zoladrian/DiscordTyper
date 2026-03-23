@@ -34,7 +34,7 @@ public class MatchCardService
         var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
         if (predictionsChannel == null)
         {
-            _logger.LogError("Kanał typowań nie znaleziony, nie można opublikować karty meczu");
+            _logger.LogError("Predictions channel not found, cannot publish match card");
             return;
         }
 
@@ -153,7 +153,7 @@ public class MatchCardService
         {
             // Update existing message
             await existingMessage.ModifyAsync(prop => { prop.Embed = embed; prop.Components = component; });
-            _logger.LogInformation("Karta meczu zaktualizowana - ID meczu: {MatchId}", match.Id);
+            _logger.LogInformation("Match card updated - Match ID: {MatchId}", match.Id);
         }
         else
         {
@@ -191,12 +191,12 @@ public class MatchCardService
 
                 var cardMessage = await thread.SendMessageAsync(embed: embed, components: component);
                 
-                _logger.LogInformation("Karta meczu opublikowana w kanale typowań - ID meczu: {MatchId}, Thread ID: {ThreadId}", match.Id, thread.Id);
+                _logger.LogInformation("Match card published in predictions channel - Match ID: {MatchId}, Thread ID: {ThreadId}", match.Id, thread.Id);
             }
             else
             {
                 // Thread will be created later by ThreadCreationService
-                _logger.LogInformation("Karta meczu będzie utworzona później - ID meczu: {MatchId}, ThreadCreationTime: {Time}", 
+                _logger.LogInformation("Match card will be created later - Match ID: {MatchId}, ThreadCreationTime: {Time}", 
                     match.Id, match.ThreadCreationTime?.ToString() ?? "null");
             }
         }

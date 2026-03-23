@@ -66,7 +66,7 @@ public class SeasonManagementService
                 await transaction.CommitAsync();
 
                 _logger.LogInformation(
-                    "Nowy sezon utworzony - Użytkownik: {Username} (ID: {UserId}), Nazwa: {Name}, ID: {Id}",
+                    "New season created - User: {Username} (ID: {UserId}), Name: {Name}, ID: {Id}",
                     username, userId, newSeason.Name, newSeason.Id);
 
                 return (true, $"Nowy sezon **{newSeason.Name}** został utworzony i ustawiony jako aktywny.");
@@ -79,7 +79,7 @@ public class SeasonManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas tworzenia sezonu - Użytkownik: {Username} (ID: {UserId}), Nazwa: {Name}",
+            _logger.LogError(ex, "Error creating season - User: {Username} (ID: {UserId}), Name: {Name}",
                 username, userId, seasonName);
             return (false, "Wystąpił błąd podczas tworzenia sezonu. Sprawdź logi dla szczegółów.");
         }
@@ -97,7 +97,7 @@ public class SeasonManagementService
         await _seasonRepository.UpdateAsync(season);
 
         _logger.LogInformation(
-            "Sezon zakończony - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
+            "Season ended - User: {Username} (ID: {UserId}), Season: {Name} (ID: {Id})",
             username, userId, season.Name, season.Id);
 
         return (true, $"Sezon **{season.Name}** został oznaczony jako zakończony.");
@@ -129,7 +129,7 @@ public class SeasonManagementService
             await transaction.CommitAsync();
 
             _logger.LogInformation(
-                "Sezon reaktywowany - Użytkownik: {Username} (ID: {UserId}), Sezon: {Name} (ID: {Id})",
+                "Season reactivated - User: {Username} (ID: {UserId}), Season: {Name} (ID: {Id})",
                 username, userId, season.Name, season.Id);
 
             return (true, $"Sezon **{season.Name}** został ustawiony jako aktywny.");
@@ -137,7 +137,7 @@ public class SeasonManagementService
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            _logger.LogError(ex, "Błąd reaktywacji sezonu {SeasonId}", seasonId);
+            _logger.LogError(ex, "Error reactivating season {SeasonId}", seasonId);
             return (false, "Wystąpił błąd podczas reaktywacji sezonu.");
         }
     }

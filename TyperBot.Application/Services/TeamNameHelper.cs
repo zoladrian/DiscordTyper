@@ -3,7 +3,7 @@ namespace TyperBot.Application.Services;
 public static class TeamNameHelper
 {
     /// <summary>
-    /// Mapowanie nazw drużyn do miast (dla generowania skrótów)
+    /// Maps team names to cities (for generating abbreviations)
     /// </summary>
     private static readonly Dictionary<string, string> TeamCityMap = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -20,26 +20,26 @@ public static class TeamNameHelper
     };
 
     /// <summary>
-    /// Generuje skrót z nazwy drużyny używając miasta (np. "Stal Gorzów" -> "GOR", "Unia Leszno" -> "LES")
+    /// Generates a team abbreviation using the city name (e.g. "Stal Gorzów" -> "GOR", "Unia Leszno" -> "LES")
     /// </summary>
     public static string GetTeamShortcut(string teamName)
     {
         if (string.IsNullOrWhiteSpace(teamName))
             return "???";
 
-        // Sprawdź czy mamy mapowanie dla tej drużyny
+        // Check if we have a mapping for this team
         if (TeamCityMap.TryGetValue(teamName.Trim(), out var city))
         {
             return GetCityShortcut(city);
         }
 
-        // Fallback: spróbuj znaleźć miasto w nazwie (ostatnie słowo lub przedostatnie jeśli jest "Zielona Góra")
+        // Fallback: try to find the city in the name (last word, or second-to-last for "Zielona Góra")
         var words = teamName.Trim().Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
         
         if (words.Length == 0)
             return "???";
 
-        // Sprawdź czy ostatnie dwa słowa to "Zielona Góra"
+        // Check if the last two words are "Zielona Góra"
         if (words.Length >= 2 && 
             words[words.Length - 2].Equals("Zielona", StringComparison.OrdinalIgnoreCase) &&
             words[words.Length - 1].Equals("Góra", StringComparison.OrdinalIgnoreCase))
@@ -47,13 +47,13 @@ public static class TeamNameHelper
             return "ZIE";
         }
 
-        // W przeciwnym razie użyj ostatniego słowa jako miasta
+        // Otherwise use the last word as the city name
         var lastWord = words[words.Length - 1];
         return GetCityShortcut(lastWord);
     }
 
     /// <summary>
-    /// Generuje skrót z nazwy miasta (pierwsze 3 litery)
+    /// Generates a city abbreviation (first 3 letters)
     /// </summary>
     private static string GetCityShortcut(string cityName)
     {
@@ -66,7 +66,7 @@ public static class TeamNameHelper
     }
 
     /// <summary>
-    /// Generuje skrót meczu (np. "WRO-TOR")
+    /// Generates a match abbreviation (e.g. "WRO-TOR")
     /// </summary>
     public static string GetMatchShortcut(string homeTeam, string awayTeam)
     {

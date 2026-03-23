@@ -12,7 +12,7 @@ public static class CustomIds
         public const string AddButton = "admin_add_match";
         public const string AddModalV2 = "admin_add_match_modal_v2";
         public const string AddModalLegacy = "admin_add_match_modal";
-        public const string AddModalKolejka = "admin_add_match_modal_kolejka";
+        public const string AddModalBatchRound = "admin_add_match_modal_kolejka";
 
         public const string EditButton = "admin_edit_match_";
         public const string EditModal = "admin_edit_match_modal_";
@@ -55,7 +55,7 @@ public static class CustomIds
         public const string ContinueButton = "admin_add_match_continue";
     }
 
-    public static class Kolejka
+    public static class BatchRound
     {
         public const string HomeTeam = "admin_kolejka_home_team";
         public const string AwayTeam = "admin_kolejka_away_team";

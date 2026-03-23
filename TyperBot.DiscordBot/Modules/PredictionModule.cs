@@ -71,7 +71,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             // Validate match hasn't started yet
             if (DateTimeOffset.UtcNow >= match.StartTime)
             {
-                _logger.LogWarning("Próba wysłania wiadomości o typie po rozpoczęciu meczu - Mecz ID: {MatchId}", match.Id);
+                _logger.LogWarning("Attempted to post prediction message after match started - Match ID: {MatchId}", match.Id);
                 return;
             }
 
@@ -124,12 +124,12 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
             await thread.SendMessageAsync(message);
             _logger.LogInformation(
-                "Wiadomość o typie opublikowana w wątku - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Update: {IsUpdate}",
+                "Prediction message posted in thread - User: {Username} (ID: {UserId}), Match ID: {MatchId}, Update: {IsUpdate}",
                 user.Username, user.Id, match.Id, isUpdate);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Nie udało się opublikować wiadomości w wątku meczu");
+            _logger.LogError(ex, "Failed to publish message in match thread");
         }
     }
 
@@ -266,14 +266,14 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                     {
                         await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
                         _logger.LogInformation(
-                            "Publiczne oznaczenie użytkownika - niedozwolone znaki - Użytkownik: {Username} (ID: {UserId}), Mecz ID: {MatchId}, Typ: {Home}:{Away}",
+                            "Public shaming - invalid characters - User: {Username} (ID: {UserId}), Match ID: {MatchId}, Prediction: {Home}:{Away}",
                             user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Nie udało się wysłać publicznej wiadomości");
+                _logger.LogError(ex, "Failed to send public message");
             }
             
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);

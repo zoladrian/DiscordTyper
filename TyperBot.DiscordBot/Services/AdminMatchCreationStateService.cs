@@ -9,9 +9,9 @@ public class AdminMatchCreationState
     public int CurrentCalendarMonth { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    // For kolejka creation flow
-    public bool IsKolejkaCreation { get; set; }
-    public int TotalMatchesInKolejka { get; set; }
+    // Batch round creation flow
+    public bool IsBatchRoundCreation { get; set; }
+    public int TotalMatchesInBatch { get; set; }
     public int CurrentMatchIndex { get; set; }
     public string? SelectedHomeTeam { get; set; }
     public string? SelectedAwayTeam { get; set; }
@@ -90,17 +90,17 @@ public class AdminMatchCreationStateService
         state.SelectedAwayTeam = awayTeam;
     }
 
-    public void InitializeKolejkaCreation(ulong guildId, ulong userId, int roundNumber, int totalMatches)
+    public void InitializeBatchRoundCreation(ulong guildId, ulong userId, int roundNumber, int totalMatches)
     {
         var state = GetOrCreateState(guildId, userId);
-        state.IsKolejkaCreation = true;
+        state.IsBatchRoundCreation = true;
         state.SelectedRound = roundNumber;
-        state.TotalMatchesInKolejka = totalMatches;
+        state.TotalMatchesInBatch = totalMatches;
         state.CurrentMatchIndex = 0;
         state.CollectedMatches.Clear();
     }
 
-    public void AddMatchToKolejka(ulong guildId, ulong userId, string homeTeam, string awayTeam, string date, string time)
+    public void AddMatchToBatch(ulong guildId, ulong userId, string homeTeam, string awayTeam, string date, string time)
     {
         var state = GetOrCreateState(guildId, userId);
         state.CollectedMatches.Add((homeTeam, awayTeam, date, time));

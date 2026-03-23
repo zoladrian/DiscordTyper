@@ -15,19 +15,19 @@ public class StartSeasonModal : IModal
     public string SeasonName { get; set; } = string.Empty;
 }
 
-public class AddKolejkaModal : IModal
+public class AddRoundModal : IModal
 {
     public string Title => "Dodaj kolejkę";
 
     [InputLabel("Numer kolejki (1-18)")]
     [ModalTextInput("kolejka_number", TextInputStyle.Short, placeholder: "1", minLength: 1, maxLength: 2)]
     [RequiredInput(true)]
-    public string KolejkaNumber { get; set; } = string.Empty;
+    public string RoundNumber { get; set; } = string.Empty;
 
     [InputLabel("Liczba meczów w kolejce")]
     [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 1)]
     [RequiredInput(true)]
-    public string LiczbaMeczow { get; set; } = string.Empty;
+    public string MatchCount { get; set; } = string.Empty;
 }
 
 public class AddMatchModalV2 : IModal

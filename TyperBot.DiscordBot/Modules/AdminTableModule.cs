@@ -40,8 +40,8 @@ public class AdminTableModule : BaseAdminModule
     }
 
     /// <summary>
-    /// Komendy <c>admin-tabela-sezonu</c> / <c>admin-tabela-kolejki</c> (tabela tekstowa na kanał) są w <c>AdminModule</c>.
-    /// Przyciski panelu tutaj generują PNG (ephemeral).
+    /// Slash commands <c>admin-tabela-sezonu</c> / <c>admin-tabela-kolejki</c> (text table to channel) are in <c>AdminModule</c>.
+    /// Panel buttons here generate PNG images (ephemeral).
     /// </summary>
     [ComponentInteraction("admin_table_season")]
     public async Task HandleTableSeasonButtonAsync()
@@ -69,7 +69,7 @@ public class AdminTableModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas generowania tabeli sezonu");
+            _logger.LogError(ex, "Error generating season table");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
     }
@@ -142,7 +142,7 @@ public class AdminTableModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas generowania tabeli kolejki");
+            _logger.LogError(ex, "Error generating round table");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
     }
@@ -208,7 +208,7 @@ public class AdminTableModule : BaseAdminModule
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Błąd podczas pobierania wyników gracza");
+            _logger.LogError(ex, "Error fetching player results");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
     }
