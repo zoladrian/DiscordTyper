@@ -20,6 +20,8 @@ public class AdminMatchModule : BaseAdminModule
     private readonly MatchCreationService _matchCreationService;
     private readonly MatchResultHandler _matchResultHandler;
     private readonly AdminMatchCreationStateService _stateService;
+    private readonly MatchCardService _matchCardService;
+    private readonly DiscordLookupService _lookupService;
 
     public AdminMatchModule(
         ILogger<AdminMatchModule> logger,
@@ -29,7 +31,9 @@ public class AdminMatchModule : BaseAdminModule
         MatchManagementService matchService,
         MatchCreationService matchCreationService,
         MatchResultHandler matchResultHandler,
-        AdminMatchCreationStateService stateService) : base(settings.Value)
+        AdminMatchCreationStateService stateService,
+        MatchCardService matchCardService,
+        DiscordLookupService lookupService) : base(settings.Value)
     {
         _logger = logger;
         _matchRepository = matchRepository;
@@ -38,6 +42,8 @@ public class AdminMatchModule : BaseAdminModule
         _matchCreationService = matchCreationService;
         _matchResultHandler = matchResultHandler;
         _stateService = stateService;
+        _matchCardService = matchCardService;
+        _lookupService = lookupService;
     }
 
     [ComponentInteraction("admin_add_match")]
@@ -103,9 +109,247 @@ public class AdminMatchModule : BaseAdminModule
     [ModalInteraction("admin_edit_match_modal_*", true)]
     public async Task HandleEditMatchModalAsync(string matchIdStr, EditMatchModal modal)
     {
-        // Implementation remains in AdminModule for now or move to service
-        // For brevity, I'll keep it simple here and move the logic later if needed
-        await RespondAsync("Edycja meczu - Funkcjonalność w trakcie refaktoryzacji.", ephemeral: true);
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var oldHomeTeam = match.HomeTeam;
+        var oldAwayTeam = match.AwayTeam;
+        var oldStartTime = match.StartTime;
+        var oldRound = match.Round;
+        var oldRoundNum = oldRound?.Number ?? 0;
+
+        IUserMessage? messageToUpdate = null;
+        SocketThreadChannel? threadToUpdate = null;
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel != null && oldRound != null)
+        {
+            var oldRoundLabel = Application.Services.RoundHelper.GetRoundLabel(oldRoundNum);
+            var oldThreadName = $"{oldRoundLabel}: {oldHomeTeam} vs {oldAwayTeam}";
+            threadToUpdate = predictionsChannel.Threads.FirstOrDefault(t => t.Name == oldThreadName);
+            if (threadToUpdate != null)
+            {
+                messageToUpdate = await _lookupService.FindMatchCardMessageAsync(threadToUpdate);
+            }
+        }
+
+        _logger.LogInformation(
+            "Modal edytuj mecz przesłany - Użytkownik: {Username}, ID meczu: {MatchId}, Stare: {OldHome} vs {OldAway}, Nowe: {NewHome} vs {NewAway}",
+            Context.User.Username, matchId, oldHomeTeam, oldAwayTeam, modal.HomeTeam, modal.AwayTeam);
+
+        DateTimeOffset startTime;
+        try
+        {
+            if (!DateTime.TryParse($"{modal.Date} {modal.Time}", out var localTime))
+            {
+                await RespondAsync("❌ Nieprawidłowy format daty lub godziny. Użyj YYYY-MM-DD dla daty i HH:MM dla godziny.", ephemeral: true);
+                return;
+            }
+
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
+            var localDateTime = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
+            startTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, tz);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Wyjątek podczas parsowania daty/godziny w edycji - Mecz ID: {MatchId}", matchId);
+            await RespondAsync("❌ Błąd podczas parsowania daty/godziny.", ephemeral: true);
+            return;
+        }
+
+        DateTimeOffset? typingDeadline = null;
+        if (!string.IsNullOrWhiteSpace(modal.TypingDeadline))
+        {
+            try
+            {
+                if (DateTime.TryParse(modal.TypingDeadline, out var localDeadlineTime))
+                {
+                    var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
+                    var localDeadlineDateTime = DateTime.SpecifyKind(localDeadlineTime, DateTimeKind.Unspecified);
+                    typingDeadline = TimeZoneInfo.ConvertTimeToUtc(localDeadlineDateTime, tz);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Nie udało się sparsować deadline typowania, używam domyślnego");
+            }
+        }
+
+        match.HomeTeam = modal.HomeTeam;
+        match.AwayTeam = modal.AwayTeam;
+        if (match.StartTime != startTime)
+        {
+            match.PredictionsRevealed = false;
+        }
+        match.StartTime = startTime;
+        match.TypingDeadline = typingDeadline;
+        await _matchRepository.UpdateAsync(match);
+
+        var round = match.Round;
+        var roundNum = round?.Number ?? 0;
+        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
+        var newThreadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+
+        IUserMessage? cardMessage = messageToUpdate;
+        SocketThreadChannel? targetThread = threadToUpdate;
+
+        if (cardMessage == null && startTime > DateTimeOffset.UtcNow && predictionsChannel != null)
+        {
+            if (match.ThreadId.HasValue)
+            {
+                targetThread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+                if (targetThread != null)
+                    cardMessage = await _lookupService.FindMatchCardMessageAsync(targetThread);
+            }
+
+            if (targetThread == null)
+            {
+                var searchThreadName = newThreadName.Length > 100 ? newThreadName.Substring(0, 97) + "..." : newThreadName;
+                var existingThread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == searchThreadName);
+                if (existingThread != null)
+                {
+                    targetThread = existingThread;
+                    cardMessage = await _lookupService.FindMatchCardMessageAsync(existingThread);
+                    if (!match.ThreadId.HasValue)
+                    {
+                        match.ThreadId = existingThread.Id;
+                        await _matchRepository.UpdateAsync(match);
+                    }
+                }
+            }
+        }
+
+        if (cardMessage != null)
+            await _matchCardService.PostMatchCardAsync(match, roundNum, cardMessage);
+        else if (startTime > DateTimeOffset.UtcNow)
+            await _matchCardService.PostMatchCardAsync(match, roundNum, null);
+
+        if (targetThread != null)
+        {
+            var validatedThreadName = newThreadName.Length > 100 ? newThreadName.Substring(0, 97) + "..." : newThreadName;
+            if (targetThread.Name != validatedThreadName)
+            {
+                try
+                {
+                    await targetThread.ModifyAsync(props => props.Name = validatedThreadName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Nie udało się zaktualizować nazwy wątku - Thread ID: {ThreadId}", targetThread.Id);
+                }
+            }
+        }
+
+        _logger.LogInformation(
+            "Mecz zaktualizowany - ID: {MatchId}, {NewHome} vs {NewAway}, StartTime: {NewTime}",
+            matchId, match.HomeTeam, match.AwayTeam, startTime);
+
+        await RespondAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
+    }
+
+    [ComponentInteraction("admin_cancel_match_*")]
+    public async Task HandleCancelMatchButtonAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var embed = new EmbedBuilder()
+            .WithTitle("🚫 Odwołaj mecz")
+            .WithDescription($"Czy na pewno chcesz odwołać mecz **{match.HomeTeam} vs {match.AwayTeam}**?\n\n" +
+                           "Mecz zostanie oznaczony jako odwołany. Typy graczy zostaną zachowane.")
+            .WithColor(Color.Orange);
+
+        var confirmButton = new ButtonBuilder()
+            .WithCustomId($"admin_confirm_cancel_match_{match.Id}")
+            .WithLabel("✅ Tak, odwołaj mecz")
+            .WithStyle(ButtonStyle.Danger);
+
+        var cancelButton = new ButtonBuilder()
+            .WithCustomId($"admin_cancel_action_{match.Id}")
+            .WithLabel("❌ Anuluj")
+            .WithStyle(ButtonStyle.Secondary);
+
+        var component = new ComponentBuilder()
+            .WithButton(confirmButton, row: 0)
+            .WithButton(cancelButton, row: 0)
+            .Build();
+
+        await RespondAsync(embed: embed.Build(), components: component, ephemeral: true);
+    }
+
+    [ComponentInteraction("admin_add_match_to_round_*")]
+    public async Task HandleAddMatchToRoundAsync(string roundIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(roundIdStr, out var roundId))
+        {
+            await RespondAsync("❌ Nieprawidłowy identyfikator kolejki.", ephemeral: true);
+            return;
+        }
+
+        var round = await _roundRepository.GetByIdAsync(roundId);
+        if (round == null)
+        {
+            await RespondAsync("❌ Kolejka nie znaleziona.", ephemeral: true);
+            return;
+        }
+
+        var modal = new AddMatchModalV2
+        {
+            RoundNumber = round.Number.ToString(),
+            MatchDate = DateTime.Now.ToString("yyyy-MM-dd"),
+            MatchTime = "18:00",
+            HomeTeam = "Motor Lublin",
+            AwayTeam = "Włókniarz Częstochowa"
+        };
+
+        try
+        {
+            await RespondWithModalAsync("admin_add_match_modal_v2", modal);
+        }
+        catch (Discord.Net.HttpException ex) when (ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning("Interakcja wygasła przed otwarciem modala dodaj mecz do kolejki");
+        }
     }
 
     [ComponentInteraction("admin_delete_match_*")]
