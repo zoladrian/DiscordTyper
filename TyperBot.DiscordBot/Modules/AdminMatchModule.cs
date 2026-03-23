@@ -281,10 +281,12 @@ public class AdminMatchModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -309,7 +311,7 @@ public class AdminMatchModule : BaseAdminModule
             .WithButton(cancelButton, row: 0)
             .Build();
 
-        await RespondAsync(embed: embed.Build(), components: component, ephemeral: true);
+        await FollowupAsync(embed: embed.Build(), components: component, ephemeral: true);
     }
 
     [ComponentInteraction("admin_add_match_to_round_*")]
@@ -397,7 +399,7 @@ public class AdminMatchModule : BaseAdminModule
             .WithButton(hardDeleteButton)
             .Build();
 
-        await RespondAsync(embed: embed.Build(), components: component, ephemeral: true);
+        await FollowupAsync(embed: embed.Build(), components: component, ephemeral: true);
     }
 
     [ComponentInteraction("admin_confirm_cancel_match_*")]

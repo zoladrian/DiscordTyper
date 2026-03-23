@@ -68,18 +68,12 @@ public class ReminderService : BackgroundService
         var threeHoursAgo = now.AddHours(-3);
         var oneDayAgo = now.AddDays(-1);
 
-        var allMatches = await matchRepository.GetAllAsync();
-        
-        // Filter matches that should receive reminders
-        var matchesToRemind = allMatches.Where(m => 
-            m.Status != MatchStatus.Cancelled &&
-            m.Status != MatchStatus.Finished && // Don't send reminders for finished matches
-            m.StartTime <= threeHoursAgo &&
-            !(m.HomeScore.HasValue && m.AwayScore.HasValue) && // If both scores are set, match is finished
-            !_remindedMatches.Contains(m.Id) && // Haven't sent reminder for this match yet
-            // On first check after startup, skip very old matches (>24h) to avoid spam after restart
-            (!_isFirstCheck || m.StartTime >= oneDayAgo)
-        ).ToList();
+        var candidates = (await matchRepository.GetMatchesPossiblyAwaitingResultEntryAsync(threeHoursAgo)).ToList();
+
+        var matchesToRemind = candidates.Where(m =>
+            !_remindedMatches.Contains(m.Id) &&
+            (!_isFirstCheck || m.StartTime >= oneDayAgo))
+            .ToList();
 
         // Mark that first check is done
         if (_isFirstCheck)

@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
-using TyperBot.Domain.Enums;
 using TyperBot.Application.Services;
 
 namespace TyperBot.DiscordBot.Services;
@@ -62,16 +61,8 @@ public class ThreadCreationService : BackgroundService
         var lookupService = scope.ServiceProvider.GetRequiredService<DiscordLookupService>();
         var settings = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<TyperBot.DiscordBot.Models.DiscordSettings>>();
 
-        // Get matches that should have threads created now
         var now = DateTimeOffset.UtcNow;
-        var allMatches = await matchRepository.GetAllAsync();
-        
-        var matchesToCreateThreads = allMatches.Where(m => 
-            m.Status == MatchStatus.Scheduled &&
-            m.ThreadCreationTime.HasValue &&
-            m.ThreadCreationTime.Value <= now &&
-            m.StartTime > now // Only create threads for future matches
-        ).ToList();
+        var matchesToCreateThreads = (await matchRepository.GetMatchesReadyForThreadCreationAsync(now)).ToList();
 
         if (!matchesToCreateThreads.Any()) return;
 

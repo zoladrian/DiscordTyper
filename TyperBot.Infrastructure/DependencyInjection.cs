@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using TyperBot.Infrastructure.Data;
 using TyperBot.Infrastructure.Repositories;
@@ -10,9 +11,10 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<TyperContext>(options =>
-            options.UseSqlite(connectionString)
-                .ConfigureWarnings(warnings => 
-                    warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+            options.UseSqlite(connectionString, sql =>
+                    sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+                .ConfigureWarnings(warnings =>
+                    warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
         // Register repositories
         services.AddScoped<ISeasonRepository, SeasonRepository>();

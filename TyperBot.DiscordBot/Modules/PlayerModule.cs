@@ -69,10 +69,16 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
                 await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
                 return;
             }
-            var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round.Value);
+            var roundEntity = season.FindRoundByNumber(round.Value)
+                ?? await _roundRepository.GetByNumberAsync(season.Id, round.Value);
             if (roundEntity == null)
             {
-                await FollowupAsync($"❌ Kolejka {round.Value} nie znaleziona.", ephemeral: true);
+                var available = season.Rounds.Count > 0
+                    ? string.Join(", ", season.Rounds.OrderBy(r => r.Number).Select(r => r.Number))
+                    : "brak";
+                await FollowupAsync(
+                    $"❌ W aktywnym sezonie nie ma kolejki **{round.Value}**. Dostępne: {available}.",
+                    ephemeral: true);
                 return;
             }
             var roundMatches = await _matchRepository.GetByRoundIdAsync(roundEntity.Id);
@@ -104,16 +110,11 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             .WithColor(Color.Blue)
             .WithCurrentTimestamp();
 
-        // Build detailed table with match info
-        var matchesWithPreds = new List<(Domain.Entities.Match Match, Domain.Entities.Prediction Pred)>();
-        foreach (var pred in predictionsList)
-        {
-            var match = await _matchRepository.GetByIdAsync(pred.MatchId);
-            if (match != null && match.Round != null)
-            {
-                matchesWithPreds.Add((match, pred));
-            }
-        }
+        // Match + Round already loaded via GetByPlayerIdAndMatchIdsAsync (no per-prediction DB round-trips)
+        var matchesWithPreds = predictionsList
+            .Where(p => p.Match?.Round != null)
+            .Select(p => (Match: p.Match!, Pred: p))
+            .ToList();
 
         // Group by round for better organization
         var grouped = matchesWithPreds
@@ -206,6 +207,12 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
+        if (!RoundHelper.IsValidRoundNumber(round))
+        {
+            await FollowupAsync($"❌ Numer kolejki musi być z zakresu 1–18 (podano: {round}).", ephemeral: true);
+            return;
+        }
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null)
         {
@@ -213,10 +220,16 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round);
+        var roundEntity = season.FindRoundByNumber(round)
+            ?? await _roundRepository.GetByNumberAsync(season.Id, round);
         if (roundEntity == null)
         {
-            await FollowupAsync($"❌ Kolejka {round} nie znaleziona.", ephemeral: true);
+            var available = season.Rounds.Count > 0
+                ? string.Join(", ", season.Rounds.OrderBy(r => r.Number).Select(r => r.Number))
+                : "brak";
+            await FollowupAsync(
+                $"❌ W aktywnym sezonie nie ma kolejki **{round}**. Dostępne: {available}.",
+                ephemeral: true);
             return;
         }
 

@@ -17,39 +17,61 @@ public class MatchRepository : IMatchRepository
     public async Task<Match?> GetByIdAsync(int id)
     {
         return await _context.Matches
+            .AsNoTracking()
             .Include(m => m.Round)
             .FirstOrDefaultAsync(m => m.Id == id);
     }
 
     public async Task<IEnumerable<Match>> GetByRoundIdAsync(int roundId)
     {
-        var matches = await _context.Matches
+        return await _context.Matches
+            .AsNoTracking()
             .Where(m => m.RoundId == roundId)
+            .OrderBy(m => m.StartTime)
             .ToListAsync();
-        return matches.OrderBy(m => m.StartTime);
     }
 
     public async Task<IEnumerable<Match>> GetUpcomingMatchesAsync()
     {
         var now = DateTimeOffset.UtcNow;
-        
-        // SQLite cannot translate enum comparisons properly, so fetch all and filter client-side
-        var allMatches = await _context.Matches
+        return await _context.Matches
+            .AsNoTracking()
             .Include(m => m.Round)
-            .ToListAsync();
-        
-        // Filter client-side: Scheduled status and future start time
-        var matches = allMatches
             .Where(m => m.Status == MatchStatus.Scheduled && m.StartTime > now)
             .OrderBy(m => m.StartTime)
-            .ToList();
-        
-        return matches;
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Match>> GetMatchesReadyForThreadCreationAsync(DateTimeOffset now)
+    {
+        return await _context.Matches
+            .AsNoTracking()
+            .Include(m => m.Round)
+            .Where(m =>
+                m.Status == MatchStatus.Scheduled &&
+                m.ThreadCreationTime != null &&
+                m.ThreadCreationTime <= now &&
+                m.StartTime > now)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Match>> GetMatchesPossiblyAwaitingResultEntryAsync(DateTimeOffset startedOnOrBeforeUtc)
+    {
+        return await _context.Matches
+            .AsNoTracking()
+            .Include(m => m.Round)
+            .Where(m =>
+                m.Status != MatchStatus.Cancelled &&
+                m.Status != MatchStatus.Finished &&
+                m.StartTime <= startedOnOrBeforeUtc &&
+                !(m.HomeScore.HasValue && m.AwayScore.HasValue))
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<Match>> GetAllAsync()
     {
         return await _context.Matches
+            .AsNoTracking()
             .Include(m => m.Round)
             .ToListAsync();
     }
@@ -69,7 +91,8 @@ public class MatchRepository : IMatchRepository
 
     public async Task DeleteAsync(int id)
     {
-        var match = await GetByIdAsync(id);
+        // Tracked load — do not use GetByIdAsync (AsNoTracking); Remove must attach a consistent graph for deletes.
+        var match = await _context.Matches.FindAsync(id);
         if (match != null)
         {
             _context.Matches.Remove(match);

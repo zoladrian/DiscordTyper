@@ -133,6 +133,45 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    /// <summary>Posts the public "invalid input" thread message while the interaction scope is still active.</summary>
+    private async Task TryPostInvalidPredictionShameAsync(
+        int matchId,
+        SocketGuildUser user,
+        string homeRaw,
+        string awayRaw)
+    {
+        try
+        {
+            var match = await _matchRepository.GetByIdAsync(matchId);
+            if (match == null) return;
+
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null) return;
+
+            SocketThreadChannel? thread = null;
+            if (match.ThreadId.HasValue)
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+            if (thread == null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+            }
+
+            if (thread != null)
+            {
+                await thread.SendMessageAsync($"{user.Username} próbował zatypować jak skończony imbecyl");
+                _logger.LogInformation(
+                    "Public shaming - invalid characters - User: {Username} (ID: {UserId}), Match ID: {MatchId}, Prediction: {Home}:{Away}",
+                    user.Username, user.Id, matchId, homeRaw, awayRaw);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send public message");
+        }
+    }
+
     [ComponentInteraction("predict_match_*")]
     public async Task HandlePredictButtonAsync(string matchIdStr)
     {
@@ -234,40 +273,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         if (!int.TryParse(modal.HomePoints, out var homeTip) || !int.TryParse(modal.AwayPoints, out var awayTip))
         {
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
-
-            // Post shaming message asynchronously (interaction already responded)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var match = await _matchRepository.GetByIdAsync(matchId);
-                    if (match == null) return;
-
-                    var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-                    if (predictionsChannel == null) return;
-
-                    SocketThreadChannel? thread = null;
-                    if (match.ThreadId.HasValue)
-                        thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                    if (thread == null)
-                    {
-                        var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
-                        var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                        thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
-                    }
-                    if (thread != null)
-                    {
-                        await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
-                        _logger.LogInformation(
-                            "Public shaming - invalid characters - User: {Username} (ID: {UserId}), Match ID: {MatchId}, Prediction: {Home}:{Away}",
-                            user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send public message");
-                }
-            });
+            // Must await: interaction scope (and DbContext) ends when handler returns — no fire-and-forget Task.Run.
+            await TryPostInvalidPredictionShameAsync(matchId, user!, modal.HomePoints, modal.AwayPoints);
             return;
         }
 

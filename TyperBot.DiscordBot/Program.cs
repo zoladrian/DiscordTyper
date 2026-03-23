@@ -54,15 +54,18 @@ builder.Services.AddSerilog((services, lc) => lc
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .WriteTo.Console()
-    .WriteTo.File("logs/typerbot-.txt", rollingInterval: RollingInterval.Day));
+    .WriteTo.File(
+        Path.Combine(AppContext.BaseDirectory, "logs", "typerbot-.txt"),
+        rollingInterval: RollingInterval.Day));
 
 // Register settings
 builder.Services.Configure<DiscordSettings>(
     builder.Configuration.GetSection("Discord"));
 
-// Register infrastructure
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+// Register infrastructure (SQLite file next to published DLL, not process working directory)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Data Source=typerbot.db";
+connectionString = SqliteConnectionHelper.WithAbsoluteDataSource(connectionString, AppContext.BaseDirectory);
 builder.Services.AddInfrastructure(connectionString);
 
 // Register application services

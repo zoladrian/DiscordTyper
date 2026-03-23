@@ -823,10 +823,28 @@ public class AdminModule : BaseAdminModule
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         await DeferAsync(ephemeral: true);
+        if (!RoundHelper.IsValidRoundNumber(round))
+        {
+            await FollowupAsync($"❌ Numer kolejki musi być z zakresu 1–18 (podano: {round}).", ephemeral: true);
+            return;
+        }
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null) { await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
-        var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round);
-        if (roundEntity == null) { await FollowupAsync($"❌ Kolejka {round} nie znaleziona.", ephemeral: true); return; }
+        var roundEntity = season.FindRoundByNumber(round)
+            ?? await _roundRepository.GetByNumberAsync(season.Id, round);
+        if (roundEntity == null)
+        {
+            var available = season.Rounds.Count > 0
+                ? string.Join(", ", season.Rounds.OrderBy(r => r.Number).Select(r => r.Number))
+                : "brak";
+            await FollowupAsync(
+                $"❌ W **aktywnym** sezonie „{season.Name}” nie ma kolejki **{round}**.\n" +
+                $"Dostępne numery kolejek: {available}.",
+                ephemeral: true);
+            return;
+        }
+
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
@@ -880,10 +898,28 @@ public class AdminModule : BaseAdminModule
 
         await DeferAsync(ephemeral: true);
 
+        if (!RoundHelper.IsValidRoundNumber(round))
+        {
+            await FollowupAsync($"❌ Numer kolejki musi być z zakresu 1–18 (podano: {round}).", ephemeral: true);
+            return;
+        }
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null) { await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
-        var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round);
-        if (roundEntity == null) { await FollowupAsync($"❌ Kolejka {round} nie znaleziona.", ephemeral: true); return; }
+        var roundEntity = season.FindRoundByNumber(round)
+            ?? await _roundRepository.GetByNumberAsync(season.Id, round);
+        if (roundEntity == null)
+        {
+            var available = season.Rounds.Count > 0
+                ? string.Join(", ", season.Rounds.OrderBy(r => r.Number).Select(r => r.Number))
+                : "brak";
+            await FollowupAsync(
+                $"❌ W **aktywnym** sezonie „{season.Name}” nie ma kolejki **{round}**.\n" +
+                $"Dostępne numery kolejek: {available}.",
+                ephemeral: true);
+            return;
+        }
+
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try

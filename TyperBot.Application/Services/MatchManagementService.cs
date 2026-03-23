@@ -39,8 +39,9 @@ public class MatchManagementService
             season = await _seasonRepository.AddAsync(season);
         }
 
-        // Get or create round
-        var round = await _roundRepository.GetByNumberAsync(season.Id, roundNumber);
+        // Get or create round (prefer graph from GetActiveSeasonAsync to avoid extra query / mismatch)
+        var round = season.FindRoundByNumber(roundNumber)
+            ?? await _roundRepository.GetByNumberAsync(season.Id, roundNumber);
         if (round == null)
         {
             round = new Round

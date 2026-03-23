@@ -141,6 +141,108 @@ public class MatchRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetMatchesReadyForThreadCreationAsync_ReturnsOnlyScheduledInWindow()
+    {
+        var round = await CreateTestRound();
+        var now = DateTimeOffset.UtcNow;
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "Ready",
+            AwayTeam = "Away",
+            StartTime = now.AddHours(2),
+            Status = MatchStatus.Scheduled,
+            ThreadCreationTime = now.AddMinutes(-5)
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "TooEarly",
+            AwayTeam = "Away",
+            StartTime = now.AddHours(2),
+            Status = MatchStatus.Scheduled,
+            ThreadCreationTime = now.AddMinutes(5)
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "AlreadyStarted",
+            AwayTeam = "Away",
+            StartTime = now.AddMinutes(-30),
+            Status = MatchStatus.Scheduled,
+            ThreadCreationTime = now.AddHours(-1)
+        });
+
+        var result = (await _repository.GetMatchesReadyForThreadCreationAsync(now)).ToList();
+
+        result.Should().ContainSingle(m => m.HomeTeam == "Ready");
+    }
+
+    [Fact]
+    public async Task GetMatchesPossiblyAwaitingResultEntryAsync_ExcludesFinishedCancelledAndCompleteScores()
+    {
+        var round = await CreateTestRound();
+        var now = DateTimeOffset.UtcNow;
+        var threeHoursAgo = now.AddHours(-3);
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "NeedsReminder",
+            AwayTeam = "Away",
+            StartTime = threeHoursAgo.AddMinutes(-10),
+            Status = MatchStatus.InProgress
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "Finished",
+            AwayTeam = "Away",
+            StartTime = threeHoursAgo,
+            Status = MatchStatus.Finished,
+            HomeScore = 50,
+            AwayScore = 40
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "Cancelled",
+            AwayTeam = "Away",
+            StartTime = threeHoursAgo,
+            Status = MatchStatus.Cancelled
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "HasBothScores",
+            AwayTeam = "Away",
+            StartTime = threeHoursAgo,
+            Status = MatchStatus.InProgress,
+            HomeScore = 45,
+            AwayScore = 45
+        });
+
+        await _repository.AddAsync(new Match
+        {
+            RoundId = round.Id,
+            HomeTeam = "TooRecent",
+            AwayTeam = "Away",
+            StartTime = now.AddHours(-1),
+            Status = MatchStatus.InProgress
+        });
+
+        var result = (await _repository.GetMatchesPossiblyAwaitingResultEntryAsync(threeHoursAgo)).ToList();
+
+        result.Should().ContainSingle(m => m.HomeTeam == "NeedsReminder");
+    }
+
+    [Fact]
     public async Task UpdateAsync_ModifiesMatch()
     {
         // Arrange

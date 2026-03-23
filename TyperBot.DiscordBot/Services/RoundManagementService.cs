@@ -37,7 +37,8 @@ public class RoundManagementService
                 return (false, "Brak aktywnego sezonu. Najpierw rozpocznij nowy sezon.");
             }
 
-            var existingRound = await _roundRepository.GetByNumberAsync(activeSeason.Id, roundNumber);
+            var existingRound = activeSeason.FindRoundByNumber(roundNumber)
+                ?? await _roundRepository.GetByNumberAsync(activeSeason.Id, roundNumber);
             if (existingRound != null)
             {
                 return (false, $"Kolejka {roundNumber} już istnieje w tym sezonie.");

@@ -23,6 +23,7 @@ public class RoundRepository : IRoundRepository
     public async Task<Round?> GetByNumberAsync(int seasonId, int number)
     {
         return await _context.Rounds
+            .AsNoTracking()
             .Include(r => r.Matches)
             .FirstOrDefaultAsync(r => r.SeasonId == seasonId && r.Number == number);
     }

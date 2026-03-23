@@ -65,6 +65,7 @@ public class TyperContext : DbContext
             entity.HasIndex(e => e.RoundId);
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.Status, e.StartTime });
             entity.HasIndex(e => e.ThreadId);
         });
 

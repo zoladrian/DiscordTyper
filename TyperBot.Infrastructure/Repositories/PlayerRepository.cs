@@ -21,6 +21,8 @@ public class PlayerRepository : IPlayerRepository
     public async Task<Player?> GetByDiscordUserIdAsync(ulong discordUserId)
     {
         return await _context.Players
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.PlayerScores)
                 .ThenInclude(ps => ps.Prediction)
             .Include(p => p.Predictions)
@@ -31,6 +33,8 @@ public class PlayerRepository : IPlayerRepository
     public async Task<IEnumerable<Player>> GetActivePlayersAsync()
     {
         return await _context.Players
+            .AsNoTracking()
+            .AsSplitQuery()
             .Where(p => p.IsActive)
             .Include(p => p.PlayerScores)
                 .ThenInclude(ps => ps.Prediction)

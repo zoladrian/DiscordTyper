@@ -68,35 +68,67 @@ public class MatchResultHandler
             return;
         }
 
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
+        await context.Interaction.DeferAsync(ephemeral: true);
+
+        try
         {
-            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
+            var match = await _matchRepository.GetByIdAsync(matchId);
+            if (match == null)
+            {
+                await context.Interaction.FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+                return;
+            }
+
+            var wasFinished = match.Status == MatchStatus.Finished;
+            var oldHomeScore = match.HomeScore;
+            var oldAwayScore = match.AwayScore;
+
+            match.HomeScore = home;
+            match.AwayScore = away;
+            match.Status = MatchStatus.Finished;
+            await _matchRepository.UpdateAsync(match);
+
+            await _predictionService.RecalculateMatchScoresAsync(matchId);
+
+            await context.Interaction.FollowupAsync($"✅ Wynik ustawiony: **{home}:{away}**\nPunkty obliczone!", ephemeral: true);
+            _logger.LogInformation(
+                "Match result set - Match ID: {MatchId}, Score: {Home}:{Away}, Points calculated. Guild: {GuildId}, Channel: {ChannelId}",
+                matchId,
+                home,
+                away,
+                context.Guild?.Id,
+                context.Channel.Id);
+
+            await PostSetResultSideEffectsAsync(
+                context, user, match, matchId, wasFinished, oldHomeScore, oldAwayScore, home, away);
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to set match result or recalculate scores - Match ID: {MatchId}", matchId);
+            try
+            {
+                await context.Interaction.FollowupAsync(
+                    "❌ Wystąpił błąd podczas zapisywania wyniku lub przeliczania punktów.",
+                    ephemeral: true);
+            }
+            catch (Exception followEx)
+            {
+                _logger.LogWarning(followEx, "Could not send error follow-up for set-result interaction");
+            }
+        }
+    }
 
-        var wasFinished = match.Status == MatchStatus.Finished;
-        var oldHomeScore = match.HomeScore;
-        var oldAwayScore = match.AwayScore;
-
-        // Update match result
-        match.HomeScore = home;
-        match.AwayScore = away;
-        match.Status = MatchStatus.Finished;
-        await _matchRepository.UpdateAsync(match);
-
-        // Calculate scores for all predictions
-        await _predictionService.RecalculateMatchScoresAsync(matchId);
-
-        await context.Interaction.RespondAsync($"✅ Wynik ustawiony: **{home}:{away}**\nPunkty obliczone!", ephemeral: true);
-        _logger.LogInformation(
-            "Match result set - Match ID: {MatchId}, Score: {Home}:{Away}, Points calculated. Guild: {GuildId}, Channel: {ChannelId}",
-            matchId,
-            home,
-            away,
-            context.Guild?.Id,
-            context.Channel.Id);
-
+    private async Task PostSetResultSideEffectsAsync(
+        SocketInteractionContext context,
+        SocketGuildUser user,
+        Domain.Entities.Match match,
+        int matchId,
+        bool wasFinished,
+        int? oldHomeScore,
+        int? oldAwayScore,
+        int home,
+        int away)
+    {
         // If match was already finished, post notification to predictions channel
         if (wasFinished && oldHomeScore.HasValue && oldAwayScore.HasValue)
         {
@@ -157,10 +189,12 @@ public class MatchResultHandler
             return;
         }
 
+        await context.Interaction.DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -171,7 +205,7 @@ public class MatchResultHandler
             "Match cancelled - User: {Username} (ID: {UserId}), Match ID: {MatchId}, {Home} vs {Away}",
             user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
         
-        await context.Interaction.RespondAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
+        await context.Interaction.FollowupAsync("✅ Mecz został odwołany (status: Cancelled). Typy zostały zachowane.", ephemeral: true);
 
         // Update match card
         try
@@ -240,10 +274,12 @@ public class MatchResultHandler
 
     public async Task HandleHardDeleteMatchAsync(SocketInteractionContext context, int matchId)
     {
+        await context.Interaction.DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -275,7 +311,7 @@ public class MatchResultHandler
         }
 
         await _matchRepository.DeleteAsync(matchId);
-        await context.Interaction.RespondAsync("✅ Mecz został trwale usunięty z bazy danych. ⚠️ Wszystkie typy użytkowników przepadły.", ephemeral: true);
+        await context.Interaction.FollowupAsync("✅ Mecz został trwale usunięty z bazy danych. ⚠️ Wszystkie typy użytkowników przepadły.", ephemeral: true);
     }
 
     public async Task HandleRestoreMatchAsync(SocketInteractionContext context, int matchId)
@@ -287,16 +323,18 @@ public class MatchResultHandler
             return;
         }
 
+        await context.Interaction.DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
         if (match.Status != MatchStatus.Cancelled)
         {
-            await context.Interaction.RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
             return;
         }
 
@@ -314,7 +352,7 @@ public class MatchResultHandler
             "Match restored - User: {Username} (ID: {UserId}), Match ID: {MatchId}, {Home} vs {Away}",
             user.Username, user.Id, matchId, match.HomeTeam, match.AwayTeam);
         
-        await context.Interaction.RespondAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
+        await context.Interaction.FollowupAsync($"✅ Mecz **{match.HomeTeam} vs {match.AwayTeam}** został przywrócony (status: Scheduled).", ephemeral: true);
 
         // Update match card
         try
@@ -351,16 +389,18 @@ public class MatchResultHandler
             return;
         }
 
+        await context.Interaction.DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await context.Interaction.RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
         if (match.Status != MatchStatus.Cancelled)
         {
-            await context.Interaction.RespondAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
+            await context.Interaction.FollowupAsync("❌ Ten mecz nie jest odwołany.", ephemeral: true);
             return;
         }
 
@@ -374,7 +414,7 @@ public class MatchResultHandler
             "Set new date for cancelled match - User: {Username} (ID: {UserId}), Match ID: {MatchId}, New date: {NewDate}",
             user.Username, user.Id, matchId, newStartTime);
 
-        await context.Interaction.RespondAsync($"✅ Ustawiono nową datę meczu: **{newStartTime:yyyy-MM-dd HH:mm}**", ephemeral: true);
+        await context.Interaction.FollowupAsync($"✅ Ustawiono nową datę meczu: **{newStartTime:yyyy-MM-dd HH:mm}**", ephemeral: true);
 
         // Notify all users in thread
         try

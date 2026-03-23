@@ -21,6 +21,8 @@ public class SeasonRepository : ISeasonRepository
     public async Task<Season?> GetByIdWithRoundsAndMatchesAsync(int id)
     {
         return await _context.Seasons
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Rounds)
                 .ThenInclude(r => r.Matches)
             .FirstOrDefaultAsync(s => s.Id == id);
@@ -28,22 +30,28 @@ public class SeasonRepository : ISeasonRepository
 
     public async Task<Season?> GetActiveSeasonAsync()
     {
+        // Newest active season wins if multiple rows are marked active (data inconsistency).
         return await _context.Seasons
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Rounds)
                 .ThenInclude(r => r.Matches)
-            .FirstOrDefaultAsync(s => s.IsActive);
+            .Where(s => s.IsActive)
+            .OrderByDescending(s => s.Id)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<IEnumerable<Season>> GetAllActiveSeasonsAsync()
     {
         return await _context.Seasons
+            .AsNoTracking()
             .Where(s => s.IsActive)
             .ToListAsync();
     }
 
     public async Task<IEnumerable<Season>> GetAllAsync()
     {
-        return await _context.Seasons.ToListAsync();
+        return await _context.Seasons.AsNoTracking().ToListAsync();
     }
 
     public async Task<Season> AddAsync(Season season)

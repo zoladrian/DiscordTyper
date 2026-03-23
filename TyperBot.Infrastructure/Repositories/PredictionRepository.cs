@@ -16,6 +16,7 @@ public class PredictionRepository : IPredictionRepository
     public async Task<Prediction?> GetByIdAsync(int id)
     {
         return await _context.Predictions
+            .AsNoTracking()
             .Include(p => p.Match)
             .Include(p => p.Player)
             .FirstOrDefaultAsync(p => p.Id == id);
@@ -24,6 +25,8 @@ public class PredictionRepository : IPredictionRepository
     public async Task<Prediction?> GetByMatchAndPlayerAsync(int matchId, int playerId)
     {
         return await _context.Predictions
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.Match)
             .Include(p => p.Player)
             .Include(p => p.PlayerScore)
@@ -33,6 +36,7 @@ public class PredictionRepository : IPredictionRepository
     public async Task<IEnumerable<Prediction>> GetByMatchIdAsync(int matchId)
     {
         return await _context.Predictions
+            .AsNoTracking()
             .Include(p => p.Player)
             .Where(p => p.MatchId == matchId)
             .ToListAsync();
@@ -41,6 +45,7 @@ public class PredictionRepository : IPredictionRepository
     public async Task<IEnumerable<Prediction>> GetByPlayerIdAsync(int playerId)
     {
         return await _context.Predictions
+            .AsNoTracking()
             .Include(p => p.Match)
             .Where(p => p.PlayerId == playerId)
             .ToListAsync();
@@ -55,6 +60,8 @@ public class PredictionRepository : IPredictionRepository
         }
 
         return await _context.Predictions
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.Match)
                 .ThenInclude(m => m.Round)
             .Where(p => p.PlayerId == playerId && matchIdList.Contains(p.MatchId))
@@ -64,6 +71,8 @@ public class PredictionRepository : IPredictionRepository
     public async Task<IEnumerable<Prediction>> GetValidPredictionsByMatchAsync(int matchId)
     {
         return await _context.Predictions
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.Player)
             .Include(p => p.PlayerScore)
             .Where(p => p.MatchId == matchId && p.IsValid)
@@ -72,7 +81,7 @@ public class PredictionRepository : IPredictionRepository
 
     public async Task<IEnumerable<Prediction>> GetAllAsync()
     {
-        return await _context.Predictions.ToListAsync();
+        return await _context.Predictions.AsNoTracking().ToListAsync();
     }
 
     public async Task<Prediction> AddAsync(Prediction prediction)
@@ -90,7 +99,8 @@ public class PredictionRepository : IPredictionRepository
 
     public async Task DeleteAsync(int id)
     {
-        var prediction = await GetByIdAsync(id);
+        // Tracked load — do not use GetByIdAsync (AsNoTracking).
+        var prediction = await _context.Predictions.FindAsync(id);
         if (prediction != null)
         {
             _context.Predictions.Remove(prediction);

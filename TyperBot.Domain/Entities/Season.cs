@@ -11,5 +11,11 @@ public class Season
 
     // Navigation properties
     public ICollection<Round> Rounds { get; set; } = new List<Round>();
+
+    /// <summary>
+    /// Uses rounds already loaded on this instance (e.g. from GetActiveSeasonAsync). Avoids an extra DB round-trip and stays consistent with the same query.
+    /// </summary>
+    public Round? FindRoundByNumber(int roundNumber) =>
+        Rounds.FirstOrDefault(r => r.Number == roundNumber);
 }
 
