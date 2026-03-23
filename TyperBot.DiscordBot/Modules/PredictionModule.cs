@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure.Repositories;
@@ -245,8 +246,18 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var modal = new ModalBuilder()
             .WithTitle("Złóż swój typ")
             .WithCustomId($"predict_match_modal_{matchId}")
-            .AddTextInput(match.HomeTeam, "home_points", TextInputStyle.Short, placeholder: "50", required: true)
-            .AddTextInput(match.AwayTeam, "away_points", TextInputStyle.Short, placeholder: "40", required: true)
+            .AddTextInput(
+                DiscordApiLimits.Truncate(match.HomeTeam, DiscordApiLimits.TextInputLabel),
+                "home_points",
+                TextInputStyle.Short,
+                placeholder: DiscordApiLimits.Truncate(match.HomeTeam, DiscordApiLimits.TextInputPlaceholder),
+                required: true)
+            .AddTextInput(
+                DiscordApiLimits.Truncate(match.AwayTeam, DiscordApiLimits.TextInputLabel),
+                "away_points",
+                TextInputStyle.Short,
+                placeholder: DiscordApiLimits.Truncate(match.AwayTeam, DiscordApiLimits.TextInputPlaceholder),
+                required: true)
             .Build();
 
         await RespondWithModalAsync(modal);

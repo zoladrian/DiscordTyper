@@ -6,6 +6,7 @@ using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 
 namespace TyperBot.DiscordBot.Services;
 
@@ -105,7 +106,7 @@ public class ThreadCreationService : BackgroundService
                 var timestamp = match.StartTime.ToUnixTimeSeconds();
 
                 var embed = new EmbedBuilder()
-                    .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}")
+                    .WithTitle(DiscordApiLimits.Truncate($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
                     .WithDescription(
                         "📋 **Zasady typowania:**\n" +
                         "• Typy są tajne (tylko ty je widzisz)\n" +

@@ -3,6 +3,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure.Repositories;
@@ -212,8 +213,8 @@ public class AdminPredictionModule : BaseAdminModule
 
             // Send table message
             var embed = new EmbedBuilder()
-                .WithTitle($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}")
-                .WithDescription(tableText)
+                .WithTitle(DiscordApiLimits.Truncate($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
+                .WithDescription(DiscordApiLimits.Truncate(tableText, DiscordApiLimits.EmbedDescription))
                 .WithColor(Color.Gold)
                 .WithCurrentTimestamp()
                 .Build();

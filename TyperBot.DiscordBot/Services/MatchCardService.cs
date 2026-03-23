@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Models;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
@@ -43,7 +44,7 @@ public class MatchCardService
         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(roundNum);
         
         var embedBuilder = new EmbedBuilder()
-            .WithTitle($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}");
+            .WithTitle(DiscordApiLimits.Truncate($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle));
 
         // Show result if match is finished
         if (match.Status == MatchStatus.Finished && match.HomeScore.HasValue && match.AwayScore.HasValue)

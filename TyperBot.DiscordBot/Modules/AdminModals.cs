@@ -24,7 +24,7 @@ public class AddRoundModal : IModal
     [RequiredInput(true)]
     public string RoundNumber { get; set; } = string.Empty;
 
-    [InputLabel("Liczba meczów w kolejce (0 = tylko pusta kolejka)")]
+    [InputLabel("Liczba meczów (0 = pusta kolejka)")]
     [ModalTextInput("liczba_meczow", TextInputStyle.Short, placeholder: "4", minLength: 1, maxLength: 2)]
     [RequiredInput(true)]
     public string MatchCount { get; set; } = string.Empty;

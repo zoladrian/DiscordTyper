@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using TyperBot.DiscordBot.Models;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
+using TyperBot.DiscordBot;
 using TyperBot.Infrastructure.Repositories;
 
 namespace TyperBot.DiscordBot.Services;
@@ -43,7 +44,11 @@ public class AdminPanelService
 
         foreach (var season in allSeasons)
         {
-            selectMenu.AddOption(season.Name, season.Id.ToString(), season.IsActive ? "Aktywny" : "Zakończony");
+            var desc = season.IsActive ? "Aktywny" : "Zakończony";
+            selectMenu.AddOption(
+                DiscordApiLimits.Truncate(season.Name, DiscordApiLimits.SelectOptionLabel),
+                season.Id.ToString(),
+                DiscordApiLimits.Truncate(desc, DiscordApiLimits.SelectOptionDescription));
         }
 
         var embed = new EmbedBuilder()

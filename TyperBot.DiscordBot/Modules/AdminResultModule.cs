@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Domain.Enums;
@@ -93,17 +94,17 @@ public class AdminResultModule : BaseAdminModule
             .WithTitle("Ustaw wynik meczu")
             .WithCustomId($"admin_set_result_modal_{matchId}")
             .AddTextInput(
-                label: match.HomeTeam,
+                label: DiscordApiLimits.Truncate(match.HomeTeam, DiscordApiLimits.TextInputLabel),
                 customId: "home_score",
                 style: TextInputStyle.Short,
-                placeholder: "50",
+                placeholder: DiscordApiLimits.Truncate(match.HomeTeam, DiscordApiLimits.TextInputPlaceholder),
                 value: match.HomeScore?.ToString() ?? "50",
                 required: true)
             .AddTextInput(
-                label: match.AwayTeam,
+                label: DiscordApiLimits.Truncate(match.AwayTeam, DiscordApiLimits.TextInputLabel),
                 customId: "away_score",
                 style: TextInputStyle.Short,
-                placeholder: "40",
+                placeholder: DiscordApiLimits.Truncate(match.AwayTeam, DiscordApiLimits.TextInputPlaceholder),
                 value: match.AwayScore?.ToString() ?? "40",
                 required: true)
             .Build();
@@ -252,7 +253,7 @@ public class AdminResultModule : BaseAdminModule
             .ToList();
 
         var embed = new EmbedBuilder()
-            .WithTitle($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}")
+            .WithTitle(DiscordApiLimits.Truncate($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
             .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
             .WithColor(Color.Green)
             .WithCurrentTimestamp();
