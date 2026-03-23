@@ -4,182 +4,251 @@ using TyperBot.Domain.Enums;
 
 namespace TyperBot.Application.Services;
 
+/// <summary>
+/// PNG tables aligned with <c>AdminModule</c> text/embed tables: Poz, Gracz, Pkt, Typ, Cel, Wyg (same formulas and sort).
+/// </summary>
 public class TableGenerator
 {
-    private const int TableWidth = 900;
-    private const int RowHeight = 40;
-    private const int HeaderHeight = 60;
-    private const int FooterHeight = 40;
-    private const int Padding = 20;
+    private const int TableWidth = 1040;
+    private const int RowHeight = 42;
+    private const int TitleBarHeight = 64;
+    private const int ColumnHeaderHeight = 38;
+    private const int FooterHeight = 44;
+    private const int PaddingH = 22;
+
+    private static SKTypeface ResolveBodyTypeface() =>
+        SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+        ?? SKTypeface.FromFamilyName("DejaVu Sans", SKFontStyle.Normal)
+        ?? SKTypeface.Default;
+
+    private static SKTypeface ResolveBoldTypeface() =>
+        SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+        ?? SKTypeface.FromFamilyName("DejaVu Sans", SKFontStyle.Bold)
+        ?? SKTypeface.Default;
 
     public byte[] GenerateSeasonTable(Season season, List<Player> players)
     {
-        var standings = CalculateSeasonStandings(players, season);
-
-        // Calculate table height
-        int rows = Math.Max(standings.Count, 1);
-        int totalHeight = HeaderHeight + (rows * RowHeight) + FooterHeight;
-
-        using var surface = SKSurface.Create(new SKImageInfo(TableWidth, totalHeight));
-        var canvas = surface.Canvas;
-
-        // Draw background
-        canvas.Clear(new SKColor(0x1E, 0x1E, 0x1E));
-
-        // Draw header with gradient
-        DrawHeader(canvas, $"🏁 {season.Name} - Season Standings", TableWidth, HeaderHeight);
-
-        // Draw table content
-        int yPos = HeaderHeight;
-        for (int i = 0; i < standings.Count; i++)
-        {
-            var standing = standings[i];
-            bool isAlternate = i % 2 == 1;
-            DrawRow(canvas, yPos, standing, i + 1, isAlternate);
-            yPos += RowHeight;
-        }
-
-        // Draw footer
-        DrawFooter(canvas, totalHeight, $"Participants: {players.Count}");
-
-        // Export to bytes
-        using var image = surface.Snapshot();
-        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-        return data.ToArray();
+        var rows = CalculateSeasonRows(players, season);
+        return RenderPng(
+            title: $"🏆 Tabela sezonu — {season.Name}",
+            subtitle: null,
+            rows,
+            footer: $"Typ = typy w sezonie  •  Pkt / Cel / Wyg = tylko mecze z wynikiem  •  {players.Count(p => p.IsActive)} graczy");
     }
 
     public byte[] GenerateRoundTable(Season season, Round round, List<Player> players)
     {
-        var standings = CalculateRoundStandings(players, round);
+        var rows = CalculateRoundRows(players, round);
+        var roundLabel = RoundHelper.GetRoundLabel(round.Number);
+        var matchCount = round.Matches?.Count ?? 0;
+        var finished = round.Matches?.Count(m => m.Status == MatchStatus.Finished || m.Status == MatchStatus.Cancelled) ?? 0;
+        return RenderPng(
+            title: $"📊 {roundLabel} — {season.Name}",
+            subtitle: round.Description,
+            rows,
+            footer: $"Typ = typy w tej kolejce  •  Pkt / Cel / Wyg = tylko mecze z wynikiem  •  Mecze: {finished}/{matchCount}");
+    }
 
-        // Calculate table height
-        int rows = Math.Max(standings.Count, 1);
-        int totalHeight = HeaderHeight + (rows * RowHeight) + FooterHeight;
+    private byte[] RenderPng(string title, string? subtitle, List<StandingsRow> rows, string footer)
+    {
+        int dataRows = rows.Count == 0 ? 1 : rows.Count;
+        int totalHeight = TitleBarHeight + ColumnHeaderHeight + dataRows * RowHeight + FooterHeight;
 
         using var surface = SKSurface.Create(new SKImageInfo(TableWidth, totalHeight));
         var canvas = surface.Canvas;
+        canvas.Clear(new SKColor(0x16, 0x18, 0x1C));
 
-        // Draw background
-        canvas.Clear(new SKColor(0x1E, 0x1E, 0x1E));
+        DrawTitleBar(canvas, title, subtitle, TableWidth, TitleBarHeight);
+        DrawColumnHeaders(canvas, TitleBarHeight, TableWidth);
 
-        // Draw header with gradient
-        var roundLabel = RoundHelper.GetRoundLabel(round.Number);
-        DrawHeader(canvas, $"🏁 {season.Name} - {roundLabel}", TableWidth, HeaderHeight);
-
-        // Draw table content
-        int yPos = HeaderHeight;
-        for (int i = 0; i < standings.Count; i++)
+        int yBase = TitleBarHeight + ColumnHeaderHeight;
+        if (rows.Count == 0)
+            DrawNoDataRow(canvas, yBase);
+        else
         {
-            var standing = standings[i];
-            bool isAlternate = i % 2 == 1;
-            DrawRow(canvas, yPos, standing, i + 1, isAlternate);
-            yPos += RowHeight;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                int y = yBase + i * RowHeight;
+                DrawDataRow(canvas, y, i + 1, rows[i], rows.Count, i % 2 == 1);
+            }
         }
 
-        // Draw footer
-        var completedMatches = round.Matches.Count(m => m.Status == MatchStatus.Finished || m.Status == MatchStatus.Cancelled);
-        DrawFooter(canvas, totalHeight, $"Participants: {players.Count} • Matches: {completedMatches}/{round.Matches.Count}");
+        DrawFooter(canvas, totalHeight, footer, TableWidth);
 
-        // Export to bytes
         using var image = surface.Snapshot();
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
     }
 
-    private void DrawHeader(SKCanvas canvas, string title, int width, int height)
+    private static void DrawTitleBar(SKCanvas canvas, string title, string? subtitle, int width, int height)
     {
-        // Gradient background
-        var shader = SKShader.CreateLinearGradient(
+        using var shader = SKShader.CreateLinearGradient(
             new SKPoint(0, 0),
             new SKPoint(width, height),
-            new[] { new SKColor(0xFF, 0xD7, 0x00), new SKColor(0x00, 0x57, 0xB8) },
-            SKShaderTileMode.Clamp
-        );
+            new[] { new SKColor(0x3B, 0x4F, 0xA8), new SKColor(0x1E, 0x2A, 0x5E) },
+            SKShaderTileMode.Clamp);
+        using var grad = new SKPaint { Shader = shader, IsAntialias = true };
+        canvas.DrawRect(0, 0, width, height, grad);
 
-        using var paint = new SKPaint { Shader = shader };
-        canvas.DrawRect(0, 0, width, height, paint);
+        using var titleTf = ResolveBoldTypeface();
+        using var titleFont = new SKFont(titleTf, 22f);
+        using var titlePaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
 
-        // Draw title
-        using var textPaint = new SKPaint
+        float titleY = string.IsNullOrEmpty(subtitle) ? height / 2f + 8f : height / 2f - 2f;
+        float titleW = titleFont.MeasureText(title);
+        canvas.DrawText(title, (width - titleW) / 2f, titleY, titleFont, titlePaint);
+
+        if (!string.IsNullOrWhiteSpace(subtitle))
         {
-            Color = SKColors.White,
-            TextSize = 24,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Roboto Mono", SKFontStyle.Bold),
-            TextAlign = SKTextAlign.Center
-        };
-
-        canvas.DrawText(title, width / 2, height / 2 + 10, textPaint);
-    }
-
-    private void DrawRow(SKCanvas canvas, int yPos, PlayerStanding standing, int rank, bool isAlternate)
-    {
-        // Row background
-        var bgColor = isAlternate ? new SKColor(0x2A, 0x2A, 0x2A) : new SKColor(0x1E, 0x1E, 0x1E);
-        using var bgPaint = new SKPaint { Color = bgColor };
-        canvas.DrawRect(0, yPos, TableWidth, RowHeight, bgPaint);
-
-        // Medal emoji for top 3
-        string rankDisplay = rank switch
-        {
-            1 => "🥇",
-            2 => "🥈",
-            3 => "🥉",
-            _ => rank.ToString()
-        };
-
-        // Text paint
-        using var textPaint = new SKPaint
-        {
-            Color = SKColors.White,
-            TextSize = 16,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Roboto Mono", SKFontStyle.Normal)
-        };
-
-        // Draw rank
-        textPaint.TextAlign = SKTextAlign.Left;
-        canvas.DrawText(rankDisplay, Padding, yPos + RowHeight / 2 + 5, textPaint);
-
-        // Draw player name (truncate if too long)
-        string playerName = standing.PlayerName.Length > 20 ? standing.PlayerName[..20] : standing.PlayerName;
-        canvas.DrawText($"@{playerName}", Padding + 60, yPos + RowHeight / 2 + 5, textPaint);
-
-        // Draw points
-        textPaint.TextAlign = SKTextAlign.Right;
-        canvas.DrawText($"{standing.TotalPoints} pts", TableWidth - Padding - 200, yPos + RowHeight / 2 + 5, textPaint);
-
-        // Draw bucket counts
-        string bucketStr = string.Join("  ", standing.BucketCounts.Where(kvp => kvp.Value > 0)
-            .Select(kvp => $"{kvp.Key}{kvp.Value}x"));
-        
-        if (bucketStr.Length > 40)
-        {
-            bucketStr = bucketStr[..40] + "...";
+            using var subTf = ResolveBodyTypeface();
+            using var subFont = new SKFont(subTf, 14f);
+            using var subPaint = new SKPaint { Color = new SKColor(220, 225, 240), IsAntialias = true };
+            float sw = subFont.MeasureText(subtitle);
+            canvas.DrawText(subtitle, (width - sw) / 2f, height / 2f + 18f, subFont, subPaint);
         }
-
-        canvas.DrawText(bucketStr, TableWidth - Padding, yPos + RowHeight / 2 + 5, textPaint);
     }
 
-    private void DrawFooter(SKCanvas canvas, int totalHeight, string footerText)
+    private static void DrawColumnHeaders(SKCanvas canvas, int yTop, int width)
+    {
+        using var bg = new SKPaint { Color = new SKColor(0x22, 0x26, 0x2E), IsAntialias = true };
+        canvas.DrawRect(0, yTop, width, ColumnHeaderHeight, bg);
+
+        using var line = new SKPaint { Color = new SKColor(0x3D, 0x45, 0x55), StrokeWidth = 1 };
+        canvas.DrawLine(0, yTop + ColumnHeaderHeight - 0.5f, width, yTop + ColumnHeaderHeight - 0.5f, line);
+
+        using var tf = ResolveBoldTypeface();
+        using var font = new SKFont(tf, 13f);
+        using var paint = new SKPaint { Color = new SKColor(0xB8, 0xC5, 0xDC), IsAntialias = true };
+
+        float baseline = yTop + ColumnHeaderHeight / 2f + 5f;
+        var cols = GetColumnLayout(width);
+        float pozW = font.MeasureText("Poz");
+        canvas.DrawText("Poz", cols.PozCenter - pozW / 2f, baseline, font, paint);
+        canvas.DrawText("Gracz", cols.NameLeft, baseline, font, paint);
+        DrawRightAligned(canvas, "Pkt", cols.PktRight, baseline, font, paint);
+        DrawRightAligned(canvas, "Typ", cols.TypRight, baseline, font, paint);
+        DrawRightAligned(canvas, "Cel", cols.CelRight, baseline, font, paint);
+        DrawRightAligned(canvas, "Wyg", cols.WygRight, baseline, font, paint);
+    }
+
+    private readonly struct ColumnLayout
+    {
+        public float PozCenter { get; init; }
+        public float NameLeft { get; init; }
+        public float NameMaxWidth { get; init; }
+        public float PktRight { get; init; }
+        public float TypRight { get; init; }
+        public float CelRight { get; init; }
+        public float WygRight { get; init; }
+    }
+
+    private static ColumnLayout GetColumnLayout(int width)
+    {
+        float right = width - PaddingH;
+        float wygR = right;
+        float celR = right - 72f;
+        float typR = celR - 72f;
+        float pktR = typR - 72f;
+        float nameLeft = PaddingH + 78f;
+        float nameMax = pktR - nameLeft - 24f;
+        return new ColumnLayout
+        {
+            PozCenter = PaddingH + 26f,
+            NameLeft = nameLeft,
+            NameMaxWidth = Math.Max(120f, nameMax),
+            PktRight = pktR,
+            TypRight = typR,
+            CelRight = celR,
+            WygRight = wygR
+        };
+    }
+
+    private static void DrawDataRow(SKCanvas canvas, int y, int rank, StandingsRow row, int totalPlayers, bool alternate)
+    {
+        var bg = alternate ? new SKColor(0x1C, 0x20, 0x28) : new SKColor(0x18, 0x1B, 0x22);
+        using var bgPaint = new SKPaint { Color = bg };
+        canvas.DrawRect(0, y, TableWidth, RowHeight, bgPaint);
+
+        var cols = GetColumnLayout(TableWidth);
+        using var bodyTf = ResolveBodyTypeface();
+        using var bodyFont = new SKFont(bodyTf, 15f);
+        using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
+        using var muted = new SKPaint { Color = new SKColor(0xC0, 0xC8, 0xD8), IsAntialias = true };
+
+        float baseline = y + RowHeight / 2f + 5f;
+
+        string posCol = (totalPlayers > 1 && rank == totalPlayers)
+            ? $"💩 {rank,2}"
+            : rank switch
+            {
+                1 => $"🥇 {rank,2}",
+                2 => $"🥈 {rank,2}",
+                3 => $"🥉 {rank,2}",
+                _ => $"   {rank,2}"
+            };
+        canvas.DrawText(posCol, PaddingH, baseline, bodyFont, white);
+
+        string name = EllipsizeName(row.PlayerName, bodyFont, cols.NameMaxWidth);
+        canvas.DrawText(name, cols.NameLeft, baseline, bodyFont, white);
+
+        DrawRightAligned(canvas, row.TotalPoints.ToString(), cols.PktRight, baseline, bodyFont, white);
+        DrawRightAligned(canvas, row.Typ.ToString(), cols.TypRight, baseline, bodyFont, muted);
+        DrawRightAligned(canvas, row.Cel.ToString(), cols.CelRight, baseline, bodyFont, muted);
+        DrawRightAligned(canvas, row.Wyg.ToString(), cols.WygRight, baseline, bodyFont, muted);
+    }
+
+    private static void DrawNoDataRow(SKCanvas canvas, int y)
+    {
+        using var bgPaint = new SKPaint { Color = new SKColor(0x18, 0x1B, 0x22) };
+        canvas.DrawRect(0, y, TableWidth, RowHeight, bgPaint);
+        using var tf = ResolveBodyTypeface();
+        using var font = new SKFont(tf, 15f);
+        using var paint = new SKPaint { Color = new SKColor(0x88, 0x90, 0xA0), IsAntialias = true };
+        const string msg = "Brak danych do wyświetlenia";
+        float w = font.MeasureText(msg);
+        canvas.DrawText(msg, (TableWidth - w) / 2f, y + RowHeight / 2f + 5f, font, paint);
+    }
+
+    private static string EllipsizeName(string name, SKFont font, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(name)) return "?";
+        if (font.MeasureText(name) <= maxWidth) return name;
+        const string ell = "…";
+        while (name.Length > 1 && font.MeasureText(name + ell) > maxWidth)
+            name = name[..^1];
+        return name + ell;
+    }
+
+    private static void DrawRightAligned(SKCanvas canvas, string text, float rightX, float baseline, SKFont font, SKPaint paint)
+    {
+        float w = font.MeasureText(text);
+        canvas.DrawText(text, rightX - w, baseline, font, paint);
+    }
+
+    private static void DrawFooter(SKCanvas canvas, int totalHeight, string footerText, int width)
     {
         using var paint = new SKPaint
         {
-            Color = new SKColor(0x40, 0x40, 0x40),
-            Style = SKPaintStyle.Fill
+            Color = new SKColor(0x24, 0x28, 0x32),
+            Style = SKPaintStyle.Fill,
+            IsAntialias = true
         };
-        canvas.DrawRect(0, totalHeight - FooterHeight, TableWidth, FooterHeight, paint);
+        canvas.DrawRect(0, totalHeight - FooterHeight, width, FooterHeight, paint);
 
-        using var textPaint = new SKPaint
+        using var tf = ResolveBodyTypeface();
+        using var font = new SKFont(tf, 12f);
+        using var textPaint = new SKPaint { Color = new SKColor(0x98, 0xA4, 0xB8), IsAntialias = true };
+
+        string line = footerText;
+        if (font.MeasureText(line) > width - PaddingH * 2)
         {
-            Color = SKColors.LightGray,
-            TextSize = 14,
-            IsAntialias = true,
-            Typeface = SKTypeface.FromFamilyName("Roboto Mono", SKFontStyle.Normal),
-            TextAlign = SKTextAlign.Center
-        };
+            while (line.Length > 20 && font.MeasureText(line + "…") > width - PaddingH * 2)
+                line = line[..^1];
+            line += "…";
+        }
 
-        canvas.DrawText(footerText, TableWidth / 2, totalHeight - FooterHeight / 2 + 5, textPaint);
+        float w = font.MeasureText(line);
+        canvas.DrawText(line, (width - w) / 2f, totalHeight - FooterHeight / 2f + 4f, font, textPaint);
     }
 
     private static HashSet<int> ResolveSeasonMatchIds(Season season)
@@ -195,124 +264,71 @@ public class TableGenerator
         return set;
     }
 
-    private List<PlayerStanding> CalculateSeasonStandings(List<Player> players, Season season)
+    private static List<StandingsRow> CalculateSeasonRows(List<Player> players, Season season)
     {
-        var standings = new List<PlayerStanding>();
         var seasonMatchIds = ResolveSeasonMatchIds(season);
         var filterBySeason = seasonMatchIds.Count > 0;
+        var list = new List<StandingsRow>();
 
         foreach (var player in players.Where(p => p.IsActive))
         {
-            IEnumerable<PlayerScore> scores = player.PlayerScores;
-            if (filterBySeason)
-            {
-                scores = scores.Where(s =>
-                    s.Prediction != null
-                    && s.Prediction.IsValid
-                    && seasonMatchIds.Contains(s.Prediction.MatchId));
-            }
-
-            var scoreList = scores.ToList();
-            var standing = new PlayerStanding
+            var predsInSeason = player.Predictions
+                .Where(p => p.IsValid && (!filterBySeason || seasonMatchIds.Contains(p.MatchId)))
+                .ToList();
+            var scored = predsInSeason.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
+            list.Add(new StandingsRow
             {
                 PlayerName = player.DiscordUsername,
-                TotalPoints = scoreList.Sum(ps => ps.Points),
-                BucketCounts = new Dictionary<string, int>()
-            };
-
-            foreach (var score in scoreList)
-            {
-                string bucketKey = score.Bucket.ToString();
-                if (!standing.BucketCounts.ContainsKey(bucketKey))
-                {
-                    standing.BucketCounts[bucketKey] = 0;
-                }
-                standing.BucketCounts[bucketKey]++;
-            }
-
-            standings.Add(standing);
+                TotalPoints = scored.Sum(s => s.Points),
+                Typ = predsInSeason.Count,
+                Cel = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
+                Wyg = scored.Count(s => s.Points > 0)
+            });
         }
 
-        // Sort by points, then by bucket counts
-        standings.Sort((x, y) =>
+        list.Sort((a, b) =>
         {
-            int pointsCompare = y.TotalPoints.CompareTo(x.TotalPoints);
-            if (pointsCompare != 0) return pointsCompare;
-
-            // Tie-break by bucket counts
-            var buckets = new[] { "P50", "P35", "P20", "P18", "P16", "P14", "P12", "P10", "P8", "P6", "P4", "P2" };
-            foreach (var bucket in buckets)
-            {
-                int xCount = x.BucketCounts.GetValueOrDefault(bucket, 0);
-                int yCount = y.BucketCounts.GetValueOrDefault(bucket, 0);
-                int bucketCompare = yCount.CompareTo(xCount);
-                if (bucketCompare != 0) return bucketCompare;
-            }
-
-            return 0;
+            int c = b.TotalPoints.CompareTo(a.TotalPoints);
+            return c != 0 ? c : b.Typ.CompareTo(a.Typ);
         });
-
-        return standings;
+        return list;
     }
 
-    private List<PlayerStanding> CalculateRoundStandings(List<Player> players, Round round)
+    private static List<StandingsRow> CalculateRoundRows(List<Player> players, Round round)
     {
-        var standings = new List<PlayerStanding>();
+        var roundMatchIds = (round.Matches ?? Array.Empty<Match>()).Select(m => m.Id).ToHashSet();
+        var list = new List<StandingsRow>();
 
         foreach (var player in players.Where(p => p.IsActive))
         {
-            var roundPredictions = player.Predictions
-                .Where(p => round.Matches.Any(m => m.Id == p.MatchId) && p.IsValid);
-
-            var standing = new PlayerStanding
+            var predsInRound = player.Predictions
+                .Where(p => roundMatchIds.Contains(p.MatchId) && p.IsValid)
+                .ToList();
+            var scored = predsInRound.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
+            list.Add(new StandingsRow
             {
                 PlayerName = player.DiscordUsername,
-                TotalPoints = roundPredictions
-                    .Where(p => p.PlayerScore != null)
-                    .Sum(p => p.PlayerScore!.Points),
-                BucketCounts = new Dictionary<string, int>()
-            };
-
-            foreach (var prediction in roundPredictions.Where(p => p.PlayerScore != null))
-            {
-                string bucketKey = prediction.PlayerScore!.Bucket.ToString();
-                if (!standing.BucketCounts.ContainsKey(bucketKey))
-                {
-                    standing.BucketCounts[bucketKey] = 0;
-                }
-                standing.BucketCounts[bucketKey]++;
-            }
-
-            standings.Add(standing);
+                TotalPoints = scored.Sum(s => s.Points),
+                Typ = predsInRound.Count,
+                Cel = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
+                Wyg = scored.Count(s => s.Points > 0)
+            });
         }
 
-        // Sort by points, then by bucket counts
-        standings.Sort((x, y) =>
+        list.Sort((a, b) =>
         {
-            int pointsCompare = y.TotalPoints.CompareTo(x.TotalPoints);
-            if (pointsCompare != 0) return pointsCompare;
-
-            // Tie-break by bucket counts
-            var buckets = new[] { "P50", "P35", "P20", "P18", "P16", "P14", "P12", "P10", "P8", "P6", "P4", "P2" };
-            foreach (var bucket in buckets)
-            {
-                int xCount = x.BucketCounts.GetValueOrDefault(bucket, 0);
-                int yCount = y.BucketCounts.GetValueOrDefault(bucket, 0);
-                int bucketCompare = yCount.CompareTo(xCount);
-                if (bucketCompare != 0) return bucketCompare;
-            }
-
-            return 0;
+            int c = b.TotalPoints.CompareTo(a.TotalPoints);
+            return c != 0 ? c : b.Typ.CompareTo(a.Typ);
         });
-
-        return standings;
+        return list;
     }
 
-    private class PlayerStanding
+    private sealed class StandingsRow
     {
         public string PlayerName { get; set; } = string.Empty;
         public int TotalPoints { get; set; }
-        public Dictionary<string, int> BucketCounts { get; set; } = new();
+        public int Typ { get; set; }
+        public int Cel { get; set; }
+        public int Wyg { get; set; }
     }
 }
-
