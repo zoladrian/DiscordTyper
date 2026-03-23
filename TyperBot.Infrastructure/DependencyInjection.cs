@@ -10,9 +10,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
     {
+        // Do not set a global SplitQuery default: it multiplies SQLite round-trips for every multi-include query
+        // and can feel slower on VPS/loaded hosts. Use AsSplitQuery() only on hot paths with two collection
+        // includes (e.g. Player: PlayerScores + Predictions).
         services.AddDbContext<TyperContext>(options =>
-            options.UseSqlite(connectionString, sql =>
-                    sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+            options.UseSqlite(connectionString)
                 .ConfigureWarnings(warnings =>
                     warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
