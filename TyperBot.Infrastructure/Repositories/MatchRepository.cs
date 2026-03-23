@@ -14,12 +14,14 @@ public class MatchRepository : IMatchRepository
         _context = context;
     }
 
-    public async Task<Match?> GetByIdAsync(int id)
+    public Task<Match?> GetByIdAsync(int id) => GetByIdAsync(id, includeRound: true);
+
+    public async Task<Match?> GetByIdAsync(int id, bool includeRound)
     {
-        return await _context.Matches
-            .AsNoTracking()
-            .Include(m => m.Round)
-            .FirstOrDefaultAsync(m => m.Id == id);
+        IQueryable<Match> query = _context.Matches.AsNoTracking();
+        if (includeRound)
+            query = query.Include(m => m.Round);
+        return await query.FirstOrDefaultAsync(m => m.Id == id);
     }
 
     public async Task<IEnumerable<Match>> GetByRoundIdAsync(int roundId)

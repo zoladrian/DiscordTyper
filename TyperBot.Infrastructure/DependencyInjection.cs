@@ -15,6 +15,7 @@ public static class DependencyInjection
         // includes (e.g. Player: PlayerScores + Predictions).
         services.AddDbContext<TyperContext>(options =>
             options.UseSqlite(connectionString)
+                .AddInterceptors(new SqlitePragmaConnectionInterceptor())
                 .ConfigureWarnings(warnings =>
                     warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
 

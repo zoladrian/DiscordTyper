@@ -107,10 +107,9 @@ public class WelcomeMessageService
                     "• Kliknij przycisk \"👁️ Ujawnij typy\" na karcie meczu (po godzinie rozpoczęcia)\n" +
                     "• Typy są automatycznie ujawniane po wpisaniu wyniku", inline: false)
                 .AddField("📊 Publikowanie tabel",
-                    "`/admin-tabela-sezonu [kanal_lub_watek?]` — tekst; domyślnie **ten kanał**, parametr = inny\n" +
-                    "`/admin-tabela-kolejki [numer] [kanal_lub_watek?]` — tekst; j.w.\n" +
-                    "`/admin-tabela-sezonu-obraz [kanal_lub_watek?]` — PNG; j.w.\n" +
-                    "`/admin-tabela-kolejki-obraz [numer] [kanal_lub_watek?]` — PNG; j.w.\n" +
+                    "`/admin-tabela-sezonu [kanal_lub_watek?]` — PNG; domyślnie **ten kanał**, parametr = inny\n" +
+                    "`/admin-tabela-kolejki [numer] [kanal_lub_watek?]` — PNG; j.w.\n" +
+                    "`/admin-tabela-sezonu-obraz` / `admin-tabela-kolejki-obraz` — aliasy (PNG), jak wyżej\n" +
                     "`/admin-tabela-meczu [mecz] [kanal_lub_watek?]` — embed; j.w.\n" +
                     "• **Inny kanał/wątek:** w `kanal_lub_watek` często trzeba **zacząć pisać nazwę wątku** (wyszukiwanie).", inline: false)
                 .AddField("💾 Eksport danych",
@@ -207,8 +206,8 @@ public class WelcomeMessageService
                     "• 🎯 Zdobyte punkty za celne typy\n" +
                     "• ⏰ Nadchodzące mecze", inline: false)
                 .AddField("🏆 Tabele",
-                    "`/tabela-sezonu` - Zobacz ogólną tabelę sezonu\n" +
-                    "`/tabela-kolejki [numer]` - Zobacz tabelę konkretnej kolejki\n\n" +
+                    "`/tabela-sezonu` - Tabela sezonu (PNG)\n" +
+                    "`/tabela-kolejki [numer]` - Tabela kolejki (PNG)\n\n" +
                     "Tabele pokazują:\n" +
                     "• Pozycję każdego gracza\n" +
                     "• Zdobyte punkty\n" +

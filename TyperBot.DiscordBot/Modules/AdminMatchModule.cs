@@ -447,11 +447,13 @@ public class AdminMatchModule : BaseAdminModule
             await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
             return;
         }
-        
-        var match = await _matchRepository.GetByIdAsync(matchId);
+
+        await DeferAsync(ephemeral: true);
+
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
         if (match == null)
         {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -527,7 +529,7 @@ public class AdminMatchModule : BaseAdminModule
             return;
         }
         
-        var match = await _matchRepository.GetByIdAsync(matchId);
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
         if (match == null) return;
 
         var now = DateTimeOffset.UtcNow;

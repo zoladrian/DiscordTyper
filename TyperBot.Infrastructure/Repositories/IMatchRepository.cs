@@ -6,6 +6,9 @@ namespace TyperBot.Infrastructure.Repositories;
 public interface IMatchRepository
 {
     Task<Match?> GetByIdAsync(int id);
+
+    /// <summary>When <paramref name="includeRound"/> is false, skips loading <see cref="Match.Round"/> (faster when only match row fields are needed).</summary>
+    Task<Match?> GetByIdAsync(int id, bool includeRound);
     Task<IEnumerable<Match>> GetByRoundIdAsync(int roundId);
     Task<IEnumerable<Match>> GetUpcomingMatchesAsync();
 

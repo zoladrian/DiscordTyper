@@ -9,7 +9,7 @@ namespace TyperBot.Application.Services;
 /// </summary>
 public class TableGenerator
 {
-    private const int TableWidth = 1100;
+    private const int TableWidth = 920;
     private const int RowHeight = 40;
     private const int TitleBarHeight = 56;
     private const int HeaderHeight = 52;
@@ -189,9 +189,9 @@ public class TableGenerator
         canvas.DrawLine(x1, yTop, x1, yBot, border);
         canvas.DrawLine(x2, yTop, x2, yBot, border);
         canvas.DrawLine(x3, yTop, x3, yBot, border);
-        canvas.DrawLine(x4, yTop, x4, yBot, border);
+        // Split MIEJSCE WYŻEJ | DO LIDERA only in lower header row (STRATA spans both columns above)
+        canvas.DrawLine(x4, yMid, x4, yBot, border);
         canvas.DrawLine(x5, yTop, x5, yBot, border);
-        // Mid line only under STRATA (not through POPRAWNE)
         canvas.DrawLine(x3, yMid, x5, yMid, border);
     }
 

@@ -52,7 +52,7 @@ public class AdminResultModule : BaseAdminModule
             return;
         }
 
-        var match = await _matchRepository.GetByIdAsync(matchId);
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
         if (match == null)
         {
             await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
@@ -133,7 +133,7 @@ public class AdminResultModule : BaseAdminModule
             return;
         }
 
-        var match = await _matchRepository.GetByIdAsync(matchId);
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
         if (match == null)
         {
             await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);

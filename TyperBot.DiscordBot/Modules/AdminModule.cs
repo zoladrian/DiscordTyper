@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
-using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
 
 namespace TyperBot.DiscordBot.Modules;
@@ -29,6 +28,7 @@ public class AdminModule : BaseAdminModule
     private readonly IRoundRepository _roundRepository;
     private readonly AdminMatchCreationStateService _stateService;
     private readonly MatchCardService _matchCardService;
+    private readonly TableGenerator _tableGenerator;
 
     public AdminModule(
         ILogger<AdminModule> logger,
@@ -42,7 +42,8 @@ public class AdminModule : BaseAdminModule
         ExportService exportService,
         IRoundRepository roundRepository,
         AdminMatchCreationStateService stateService,
-        MatchCardService matchCardService) : base(settings.Value)
+        MatchCardService matchCardService,
+        TableGenerator tableGenerator) : base(settings.Value)
     {
         _logger = logger;
         _lookupService = lookupService;
@@ -55,6 +56,7 @@ public class AdminModule : BaseAdminModule
         _roundRepository = roundRepository;
         _stateService = stateService;
         _matchCardService = matchCardService;
+        _tableGenerator = tableGenerator;
     }
 
     #region Match Creation Wizard (calendar/time UI)
@@ -820,7 +822,7 @@ public class AdminModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki", "Tabela kolejki (tekst): domyślnie w tym kanale; parametr = inny kanał/wątek")]
+    [SlashCommand("admin-tabela-kolejki", "Tabela kolejki (PNG): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostRoundTableAsync(
         [Summary(description: "Numer kolejki")] int round,
         [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
@@ -948,113 +950,28 @@ public class AdminModule : BaseAdminModule
 
     public async Task PostRoundTableEmbedAsync(Domain.Entities.Season season, Domain.Entities.Round round, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match? triggerMatch = null)
     {
-        var roundMatches = (await _matchRepository.GetByRoundIdAsync(round.Id)).Select(m => m.Id).ToList();
-        var allScores = new List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
-
-        foreach (var player in players)
-        {
-            var predsInRound = player.Predictions
-                .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid)
-                .ToList();
-            var scored = predsInRound.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            var totalPoints = scored.Sum(s => s.Points);
-            var exactScores = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
-            var correctWinners = scored.Count(s => s.Points > 0);
-            var typCount = predsInRound.Count;
-            allScores.Add((player.Id, player.DiscordUsername, totalPoints, typCount, exactScores, correctWinners));
-        }
-
-        var sortedScores = allScores
-            .OrderByDescending(s => s.TotalPoints)
-            .ThenByDescending(s => s.PredictionsCount)
-            .ToList();
-        var roundLabel = RoundHelper.GetRoundLabel(round.Number);
-
-        var anyTipInRound = sortedScores.Sum(s => s.PredictionsCount) > 0;
-        var baseDesc = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
-            ? $"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? roundLabel}"
-            : $"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? roundLabel}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})";
-        var descriptionText = baseDesc + "\n\n_Pkt — mecze z wynikiem. Typ — wszystkie typy w tej kolejce._"
-            + (anyTipInRound ? "" : "\n\n⚠️ _Brak typów dla tej kolejki — sprawdź numer kolejki._");
-
-        var embed = new EmbedBuilder()
-            .WithTitle($"📊 Tabela Kolejki {round.Number}")
-            .WithDescription(descriptionText)
-            .WithColor(Color.Blue)
-            .WithCurrentTimestamp();
-
-        if (sortedScores.Any())
-        {
-            embed.AddField("Tabela punktowa", BuildStandingsTable(sortedScores), false);
-        }
-        else
-        {
-            embed.WithDescription(descriptionText + "\n\n*Brak graczy do wyświetlenia.*");
-        }
-
-        embed.WithFooter("Typ = typy w tej kolejce | Pkt/Cel/Wyg = tylko mecze z wynikiem");
-        await channel.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Round {Round} table published", round.Number);
+        var roundFull = await _roundRepository.GetByIdAsync(round.Id) ?? round;
+        var seasonForTable = await _seasonRepository.GetByIdAsync(roundFull.SeasonId) ?? season;
+        var bytes = _tableGenerator.GenerateRoundTable(seasonForTable, roundFull, players);
+        using var stream = new MemoryStream(bytes, writable: false);
+        var roundLabel = RoundHelper.GetRoundLabel(roundFull.Number);
+        var caption = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
+            ? $"🏆 **Tabela kolejki** — {season.Name} — {roundLabel}"
+            : $"🏆 **Tabela kolejki** — {season.Name} — {roundLabel}\n**Po meczu:** {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})";
+        await channel.SendFileAsync(stream, $"tabela_kolejki_{roundFull.Number}_{DateTime.UtcNow:yyyyMMdd-HHmmss}.png", text: caption);
+        _logger.LogInformation("Round {Round} table PNG published", round.Number);
     }
 
     public async Task PostSeasonTableEmbedAsync(Domain.Entities.Season season, List<Domain.Entities.Player> players, ITextChannel channel, Domain.Entities.Match? triggerMatch = null)
     {
-        var seasonMatchIds = EnhancedTableGenerator.ResolveSeasonMatchIdsPublic(season);
-        var filterBySeason = seasonMatchIds.Count > 0;
-
-        var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
-        foreach (var player in players)
-        {
-            var predsInSeason = player.Predictions
-                .Where(p => p.IsValid && (!filterBySeason || seasonMatchIds.Contains(p.MatchId)))
-                .ToList();
-            var scored = predsInSeason.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            allScores.Add((
-                player.DiscordUsername,
-                scored.Sum(s => s.Points),
-                predsInSeason.Count,
-                scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
-                scored.Count(s => s.Points > 0)));
-        }
-
-        var sortedScores = allScores
-            .OrderByDescending(s => s.TotalPoints)
-            .ThenByDescending(s => s.PredictionsCount)
-            .ToList();
-        var descriptionText = (triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
-            ? $"**Sezon**: {season.Name}"
-            : $"**Sezon**: {season.Name}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})")
-            + "\n\n_Pkt — mecze z wynikiem. Typ — wszystkie typy w sezonie._";
-
-        var embed = new EmbedBuilder()
-            .WithTitle("🏆 Tabela Sezonu")
-            .WithDescription(descriptionText)
-            .WithColor(Color.Gold)
-            .WithCurrentTimestamp();
-
-        embed.AddField("Tabela punktowa - Sezon", BuildStandingsTable(
-            sortedScores.Select(s => (0, s.PlayerName, s.TotalPoints, s.PredictionsCount, s.ExactScores, s.CorrectWinners)).ToList()), false);
-        embed.WithFooter("Typ = typy w sezonie | Pkt/Cel/Wyg = tylko mecze z wynikiem");
-
-        await channel.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Season table published");
-    }
-
-    private static string BuildStandingsTable(List<(int PlayerId, string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)> sortedScores)
-    {
-        var table = "```\n";
-        table += "Poz  Gracz                    Pkt   Typ   Cel   Wyg\n";
-        table += "═══════════════════════════════════════════════════\n";
-        for (int i = 0; i < sortedScores.Count; i++)
-        {
-            var score = sortedScores[i];
-            var playerName = score.PlayerName;
-            if (playerName.Length > 22) playerName = playerName[..19] + "...";
-            var medal = i switch { 0 => "🥇", 1 => "🥈", 2 => "🥉", _ when i == sortedScores.Count - 1 => "💩", _ => "  " };
-            table += $"{medal} {i + 1,2}  {playerName,-22}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
-        }
-        table += "```";
-        return table;
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var bytes = _tableGenerator.GenerateSeasonTable(seasonFull, players);
+        using var stream = new MemoryStream(bytes, writable: false);
+        var caption = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
+            ? $"🏆 **Tabela sezonu:** {season.Name}"
+            : $"🏆 **Tabela sezonu:** {season.Name}\n**Po meczu:** {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})";
+        await channel.SendFileAsync(stream, $"tabela_sezonu_{DateTime.UtcNow:yyyyMMdd-HHmmss}.png", text: caption);
+        _logger.LogInformation("Season table PNG published");
     }
 
     #endregion

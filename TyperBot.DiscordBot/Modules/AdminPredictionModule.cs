@@ -50,7 +50,7 @@ public class AdminPredictionModule : BaseAdminModule
 
         try
         {
-            var match = await _matchRepository.GetByIdAsync(matchId);
+            var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
             if (match == null)
             {
                 await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
@@ -64,9 +64,9 @@ public class AdminPredictionModule : BaseAdminModule
             var predictions = await _predictionRepository.GetByMatchIdAsync(matchId);
             var playersWithPredictions = predictions.Select(p => p.Player.DiscordUserId).ToHashSet();
 
-            // Find players who haven't predicted
+            // Find players who haven't predicted (exclude bots — e.g. bot with Typer role must not mention itself)
             var untypedPlayers = playersWithRole
-                .Where(p => !playersWithPredictions.Contains(p.Id))
+                .Where(p => !p.IsBot && !playersWithPredictions.Contains(p.Id))
                 .ToList();
 
             if (!untypedPlayers.Any())
@@ -146,7 +146,7 @@ public class AdminPredictionModule : BaseAdminModule
 
         try
         {
-            var match = await _matchRepository.GetByIdAsync(matchId);
+            var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
             if (match == null)
             {
                 await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
