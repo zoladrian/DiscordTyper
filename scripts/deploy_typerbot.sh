@@ -27,10 +27,12 @@ echo "════════════════════════�
 echo "➡️ git pull"
 git pull
 
-echo "➡️ dotnet publish → $PUBLISH_DIR"
+echo "➡️ dotnet publish → $PUBLISH_DIR (linux-x64 — wymagane m.in. dla SkiaSharp / libSkiaSharp.so)"
 dotnet publish ./TyperBot.DiscordBot/TyperBot.DiscordBot.csproj \
   -c Release \
   -o "$PUBLISH_DIR" \
+  -r linux-x64 \
+  --self-contained false \
   --verbosity minimal
 
 if [[ ! -f "$PUBLISH_DIR/TyperBot.DiscordBot.dll" ]]; then

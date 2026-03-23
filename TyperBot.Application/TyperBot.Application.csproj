@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\TyperBot.Domain\TyperBot.Domain.csproj" />
@@ -9,6 +9,8 @@
     <PackageReference Include="EPPlus" Version="8.2.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <!-- Native libSkiaSharp.so for Linux servers (PNG tables); publish with -r linux-x64 -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
   </ItemGroup>
 
   <PropertyGroup>

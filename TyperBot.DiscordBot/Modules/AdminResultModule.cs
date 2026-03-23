@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot;
+using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Domain.Enums;
@@ -175,7 +176,9 @@ public class AdminResultModule : BaseAdminModule
 
     [SlashCommand("admin-tabela-meczu", "Wyślij tabelę wyników meczu (embed); opcjonalnie kanał lub wątek")]
     public async Task AdminPostMatchTableSlashAsync(
-        [Summary(description: "ID meczu (z bazy / z przycisku na karcie)")] int mecz,
+        [Summary(description: "Wybierz mecz z listy (wpisz fragment nazwy, kolejkę lub ID)")]
+        [Autocomplete(typeof(AdminMatchChoiceAutocompleteHandler))]
+        string mecz,
         [Summary(description: "Kanał lub wątek — puste = wątek meczu przy typowaniu")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
@@ -187,9 +190,15 @@ public class AdminResultModule : BaseAdminModule
             return;
         }
 
+        if (!int.TryParse(mecz, out var matchId))
+        {
+            await RespondAsync("❌ Wybierz mecz z listy autouzupełniania.", ephemeral: true);
+            return;
+        }
+
         await DeferAsync(ephemeral: true);
 
-        var match = await _matchRepository.GetByIdAsync(mecz);
+        var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
             await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
@@ -245,11 +254,11 @@ public class AdminResultModule : BaseAdminModule
 
             await _matchResultsTableService.PostToThreadAsync(match, thread);
             await FollowupAsync("✅ Tabela wysłana do wątku meczu.", ephemeral: true);
-            _logger.LogInformation("Match table sent via slash to thread — User: {User}, Match: {MatchId}", user.Username, mecz);
+            _logger.LogInformation("Match table sent via slash to thread — User: {User}, Match: {MatchId}", user.Username, matchId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending match table (slash) for match {MatchId}", mecz);
+            _logger.LogError(ex, "Error sending match table (slash) for match {MatchId}", matchId);
             await FollowupAsync("❌ Wystąpił błąd podczas wysyłania tabeli.", ephemeral: true);
         }
     }

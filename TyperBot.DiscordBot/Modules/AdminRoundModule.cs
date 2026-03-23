@@ -192,7 +192,9 @@ public class AdminRoundModule : BaseAdminModule
 
         var embed = new EmbedBuilder()
             .WithTitle($"Zarządzanie kolejką: {roundLabel}")
-            .WithDescription($"Kolejka zawiera {matches.Count} meczów.")
+            .WithDescription(matches.Count > 4
+                ? $"Kolejka zawiera {matches.Count} meczów. **Przyciski** (edycja, wynik, publikacja karty, usunięcie) są dla **pierwszych 4** meczów — pozostałe: `/admin-publikuj-mecz` i `/admin-tabela-meczu` (pole meczu z wyszukiwaniem)."
+                : $"Kolejka zawiera {matches.Count} meczów.")
             .WithColor(Color.Gold);
 
         foreach (var match in matches)
@@ -210,23 +212,23 @@ public class AdminRoundModule : BaseAdminModule
 
             embed.AddField(
                 $"{match.HomeTeam} vs {match.AwayTeam}",
-                $"{status}\nData: {localTime:yyyy-MM-dd HH:mm}\nID: {match.Id}",
+                $"{status}\nData: {localTime:yyyy-MM-dd HH:mm}",
                 inline: true);
         }
 
         var component = new ComponentBuilder();
 
-        int buttonCount = 0;
-        foreach (var match in matches.Take(8))
+        var actionMatches = matches.Take(4).ToList();
+        for (var i = 0; i < actionMatches.Count; i++)
         {
-            int row = buttonCount / 3;
+            var match = actionMatches[i];
+            var row = i;
 
             var editButton = new ButtonBuilder()
                 .WithCustomId($"admin_edit_match_{match.Id}")
                 .WithLabel($"✏️ {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
                 .WithStyle(ButtonStyle.Secondary);
             component.WithButton(editButton, row: row);
-            buttonCount++;
 
             var resultLabel = match.HomeScore.HasValue ? "📝 Zmień wynik" : "🏁 Wynik";
             var resultStyle = match.HomeScore.HasValue ? ButtonStyle.Secondary : ButtonStyle.Success;
@@ -235,21 +237,25 @@ public class AdminRoundModule : BaseAdminModule
                 .WithLabel(resultLabel)
                 .WithStyle(resultStyle);
             component.WithButton(resultButton, row: row);
-            buttonCount++;
+
+            var publishButton = new ButtonBuilder()
+                .WithCustomId($"admin_force_publish_match_{match.Id}")
+                .WithLabel("📢 Karta")
+                .WithStyle(ButtonStyle.Primary);
+            component.WithButton(publishButton, row: row);
 
             var deleteButton = new ButtonBuilder()
                 .WithCustomId($"admin_delete_match_{match.Id}")
                 .WithLabel("🗑️ Usuń")
                 .WithStyle(ButtonStyle.Danger);
             component.WithButton(deleteButton, row: row);
-            buttonCount++;
         }
 
         var addMatchButton = new ButtonBuilder()
             .WithCustomId($"admin_add_match_to_round_{round.Id}")
             .WithLabel("➕ Dodaj mecz do tej kolejki")
             .WithStyle(ButtonStyle.Primary);
-        component.WithButton(addMatchButton, row: 4);
+        component.WithButton(addMatchButton, row: actionMatches.Count);
 
         await FollowupAsync(embed: embed.Build(), components: component.Build(), ephemeral: true);
     }

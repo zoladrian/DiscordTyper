@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using TyperBot.Application;
+using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure;
@@ -93,6 +94,7 @@ var interactionServiceConfig = new InteractionServiceConfig
     UseCompiledLambda = true
 };
 builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>(), interactionServiceConfig));
+builder.Services.AddSingleton<AdminMatchChoiceAutocompleteHandler>();
 
 // Register Discord services
 builder.Services.AddSingleton<DiscordLookupService>();

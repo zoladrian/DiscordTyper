@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Domain.Enums;
@@ -267,7 +268,10 @@ public class AdminMatchModule : BaseAdminModule
     }
 
     [SlashCommand("admin-publikuj-mecz", "Utwórz wątek typowania i opublikuj kartę meczu od ręki (bez czekania na harmonogram)")]
-    public async Task AdminForcePublishMatchAsync([Summary("id_meczu")] int matchId)
+    public async Task AdminForcePublishMatchAsync(
+        [Summary(description: "Wybierz mecz z listy (wpisz fragment nazwy, kolejkę lub ID)")]
+        [Autocomplete(typeof(AdminMatchChoiceAutocompleteHandler))]
+        string mecz)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -276,23 +280,15 @@ public class AdminMatchModule : BaseAdminModule
             return;
         }
 
+        if (!int.TryParse(mecz, out var matchId))
+        {
+            await RespondAsync("❌ Wybierz mecz z listy autouzupełniania.", ephemeral: true);
+            return;
+        }
+
         await DeferAsync(ephemeral: true);
 
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
-        {
-            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        var roundNum = match.Round?.Number ?? 0;
-        if (roundNum == 0)
-        {
-            await FollowupAsync("❌ Mecz nie ma przypisanej kolejki — nie można opublikować karty.", ephemeral: true);
-            return;
-        }
-
-        var (success, message) = await _matchCardService.ForcePublishMatchCardAsync(match, roundNum);
+        var (success, message) = await ForcePublishMatchByIdAsync(matchId);
         await FollowupAsync(message, ephemeral: true);
 
         if (success)
@@ -301,6 +297,48 @@ public class AdminMatchModule : BaseAdminModule
                 "Force-published match card - User: {Username}, Match ID: {MatchId}",
                 Context.User.Username, matchId);
         }
+    }
+
+    [ComponentInteraction("admin_force_publish_match_*")]
+    public async Task HandleForcePublishMatchButtonAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var (success, message) = await ForcePublishMatchByIdAsync(matchId);
+        await FollowupAsync(message, ephemeral: true);
+
+        if (success)
+        {
+            _logger.LogInformation(
+                "Force-published match card (button) - User: {Username}, Match ID: {MatchId}",
+                Context.User.Username, matchId);
+        }
+    }
+
+    private async Task<(bool success, string message)> ForcePublishMatchByIdAsync(int matchId)
+    {
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+            return (false, "❌ Mecz nie znaleziony.");
+
+        var roundNum = match.Round?.Number ?? 0;
+        if (roundNum == 0)
+            return (false, "❌ Mecz nie ma przypisanej kolejki — nie można opublikować karty.");
+
+        return await _matchCardService.ForcePublishMatchCardAsync(match, roundNum);
     }
 
     [ComponentInteraction("admin_cancel_match_*")]
