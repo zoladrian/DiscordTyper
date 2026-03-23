@@ -53,27 +53,8 @@ public class MatchManagementService
             round = await _roundRepository.AddAsync(round);
         }
 
-        // Set default thread creation time (Wednesday 8:00 AM before match) if not provided
         if (!threadCreationTime.HasValue)
-        {
-            // Find the Wednesday 8:00 AM before the match
-            var matchDate = startTime.Date;
-            var daysSinceWednesday = ((int)matchDate.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
-
-            if (daysSinceWednesday == 0 && startTime.TimeOfDay.TotalHours < 8)
-            {
-                // Match is on Wednesday before 8:00 — use previous Wednesday
-                daysSinceWednesday = 7;
-            }
-
-            var wednesdayDate = matchDate.AddDays(-daysSinceWednesday);
-            threadCreationTime = new DateTimeOffset(wednesdayDate.AddHours(8), startTime.Offset);
-
-            if (threadCreationTime.Value >= startTime)
-            {
-                threadCreationTime = threadCreationTime.Value.AddDays(-7);
-            }
-        }
+            threadCreationTime = ComputeDefaultThreadCreationTime(startTime);
 
         // Create match
         var match = new Match
@@ -104,6 +85,27 @@ public class MatchManagementService
         }
 
         return (true, null);
+    }
+
+    /// <summary>
+    /// Default: Wednesday 8:00 (local offset of <paramref name="startTime"/>) in the week before the match start.
+    /// Shared with edit-match flow so rescheduled matches get a sensible auto-publish time.
+    /// </summary>
+    public static DateTimeOffset ComputeDefaultThreadCreationTime(DateTimeOffset startTime)
+    {
+        var matchDate = startTime.Date;
+        var daysSinceWednesday = ((int)matchDate.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+
+        if (daysSinceWednesday == 0 && startTime.TimeOfDay.TotalHours < 8)
+            daysSinceWednesday = 7;
+
+        var wednesdayDate = matchDate.AddDays(-daysSinceWednesday);
+        var threadCreationTime = new DateTimeOffset(wednesdayDate.AddHours(8), startTime.Offset);
+
+        if (threadCreationTime >= startTime)
+            threadCreationTime = threadCreationTime.AddDays(-7);
+
+        return threadCreationTime;
     }
 }
 

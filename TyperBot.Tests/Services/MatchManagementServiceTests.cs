@@ -42,6 +42,22 @@ public class MatchManagementServiceTests
             message.Should().BeNull();
         }
     }
+
+    [Theory]
+    [InlineData(2025, 6, 18, 18, 0, 2025, 6, 18, 8, 0)] // Wed 18:00 → same Wed 08:00
+    [InlineData(2025, 6, 18, 6, 0, 2025, 6, 11, 8, 0)] // Wed before 08:00 → previous Wed 08:00
+    [InlineData(2025, 6, 21, 18, 0, 2025, 6, 18, 8, 0)] // Sat → preceding Wed 08:00
+    public void ComputeDefaultThreadCreationTime_MatchesLegacyRules(
+        int sy, int sm, int sd, int sh, int smin,
+        int ey, int em, int ed, int eh, int emin)
+    {
+        var start = new DateTimeOffset(sy, sm, sd, sh, smin, 0, TimeSpan.Zero);
+        var expected = new DateTimeOffset(ey, em, ed, eh, emin, 0, TimeSpan.Zero);
+
+        var actual = MatchManagementService.ComputeDefaultThreadCreationTime(start);
+
+        actual.Should().Be(expected);
+    }
 }
 
 public class MatchManagementServiceIntegrationTests : IDisposable

@@ -29,7 +29,8 @@ public class MatchCardService
         _matchRepository = matchRepository;
     }
 
-    public async Task PostMatchCardAsync(Match match, int roundNum, IUserMessage? existingMessage = null)
+    /// <param name="forceImmediateThread">If true, creates the thread and posts the card even when <see cref="Match.ThreadCreationTime"/> is still in the future (admin force-publish).</param>
+    public async Task PostMatchCardAsync(Match match, int roundNum, IUserMessage? existingMessage = null, bool forceImmediateThread = false)
     {
         var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
         if (predictionsChannel == null)
@@ -157,8 +158,8 @@ public class MatchCardService
         }
         else
         {
-            // Check if thread should be created now
-            var shouldCreateNow = !match.ThreadCreationTime.HasValue || 
+            var shouldCreateNow = forceImmediateThread ||
+                                  !match.ThreadCreationTime.HasValue ||
                                   match.ThreadCreationTime.Value <= DateTimeOffset.UtcNow;
             
             if (shouldCreateNow)
@@ -200,5 +201,54 @@ public class MatchCardService
                     match.Id, match.ThreadCreationTime?.ToString() ?? "null");
             }
         }
+    }
+
+    /// <summary>
+    /// Creates the match thread (if missing), syncs <see cref="Match.ThreadId"/>, and posts or updates the match card.
+    /// Use when a match was scheduled for automatic Wednesday publishing but you need the thread immediately (e.g. mid-week catch-up).
+    /// </summary>
+    public async Task<(bool success, string userMessage)> ForcePublishMatchCardAsync(Match match, int roundNum)
+    {
+        if (match.Status == MatchStatus.Finished || match.Status == MatchStatus.Cancelled)
+        {
+            return (false, "❌ Nie można wymusić publikacji dla meczu zakończonego lub odwołanego.");
+        }
+
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel == null)
+        {
+            return (false, "❌ Nie znaleziono kanału typowanie.");
+        }
+
+        SocketThreadChannel? thread = null;
+        if (match.ThreadId.HasValue)
+        {
+            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+        }
+
+        if (thread == null)
+        {
+            var roundLabel = RoundHelper.GetRoundLabel(roundNum);
+            var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+            var searchName = threadName.Length > 100 ? threadName.Substring(0, 97) + "..." : threadName;
+            thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == searchName);
+            if (thread != null)
+            {
+                match.ThreadId = thread.Id;
+            }
+        }
+
+        match.ThreadCreationTime = DateTimeOffset.UtcNow;
+        await _matchRepository.UpdateAsync(match);
+
+        IUserMessage? existingMessage = null;
+        if (thread != null)
+        {
+            existingMessage = await _lookupService.FindMatchCardMessageAsync(thread);
+        }
+
+        await PostMatchCardAsync(match, roundNum, existingMessage, forceImmediateThread: true);
+
+        return (true, "✅ Wątek i karta meczu są dostępne w kanale typowanie (publikacja wymuszona).");
     }
 }

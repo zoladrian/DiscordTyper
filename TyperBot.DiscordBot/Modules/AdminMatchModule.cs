@@ -198,6 +198,7 @@ public class AdminMatchModule : BaseAdminModule
         if (match.StartTime != startTime)
         {
             match.PredictionsRevealed = false;
+            match.ThreadCreationTime = MatchManagementService.ComputeDefaultThreadCreationTime(startTime);
         }
         match.StartTime = startTime;
         match.TypingDeadline = typingDeadline;
@@ -263,6 +264,43 @@ public class AdminMatchModule : BaseAdminModule
             matchId, match.HomeTeam, match.AwayTeam, startTime);
 
         await FollowupAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
+    }
+
+    [SlashCommand("admin-publikuj-mecz", "Utwórz wątek typowania i opublikuj kartę meczu od ręki (bez czekania na harmonogram)")]
+    public async Task AdminForcePublishMatchAsync([Summary("id_meczu")] int matchId)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var match = await _matchRepository.GetByIdAsync(matchId);
+        if (match == null)
+        {
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var roundNum = match.Round?.Number ?? 0;
+        if (roundNum == 0)
+        {
+            await FollowupAsync("❌ Mecz nie ma przypisanej kolejki — nie można opublikować karty.", ephemeral: true);
+            return;
+        }
+
+        var (success, message) = await _matchCardService.ForcePublishMatchCardAsync(match, roundNum);
+        await FollowupAsync(message, ephemeral: true);
+
+        if (success)
+        {
+            _logger.LogInformation(
+                "Force-published match card - User: {Username}, Match ID: {MatchId}",
+                Context.User.Username, matchId);
+        }
     }
 
     [ComponentInteraction("admin_cancel_match_*")]
