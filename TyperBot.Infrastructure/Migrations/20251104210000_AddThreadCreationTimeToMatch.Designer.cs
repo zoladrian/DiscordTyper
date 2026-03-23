@@ -11,8 +11,8 @@ using TyperBot.Infrastructure.Data;
 namespace TyperBot.Infrastructure.Migrations
 {
     [DbContext(typeof(TyperContext))]
-    [Migration("20250125140000_AddPreferredTableFormatToSeason")]
-    partial class AddPreferredTableFormatToSeason
+    [Migration("20251104210000_AddThreadCreationTimeToMatch")]
+    partial class AddThreadCreationTimeToMatch
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -57,23 +57,12 @@ namespace TyperBot.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ThreadCreationTime")
                         .HasColumnType("TEXT");
 
-                    b.Property<ulong?>("ThreadId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("PredictionsRevealed")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
-                        .HasDefaultValue(false);
+                    b.Property<DateTimeOffset?>("TypingDeadline")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("RoundId");
-
-                    b.HasIndex("StartTime");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("ThreadId");
 
                     b.ToTable("Matches");
                 });
@@ -161,8 +150,6 @@ namespace TyperBot.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId");
-
                     b.HasIndex("PlayerId");
 
                     b.HasIndex("MatchId", "PlayerId")
@@ -190,8 +177,6 @@ namespace TyperBot.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SeasonId");
-
-                    b.HasIndex("SeasonId", "Number");
 
                     b.ToTable("Rounds");
                 });

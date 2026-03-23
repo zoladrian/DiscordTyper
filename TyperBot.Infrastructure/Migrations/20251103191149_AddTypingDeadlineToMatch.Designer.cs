@@ -11,8 +11,8 @@ using TyperBot.Infrastructure.Data;
 namespace TyperBot.Infrastructure.Migrations
 {
     [DbContext(typeof(TyperContext))]
-    [Migration("20251103191148_AddPreferredTableFormatToSeason")]
-    partial class AddPreferredTableFormatToSeason
+    [Migration("20251103191149_AddTypingDeadlineToMatch")]
+    partial class AddTypingDeadlineToMatch
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -53,6 +53,9 @@ namespace TyperBot.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("TypingDeadline")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
