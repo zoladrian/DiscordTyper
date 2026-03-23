@@ -44,28 +44,35 @@ public class MatchRepository : IMatchRepository
 
     public async Task<IEnumerable<Match>> GetMatchesReadyForThreadCreationAsync(DateTimeOffset now)
     {
-        return await _context.Matches
+        // SQLite + EF Core can fail translating DateTimeOffset comparisons in complex predicates.
+        // Keep SQL-side filtering for status/null, and do time-window filtering in memory.
+        var candidates = await _context.Matches
             .AsNoTracking()
             .Include(m => m.Round)
             .Where(m =>
                 m.Status == MatchStatus.Scheduled &&
-                m.ThreadCreationTime != null &&
-                m.ThreadCreationTime <= now &&
-                m.StartTime > now)
+                m.ThreadCreationTime != null)
             .ToListAsync();
+
+        return candidates.Where(m =>
+            m.ThreadCreationTime <= now &&
+            m.StartTime > now);
     }
 
     public async Task<IEnumerable<Match>> GetMatchesPossiblyAwaitingResultEntryAsync(DateTimeOffset startedOnOrBeforeUtc)
     {
-        return await _context.Matches
+        // SQLite + EF Core can fail translating DateTimeOffset comparisons in complex predicates.
+        // Keep SQL-side filtering for status/scores, and do cutoff-time filtering in memory.
+        var candidates = await _context.Matches
             .AsNoTracking()
             .Include(m => m.Round)
             .Where(m =>
                 m.Status != MatchStatus.Cancelled &&
                 m.Status != MatchStatus.Finished &&
-                m.StartTime <= startedOnOrBeforeUtc &&
                 !(m.HomeScore.HasValue && m.AwayScore.HasValue))
             .ToListAsync();
+
+        return candidates.Where(m => m.StartTime <= startedOnOrBeforeUtc);
     }
 
     public async Task<IEnumerable<Match>> GetAllAsync()
