@@ -795,7 +795,7 @@ public class AdminModule : BaseAdminModule
 
     [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu (tekst); opcjonalnie kanał lub wątek docelowy")]
     public async Task AdminPostSeasonTableAsync(
-        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -823,7 +823,7 @@ public class AdminModule : BaseAdminModule
     [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki (tekst); opcjonalnie kanał lub wątek docelowy")]
     public async Task AdminPostRoundTableAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {

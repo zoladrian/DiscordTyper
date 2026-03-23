@@ -111,7 +111,8 @@ public class WelcomeMessageService
                     "`/admin-tabela-kolejki [numer] [kanał/wątek?]` - Tabela kolejki (tekst)\n" +
                     "`/admin-tabela-sezonu-obraz [kanał/wątek?]` - Tabela sezonu (PNG)\n" +
                     "`/admin-tabela-kolejki-obraz [numer] [kanał/wątek?]` - Tabela kolejki (PNG)\n" +
-                    "`/admin-tabela-meczu [mecz] [kanał/wątek?]` - Tabela meczu (wybór z listy); puste → wątek meczu", inline: false)
+                    "`/admin-tabela-meczu [mecz] [kanał/wątek?]` - Tabela meczu (wybór z listy); puste → wątek meczu\n" +
+                    "• **Wątek:** w polu `kanal_lub_watek` zwykle trzeba **zacząć pisać nazwę wątku** — Discord często nie pokazuje wątków na pierwszej liście, tylko po wyszukiwaniu.", inline: false)
                 .AddField("💾 Eksport danych",
                     "`/admin-eksport-sezonu` - Eksportuj dane sezonu do CSV\n" +
                     "`/admin-eksport-kolejki [numer]` - Eksportuj dane kolejki do CSV", inline: false)

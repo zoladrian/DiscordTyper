@@ -179,7 +179,7 @@ public class AdminResultModule : BaseAdminModule
         [Summary(description: "Wybierz mecz z listy (wpisz fragment nazwy, kolejkę lub ID)")]
         [Autocomplete(typeof(AdminMatchChoiceAutocompleteHandler))]
         string mecz,
-        [Summary(description: "Kanał lub wątek — puste = wątek meczu przy typowaniu")]
+        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = wątek meczu.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {

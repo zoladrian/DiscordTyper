@@ -154,7 +154,7 @@ public class AdminTableModule : BaseAdminModule
 
     [SlashCommand("admin-tabela-sezonu-obraz", "Wyślij tabelę sezonu jako PNG; opcjonalnie kanał lub wątek")]
     public async Task AdminPostSeasonTablePngAsync(
-        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -201,7 +201,7 @@ public class AdminTableModule : BaseAdminModule
     [SlashCommand("admin-tabela-kolejki-obraz", "Wyślij tabelę kolejki jako PNG; opcjonalnie kanał lub wątek")]
     public async Task AdminPostRoundTablePngAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary(description: "Kanał lub wątek — puste = kanał typowania z konfiguracji")]
+        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
