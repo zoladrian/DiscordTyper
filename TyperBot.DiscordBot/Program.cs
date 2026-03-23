@@ -87,7 +87,9 @@ builder.Services.AddSingleton<DiscordSocketClient>();
 // Configure InteractionService with proper config to enable modal detection
 var interactionServiceConfig = new InteractionServiceConfig
 {
-    DefaultRunMode = RunMode.Async,
+    // Async = ExecuteCommandAsync returns before the handler finishes (misleading logs, races on HasResponded).
+    // Sync = await full handler so journal timing, InteractionExecuted, and Discord's 3s ACK match reality.
+    DefaultRunMode = RunMode.Sync,
     UseCompiledLambda = true
 };
 builder.Services.AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>(), interactionServiceConfig));
