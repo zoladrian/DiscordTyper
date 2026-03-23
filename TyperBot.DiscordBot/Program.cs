@@ -47,6 +47,7 @@ if (appsettingsPath == null)
 builder.Configuration
     .SetBasePath(appsettingsPath)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
 
 // Configure Serilog
