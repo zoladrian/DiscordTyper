@@ -174,12 +174,12 @@ public class AdminResultModule : BaseAdminModule
         await _matchResultHandler.HandleSetResultAsync(Context, matchIdStr, modal.HomeScore, modal.AwayScore);
     }
 
-    [SlashCommand("admin-tabela-meczu", "Wyślij tabelę wyników meczu (embed); opcjonalnie kanał lub wątek")]
+    [SlashCommand("admin-tabela-meczu", "Tabela wyników meczu: domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostMatchTableSlashAsync(
         [Summary(description: "Wybierz mecz z listy (wpisz fragment nazwy, kolejkę lub ID)")]
         [Autocomplete(typeof(AdminMatchChoiceAutocompleteHandler))]
         string mecz,
-        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = wątek meczu.")]
+        [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -213,48 +213,16 @@ public class AdminResultModule : BaseAdminModule
 
         try
         {
-            if (kanał != null)
+            var (target, err) = AdminTableChannelHelper.Resolve(Context.Guild, kanał, Context.Channel);
+            if (target == null)
             {
-                var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
-                if (target == null)
-                {
-                    await FollowupAsync($"❌ {err}", ephemeral: true);
-                    return;
-                }
-
-                await _matchResultsTableService.PostToTextChannelAsync(match, target);
-                await FollowupAsync($"✅ Tabela wysłana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
-                _logger.LogInformation("Match table sent via slash to channel — User: {User}, Match: {MatchId}", user.Username, mecz);
+                await FollowupAsync($"❌ {err}", ephemeral: true);
                 return;
             }
 
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel == null)
-            {
-                await FollowupAsync("❌ Nie znaleziono kanału typowania (potrzebnego do wątku meczu).", ephemeral: true);
-                return;
-            }
-
-            SocketThreadChannel? thread = null;
-            if (match.ThreadId.HasValue)
-                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-
-            if (thread == null)
-            {
-                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
-                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
-                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
-            }
-
-            if (thread == null)
-            {
-                await FollowupAsync("❌ Nie znaleziono wątku meczu — użyj parametru kanału lub utwórz wątek.", ephemeral: true);
-                return;
-            }
-
-            await _matchResultsTableService.PostToThreadAsync(match, thread);
-            await FollowupAsync("✅ Tabela wysłana do wątku meczu.", ephemeral: true);
-            _logger.LogInformation("Match table sent via slash to thread — User: {User}, Match: {MatchId}", user.Username, matchId);
+            await _matchResultsTableService.PostToTextChannelAsync(match, target);
+            await FollowupAsync($"✅ Tabela wysłana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
+            _logger.LogInformation("Match table sent via slash — User: {User}, Match: {MatchId}", user.Username, matchId);
         }
         catch (Exception ex)
         {

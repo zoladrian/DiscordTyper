@@ -19,7 +19,6 @@ public class AdminTableModule : BaseAdminModule
     private readonly IPlayerRepository _playerRepository;
     private readonly ExportService _exportService;
     private readonly TableGenerator _tableGenerator;
-    private readonly DiscordLookupService _lookupService;
 
     public AdminTableModule(
         ILogger<AdminTableModule> logger,
@@ -29,8 +28,7 @@ public class AdminTableModule : BaseAdminModule
         IMatchRepository matchRepository,
         IPlayerRepository playerRepository,
         ExportService exportService,
-        TableGenerator tableGenerator,
-        DiscordLookupService lookupService) : base(settings.Value)
+        TableGenerator tableGenerator) : base(settings.Value)
     {
         _logger = logger;
         _seasonRepository = seasonRepository;
@@ -39,7 +37,6 @@ public class AdminTableModule : BaseAdminModule
         _playerRepository = playerRepository;
         _exportService = exportService;
         _tableGenerator = tableGenerator;
-        _lookupService = lookupService;
     }
 
     /// <summary>
@@ -152,9 +149,9 @@ public class AdminTableModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-sezonu-obraz", "Wyślij tabelę sezonu jako PNG; opcjonalnie kanał lub wątek")]
+    [SlashCommand("admin-tabela-sezonu-obraz", "Tabela sezonu (PNG): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostSeasonTablePngAsync(
-        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
+        [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -176,7 +173,7 @@ public class AdminTableModule : BaseAdminModule
 
         try
         {
-            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            var (target, err) = AdminTableChannelHelper.Resolve(Context.Guild, kanał, Context.Channel);
             if (target == null)
             {
                 await FollowupAsync($"❌ {err}", ephemeral: true);
@@ -198,10 +195,10 @@ public class AdminTableModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki-obraz", "Wyślij tabelę kolejki jako PNG; opcjonalnie kanał lub wątek")]
+    [SlashCommand("admin-tabela-kolejki-obraz", "Tabela kolejki (PNG): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostRoundTablePngAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
+        [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -242,7 +239,7 @@ public class AdminTableModule : BaseAdminModule
 
         try
         {
-            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            var (target, err) = AdminTableChannelHelper.Resolve(Context.Guild, kanał, Context.Channel);
             if (target == null)
             {
                 await FollowupAsync($"❌ {err}", ephemeral: true);

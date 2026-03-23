@@ -40,8 +40,16 @@ if [[ ! -f "$PUBLISH_DIR/TyperBot.DiscordBot.dll" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$PUBLISH_DIR/libSkiaSharp.so" ]] && [[ ! -f "$PUBLISH_DIR/runtimes/linux-x64/native/libSkiaSharp.so" ]]; then
+  echo "❌ Brak natywnej biblioteki SkiaSharp (libSkiaSharp.so) w $PUBLISH_DIR."
+  echo "   Publish musi być z -r linux-x64 (jak w tym skrypcie). Bez tego PNG tabel nie zadziałają."
+  exit 1
+fi
+
 echo "📦 Opublikowany główny assembly:"
 ls -la "$PUBLISH_DIR/TyperBot.DiscordBot.dll"
+echo "📦 SkiaSharp native:"
+ls -la "$PUBLISH_DIR/libSkiaSharp.so" 2>/dev/null || ls -la "$PUBLISH_DIR/runtimes/linux-x64/native/libSkiaSharp.so" 2>/dev/null || true
 
 for f in appsettings.json appsettings.Production.json; do
   if [[ -f "$PUBLISH_DIR/$f" ]]; then
@@ -86,3 +94,6 @@ fi
 echo "═══════════════════════════════════════════════════════════"
 echo "Gotowe. Pełny strumień logów: sudo journalctl -u $SERVICE_NAME -f"
 echo "═══════════════════════════════════════════════════════════"
+echo "ℹ️  SkiaSharp (PNG): jeśli po deployu nadal jest błąd ładowania biblioteki, na Ubuntu zwykle pomaga:"
+echo "    sudo apt-get update && sudo apt-get install -y libfontconfig1"
+echo "ℹ️  W systemd ustaw WorkingDirectory na katalog publish (patrz scripts/typerbot.service.example)."

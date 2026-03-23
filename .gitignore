@@ -66,6 +66,9 @@ TyperBot.DiscordBot/appsettings.json
 _pubtest/appsettings.json
 !_pubtest/appsettings.json.example
 
+# Local publish test output (never commit — may contain appsettings with secrets)
+_publish_linux_test/
+
 # OS
 .DS_Store
 Thumbs.db

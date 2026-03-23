@@ -7,6 +7,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Same SkiaSharp version as TyperBot.Application — direct refs so linux-x64 publish always ships libSkiaSharp.so next to the exe -->
+    <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
     <PackageReference Include="Discord.Net" Version="3.15.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -4,30 +4,32 @@ using Discord.WebSocket;
 namespace TyperBot.DiscordBot.Services;
 
 /// <summary>
-/// Resolves target for admin-posted tables: explicit text channel or thread, or configured predictions channel.
+/// Resolves target for admin-posted tables: optional explicit channel/thread, otherwise the channel where the slash was used.
 /// </summary>
 public static class AdminTableChannelHelper
 {
-    public static async Task<(ITextChannel? Channel, string? Error)> ResolveAsync(
+    /// <summary>
+    /// <paramref name="explicitTarget"/> — z parametru komendy; jeśli null, używany jest kanał/wątek wywołania (<paramref name="invocationChannel"/>).
+    /// </summary>
+    public static (ITextChannel? Channel, string? Error) Resolve(
         SocketGuild guild,
-        ITextChannel? chosen,
-        DiscordLookupService lookup)
+        ITextChannel? explicitTarget,
+        IChannel? invocationChannel)
     {
-        if (chosen != null)
+        var target = explicitTarget ?? (invocationChannel as ITextChannel);
+        if (target == null)
         {
-            if (chosen is not IGuildChannel guildChannel || guildChannel.GuildId != guild.Id)
-                return (null, "Kanał lub wątek musi należeć do tego serwera.");
-
-            var perms = guild.CurrentUser.GetPermissions(guildChannel);
-            if (!perms.ViewChannel || !perms.SendMessages)
-                return (null, "Bot potrzebuje uprawnień: **Wyświetl kanał** i **Wysyłaj wiadomości** (także w wątku).");
-
-            return (chosen, null);
+            return (null,
+                "Użyj komendy na **kanale tekstowym** lub w **wątku**, albo wskaż docelowy kanał w parametrze.");
         }
 
-        var predictions = await lookup.GetPredictionsChannelAsync();
-        return predictions == null
-            ? (null, "Nie znaleziono kanału typowania — ustaw go w konfiguracji lub wybierz kanał/wątek w komendzie.")
-            : (predictions, null);
+        if (target is not IGuildChannel guildChannel || guildChannel.GuildId != guild.Id)
+            return (null, "Kanał lub wątek musi należeć do tego serwera.");
+
+        var perms = guild.CurrentUser.GetPermissions(guildChannel);
+        if (!perms.ViewChannel || !perms.SendMessages)
+            return (null, "Bot potrzebuje uprawnień: **Wyświetl kanał** i **Wysyłaj wiadomości** (także w wątku).");
+
+        return (target, null);
     }
 }

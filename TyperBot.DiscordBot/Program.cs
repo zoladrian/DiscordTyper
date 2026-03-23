@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -13,6 +15,35 @@ using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure;
 using TyperBot.Infrastructure.Data;
+
+// Linux: default DllImport resolution for "libSkiaSharp" can probe "liblibSkiaSharp". Load the .so by absolute path from the publish folder.
+if (OperatingSystem.IsLinux())
+{
+    try
+    {
+        var skiaSharpAssembly = Assembly.Load("SkiaSharp");
+        NativeLibrary.SetDllImportResolver(skiaSharpAssembly, (libraryName, _, _) =>
+        {
+            if (libraryName is "libSkiaSharp" or "libSkiaSharp.so"
+                || string.Equals(libraryName, "SkiaSharp", StringComparison.OrdinalIgnoreCase))
+            {
+                var baseDir = AppContext.BaseDirectory;
+                var flat = Path.Combine(baseDir, "libSkiaSharp.so");
+                if (File.Exists(flat) && NativeLibrary.TryLoad(flat, out var h))
+                    return h;
+                var rid = Path.Combine(baseDir, "runtimes", "linux-x64", "native", "libSkiaSharp.so");
+                if (File.Exists(rid) && NativeLibrary.TryLoad(rid, out var h2))
+                    return h2;
+            }
+
+            return IntPtr.Zero;
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[TyperBot] SkiaSharp native resolver failed: {ex.Message}");
+    }
+}
 
 var builder = Host.CreateApplicationBuilder(args);
 

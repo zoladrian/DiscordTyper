@@ -793,9 +793,9 @@ public class AdminModule : BaseAdminModule
 
     #region Slash Commands - Tables & Export
 
-    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu (tekst); opcjonalnie kanał lub wątek docelowy")]
+    [SlashCommand("admin-tabela-sezonu", "Tabela sezonu (tekst): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostSeasonTableAsync(
-        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
+        [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -808,7 +808,7 @@ public class AdminModule : BaseAdminModule
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
-            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            var (target, err) = AdminTableChannelHelper.Resolve(Context.Guild, kanał, Context.Channel);
             if (target == null) { await FollowupAsync($"❌ {err}", ephemeral: true); return; }
             await PostSeasonTableEmbedAsync(season, players, target);
             await FollowupAsync($"✅ Tabela sezonu opublikowana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
@@ -820,10 +820,10 @@ public class AdminModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki (tekst); opcjonalnie kanał lub wątek docelowy")]
+    [SlashCommand("admin-tabela-kolejki", "Tabela kolejki (tekst): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostRoundTableAsync(
         [Summary(description: "Numer kolejki")] int round,
-        [Summary("kanal_lub_watek", "Kanał lub wątek — wpisz nazwę wątku w tym polu. Puste = kanał typowania.")]
+        [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]
         ITextChannel? kanał = null)
     {
@@ -856,7 +856,7 @@ public class AdminModule : BaseAdminModule
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
-            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            var (target, err) = AdminTableChannelHelper.Resolve(Context.Guild, kanał, Context.Channel);
             if (target == null) { await FollowupAsync($"❌ {err}", ephemeral: true); return; }
             await PostRoundTableEmbedAsync(season, roundEntity, players, target);
             await FollowupAsync($"✅ Tabela {RoundHelper.GetRoundLabel(round)} opublikowana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);

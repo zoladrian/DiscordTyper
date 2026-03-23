@@ -1,0 +1,18 @@
+# Przykładowa jednostka systemd — skopiuj do /etc/systemd/system/typerbot.service i dostosuj ścieżki.
+# Ważne: WorkingDirectory = katalog publish (tam muszą być TyperBot.DiscordBot.dll i libSkiaSharp.so).
+
+[Unit]
+Description=TyperBot Discord
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/typerbot_publish
+ExecStart=/usr/bin/dotnet /home/ubuntu/typerbot_publish/TyperBot.DiscordBot.dll
+Restart=always
+RestartSec=10
+Environment=DOTNET_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target

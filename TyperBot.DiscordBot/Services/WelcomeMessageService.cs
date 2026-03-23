@@ -107,12 +107,12 @@ public class WelcomeMessageService
                     "• Kliknij przycisk \"👁️ Ujawnij typy\" na karcie meczu (po godzinie rozpoczęcia)\n" +
                     "• Typy są automatycznie ujawniane po wpisaniu wyniku", inline: false)
                 .AddField("📊 Publikowanie tabel",
-                    "`/admin-tabela-sezonu [kanał/wątek?]` - Tabela sezonu (tekst); puste → kanał typowania\n" +
-                    "`/admin-tabela-kolejki [numer] [kanał/wątek?]` - Tabela kolejki (tekst)\n" +
-                    "`/admin-tabela-sezonu-obraz [kanał/wątek?]` - Tabela sezonu (PNG)\n" +
-                    "`/admin-tabela-kolejki-obraz [numer] [kanał/wątek?]` - Tabela kolejki (PNG)\n" +
-                    "`/admin-tabela-meczu [mecz] [kanał/wątek?]` - Tabela meczu (wybór z listy); puste → wątek meczu\n" +
-                    "• **Wątek:** w polu `kanal_lub_watek` zwykle trzeba **zacząć pisać nazwę wątku** — Discord często nie pokazuje wątków na pierwszej liście, tylko po wyszukiwaniu.", inline: false)
+                    "`/admin-tabela-sezonu [kanal_lub_watek?]` — tekst; domyślnie **ten kanał**, parametr = inny\n" +
+                    "`/admin-tabela-kolejki [numer] [kanal_lub_watek?]` — tekst; j.w.\n" +
+                    "`/admin-tabela-sezonu-obraz [kanal_lub_watek?]` — PNG; j.w.\n" +
+                    "`/admin-tabela-kolejki-obraz [numer] [kanal_lub_watek?]` — PNG; j.w.\n" +
+                    "`/admin-tabela-meczu [mecz] [kanal_lub_watek?]` — embed; j.w.\n" +
+                    "• **Inny kanał/wątek:** w `kanal_lub_watek` często trzeba **zacząć pisać nazwę wątku** (wyszukiwanie).", inline: false)
                 .AddField("💾 Eksport danych",
                     "`/admin-eksport-sezonu` - Eksportuj dane sezonu do CSV\n" +
                     "`/admin-eksport-kolejki [numer]` - Eksportuj dane kolejki do CSV", inline: false)
