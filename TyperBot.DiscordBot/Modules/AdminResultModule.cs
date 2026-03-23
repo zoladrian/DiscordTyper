@@ -188,20 +188,20 @@ public class AdminResultModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
         if (match.Status != MatchStatus.Finished || !match.HomeScore.HasValue || !match.AwayScore.HasValue)
         {
-            await RespondAsync("❌ Mecz nie ma jeszcze wyniku.", ephemeral: true);
+            await FollowupAsync("❌ Mecz nie ma jeszcze wyniku.", ephemeral: true);
             return;
         }
-
-        await DeferAsync(ephemeral: true);
 
         try
         {

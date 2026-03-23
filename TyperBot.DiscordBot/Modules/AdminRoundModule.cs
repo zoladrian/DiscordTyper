@@ -66,8 +66,10 @@ public class AdminRoundModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var result = await _roundManagementService.AddRoundAsync(roundNumber, user.Id, user.Username);
-        await RespondAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
+        await FollowupAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
     }
 
     [ComponentInteraction("admin_manage_kolejka")]

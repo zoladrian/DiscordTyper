@@ -122,10 +122,12 @@ public class AdminMatchModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -158,7 +160,7 @@ public class AdminMatchModule : BaseAdminModule
         {
             if (!DateTime.TryParse($"{modal.Date} {modal.Time}", out var localTime))
             {
-                await RespondAsync("❌ Nieprawidłowy format daty lub godziny. Użyj YYYY-MM-DD dla daty i HH:MM dla godziny.", ephemeral: true);
+                await FollowupAsync("❌ Nieprawidłowy format daty lub godziny. Użyj YYYY-MM-DD dla daty i HH:MM dla godziny.", ephemeral: true);
                 return;
             }
 
@@ -169,7 +171,7 @@ public class AdminMatchModule : BaseAdminModule
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception parsing date/time in edit - Match ID: {MatchId}", matchId);
-            await RespondAsync("❌ Błąd podczas parsowania daty/godziny.", ephemeral: true);
+            await FollowupAsync("❌ Błąd podczas parsowania daty/godziny.", ephemeral: true);
             return;
         }
 
@@ -260,7 +262,7 @@ public class AdminMatchModule : BaseAdminModule
             "Match updated - ID: {MatchId}, {NewHome} vs {NewAway}, StartTime: {NewTime}",
             matchId, match.HomeTeam, match.AwayTeam, startTime);
 
-        await RespondAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
+        await FollowupAsync("✅ Mecz został zaktualizowany.", ephemeral: true);
     }
 
     [ComponentInteraction("admin_cancel_match_*")]

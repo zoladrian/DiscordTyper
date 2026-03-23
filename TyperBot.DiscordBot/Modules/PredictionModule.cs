@@ -230,38 +230,31 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var match = await _matchRepository.GetByIdAsync(matchId);
-        if (match == null)
-        {
-            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-            return;
-        }
-
-        // Parse input - validate that both are valid integers
+        // Parse input before deferring — no DB needed for this check
         if (!int.TryParse(modal.HomePoints, out var homeTip) || !int.TryParse(modal.AwayPoints, out var awayTip))
         {
-            // Post "imbecil" message for invalid input
-            try
+            await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
+
+            // Post shaming message asynchronously (interaction already responded)
+            _ = Task.Run(async () =>
             {
-                var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-                if (predictionsChannel != null)
+                try
                 {
+                    var match = await _matchRepository.GetByIdAsync(matchId);
+                    if (match == null) return;
+
+                    var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+                    if (predictionsChannel == null) return;
+
                     SocketThreadChannel? thread = null;
-                    
-                    // Use ThreadId if available, otherwise fall back to name search
                     if (match.ThreadId.HasValue)
-                    {
                         thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-                    }
-                    
-                    // Fallback to name search if ThreadId not found or not set
                     if (thread == null)
                     {
                         var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
                         var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
                         thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
                     }
-                    
                     if (thread != null)
                     {
                         await thread.SendMessageAsync($"{user!.Username} próbował zatypować jak skończony imbecyl");
@@ -270,13 +263,20 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                             user.Username, user.Id, matchId, modal.HomePoints, modal.AwayPoints);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send public message");
-            }
-            
-            await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send public message");
+                }
+            });
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var match2 = await _matchRepository.GetByIdAsync(matchId);
+        if (match2 == null)
+        {
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
             return;
         }
 
@@ -284,7 +284,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var (isValid, errorMessage) = await _predictionService.ValidatePrediction(user!.Id, matchId, homeTip, awayTip);
         if (!isValid)
         {
-            await RespondAsync($"❌ {errorMessage}", ephemeral: true);
+            await FollowupAsync($"❌ {errorMessage}", ephemeral: true);
             return;
         }
 
@@ -292,7 +292,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var player = await EnsurePlayerExistsAsync(user!.Id, user.Username);
         if (player == null)
         {
-            await RespondAsync("❌ Nie udało się utworzyć gracza. Spróbuj ponownie.", ephemeral: true);
+            await FollowupAsync("❌ Nie udało się utworzyć gracza. Spróbuj ponownie.", ephemeral: true);
             return;
         }
 
@@ -302,16 +302,16 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         
         if (prediction == null)
         {
-            await RespondAsync("❌ Nie udało się zapisać typu. Spróbuj ponownie.", ephemeral: true);
+            await FollowupAsync("❌ Nie udało się zapisać typu. Spróbuj ponownie.", ephemeral: true);
             return;
         }
 
-        await RespondAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
+        await FollowupAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
         _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
             user.Id, matchId, homeTip, awayTip);
 
         // Post normal message in match thread
-        await PostPredictionMessageInThreadAsync(match, user, isUpdate);
+        await PostPredictionMessageInThreadAsync(match2, user, isUpdate);
     }
 }
 

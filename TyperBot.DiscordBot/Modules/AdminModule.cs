@@ -357,12 +357,14 @@ public class AdminModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         try
         {
             var (success, error, match) = await _matchService.CreateMatchAsync(roundNum, homeTeam, awayTeam, startTime);
             if (!success || match == null)
             {
-                await RespondAsync($"❌ Błąd podczas tworzenia meczu: {error ?? "Nieznany błąd"}", ephemeral: true);
+                await FollowupAsync($"❌ Błąd podczas tworzenia meczu: {error ?? "Nieznany błąd"}", ephemeral: true);
                 return;
             }
 
@@ -371,12 +373,12 @@ public class AdminModule : BaseAdminModule
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById(Settings.Timezone);
             var localStartTime = TimeZoneInfo.ConvertTimeFromUtc(match.StartTime.UtcDateTime, tz);
-            await RespondAsync($"✅ Mecz utworzony: Runda {roundNum}, {homeTeam} vs {awayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.", ephemeral: true);
+            await FollowupAsync($"✅ Mecz utworzony: Runda {roundNum}, {homeTeam} vs {awayTeam} o {localStartTime:yyyy-MM-dd HH:mm}.", ephemeral: true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception creating match");
-            await RespondAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach.", ephemeral: true);
+            await FollowupAsync("❌ Wystąpił błąd podczas tworzenia meczu. Szczegóły zapisano w logach.", ephemeral: true);
         }
     }
 
@@ -848,20 +850,23 @@ public class AdminModule : BaseAdminModule
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         var channel = Context.Channel as SocketTextChannel;
         if (!IsAllowedChannel(channel)) { await RespondWithErrorAsync($"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}"); return; }
+
+        await DeferAsync(ephemeral: true);
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null) { await RespondAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
+        if (season == null) { await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
-        if (!players.Any()) { await RespondAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
+        if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
             var csv = _exportService.ExportSeasonToCsv(season, players);
-            await RespondWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-sezonu-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
+            await FollowupWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-sezonu-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
             _logger.LogInformation("Season export generated - User: {Username}", Context.User.Username);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate season export");
-            await RespondAsync("❌ Nie udało się wygenerować eksportu sezonu.", ephemeral: true);
+            await FollowupAsync("❌ Nie udało się wygenerować eksportu sezonu.", ephemeral: true);
         }
     }
 
@@ -872,22 +877,25 @@ public class AdminModule : BaseAdminModule
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
         var channel = Context.Channel as SocketTextChannel;
         if (!IsAllowedChannel(channel)) { await RespondWithErrorAsync($"Ta komenda może być używana tylko w kanałach: #{Settings.Channels.AdminChannel} lub #{Settings.Channels.PredictionsChannel}"); return; }
+
+        await DeferAsync(ephemeral: true);
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
-        if (season == null) { await RespondAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
+        if (season == null) { await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true); return; }
         var roundEntity = await _roundRepository.GetByNumberAsync(season.Id, round);
-        if (roundEntity == null) { await RespondAsync($"❌ Kolejka {round} nie znaleziona.", ephemeral: true); return; }
+        if (roundEntity == null) { await FollowupAsync($"❌ Kolejka {round} nie znaleziona.", ephemeral: true); return; }
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
-        if (!players.Any()) { await RespondAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
+        if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
             var csv = _exportService.ExportRoundToCsv(roundEntity, players);
-            await RespondWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-kolejki-{round}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
+            await FollowupWithFileAsync(new Discord.FileAttachment(new MemoryStream(csv), $"eksport-kolejki-{round}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
             _logger.LogInformation("Round {Round} export generated - User: {Username}", round, Context.User.Username);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate round {Round} export", round);
-            await RespondAsync("❌ Nie udało się wygenerować eksportu kolejki.", ephemeral: true);
+            await FollowupAsync("❌ Nie udało się wygenerować eksportu kolejki.", ephemeral: true);
         }
     }
 

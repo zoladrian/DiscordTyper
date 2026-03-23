@@ -52,8 +52,10 @@ public class AdminSeasonModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var result = await _seasonManagementService.StartNewSeasonAsync(modal.SeasonName, user.Id, user.Username);
-        await RespondAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
+        await FollowupAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
     }
 
     [SlashCommand("panel-sezonu", "Otwórz panel sezonu typera.")]
@@ -74,19 +76,21 @@ public class AdminSeasonModule : BaseAdminModule
                 $"Używasz: #{channel?.Name ?? "DM"}");
             return;
         }
-        
+
+        await DeferAsync(ephemeral: true);
+
         var allSeasons = (await _seasonRepository.GetAllAsync()).ToList();
         
         if (allSeasons.Count > 1)
         {
             var panel = await _adminPanelService.GetSeasonSelectionPanelAsync();
-            await RespondAsync(embed: panel.embed, components: panel.components, ephemeral: true);
+            await FollowupAsync(embed: panel.embed, components: panel.components, ephemeral: true);
             return;
         }
 
         var season = allSeasons.FirstOrDefault(s => s.IsActive) ?? allSeasons.FirstOrDefault();
         var seasonPanel = await _adminPanelService.GetSeasonPanelAsync(season);
-        await RespondAsync(embed: seasonPanel.embed, components: seasonPanel.components, ephemeral: true);
+        await FollowupAsync(embed: seasonPanel.embed, components: seasonPanel.components, ephemeral: true);
     }
 
     [ComponentInteraction("admin_select_season")]
@@ -105,9 +109,11 @@ public class AdminSeasonModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var season = await _seasonRepository.GetByIdAsync(seasonId);
         var panel = await _adminPanelService.GetSeasonPanelAsync(season);
-        await RespondAsync(embed: panel.embed, components: panel.components, ephemeral: true);
+        await FollowupAsync(embed: panel.embed, components: panel.components, ephemeral: true);
     }
 
     [ComponentInteraction("admin_end_season_*")]
@@ -126,8 +132,10 @@ public class AdminSeasonModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var result = await _seasonManagementService.EndSeasonAsync(seasonId, user.Id, user.Username);
-        await RespondAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
+        await FollowupAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
     }
 
     [ComponentInteraction("admin_reactivate_season_*")]
@@ -146,7 +154,9 @@ public class AdminSeasonModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var result = await _seasonManagementService.ReactivateSeasonAsync(seasonId, user.Id, user.Username);
-        await RespondAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
+        await FollowupAsync(result.success ? $"✅ {result.message}" : $"❌ {result.message}", ephemeral: true);
     }
 }

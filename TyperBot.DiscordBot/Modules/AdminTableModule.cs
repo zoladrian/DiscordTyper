@@ -84,10 +84,12 @@ public class AdminTableModule : BaseAdminModule
             return;
         }
 
+        await DeferAsync(ephemeral: true);
+
         var season = await _seasonRepository.GetActiveSeasonAsync();
         if (season == null)
         {
-            await RespondAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
             return;
         }
 
@@ -97,7 +99,7 @@ public class AdminTableModule : BaseAdminModule
 
         if (!rounds.Any())
         {
-            await RespondAsync("❌ Brak kolejek w tym sezonie.", ephemeral: true);
+            await FollowupAsync("❌ Brak kolejek w tym sezonie.", ephemeral: true);
             return;
         }
 
@@ -114,7 +116,7 @@ public class AdminTableModule : BaseAdminModule
             .WithSelectMenu(selectMenu)
             .Build();
 
-        await RespondAsync("Wybierz kolejkę, dla której chcesz wygenerować tabelę:", components: component, ephemeral: true);
+        await FollowupAsync("Wybierz kolejkę, dla której chcesz wygenerować tabelę:", components: component, ephemeral: true);
     }
 
     [ComponentInteraction("admin_table_round_select")]
