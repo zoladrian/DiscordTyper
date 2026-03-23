@@ -19,6 +19,7 @@ public class AdminTableModule : BaseAdminModule
     private readonly IPlayerRepository _playerRepository;
     private readonly ExportService _exportService;
     private readonly TableGenerator _tableGenerator;
+    private readonly DiscordLookupService _lookupService;
 
     public AdminTableModule(
         ILogger<AdminTableModule> logger,
@@ -28,7 +29,8 @@ public class AdminTableModule : BaseAdminModule
         IMatchRepository matchRepository,
         IPlayerRepository playerRepository,
         ExportService exportService,
-        TableGenerator tableGenerator) : base(settings.Value)
+        TableGenerator tableGenerator,
+        DiscordLookupService lookupService) : base(settings.Value)
     {
         _logger = logger;
         _seasonRepository = seasonRepository;
@@ -37,10 +39,11 @@ public class AdminTableModule : BaseAdminModule
         _playerRepository = playerRepository;
         _exportService = exportService;
         _tableGenerator = tableGenerator;
+        _lookupService = lookupService;
     }
 
     /// <summary>
-    /// Slash commands <c>admin-tabela-sezonu</c> / <c>admin-tabela-kolejki</c> (text table to channel) are in <c>AdminModule</c>.
+    /// Slash commands <c>admin-tabela-sezonu</c> / <c>admin-tabela-kolejki</c> (text) and <c>admin-tabela-sezonu-obraz</c> / <c>admin-tabela-kolejki-obraz</c> (PNG) are in <c>AdminModule</c> / here.
     /// Panel buttons here generate PNG images (ephemeral).
     /// </summary>
     [ComponentInteraction("admin_table_season")]
@@ -145,6 +148,117 @@ public class AdminTableModule : BaseAdminModule
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating round table");
+            await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    [SlashCommand("admin-tabela-sezonu-obraz", "Wyślij tabelę sezonu jako PNG; opcjonalnie wybierz kanał")]
+    public async Task AdminPostSeasonTablePngAsync(
+        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
+        SocketTextChannel? kanał = null)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        try
+        {
+            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            if (target == null)
+            {
+                await FollowupAsync($"❌ {err}", ephemeral: true);
+                return;
+            }
+
+            using var imageStream = await CreateSeasonTablePngStreamAsync(season.Id);
+            await target.SendFileAsync(
+                imageStream,
+                $"tabela_sezonu_{DateTime.Now:yyyyMMdd}.png",
+                text: $"🏆 **Tabela sezonu: {season.Name}**");
+
+            await FollowupAsync($"✅ PNG wysłany na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error posting season table PNG");
+            await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    [SlashCommand("admin-tabela-kolejki-obraz", "Wyślij tabelę kolejki jako PNG; opcjonalnie wybierz kanał")]
+    public async Task AdminPostRoundTablePngAsync(
+        [Summary(description: "Numer kolejki")] int round,
+        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
+        SocketTextChannel? kanał = null)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        if (!RoundHelper.IsValidRoundNumber(round))
+        {
+            await FollowupAsync($"❌ Numer kolejki musi być z zakresu 1–18 (podano: {round}).", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var roundEntity = season.FindRoundByNumber(round)
+            ?? await _roundRepository.GetByNumberAsync(season.Id, round);
+        if (roundEntity == null)
+        {
+            var available = season.Rounds.Count > 0
+                ? string.Join(", ", season.Rounds.OrderBy(r => r.Number).Select(r => r.Number))
+                : "brak";
+            await FollowupAsync(
+                $"❌ W **aktywnym** sezonie „{season.Name}” nie ma kolejki **{round}**.\nDostępne: {available}.",
+                ephemeral: true);
+            return;
+        }
+
+        try
+        {
+            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            if (target == null)
+            {
+                await FollowupAsync($"❌ {err}", ephemeral: true);
+                return;
+            }
+
+            using var imageStream = await CreateRoundTablePngStreamAsync(roundEntity.Id);
+            var roundLabel = RoundHelper.GetRoundLabel(round);
+            await target.SendFileAsync(
+                imageStream,
+                $"tabela_kolejki_{round}_{DateTime.Now:yyyyMMdd}.png",
+                text: $"📊 **Tabela {roundLabel} — {season.Name}**");
+
+            await FollowupAsync($"✅ PNG wysłany na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error posting round table PNG");
             await FollowupAsync($"❌ Wystąpił błąd: {ex.Message}", ephemeral: true);
         }
     }

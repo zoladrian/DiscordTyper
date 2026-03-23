@@ -793,8 +793,10 @@ public class AdminModule : BaseAdminModule
 
     #region Slash Commands - Tables & Export
 
-    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu do kanału wyników (tylko dla adminów)")]
-    public async Task AdminPostSeasonTableAsync()
+    [SlashCommand("admin-tabela-sezonu", "Wyślij tabelę sezonu (tekst); opcjonalnie wybierz kanał docelowy")]
+    public async Task AdminPostSeasonTableAsync(
+        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
+        SocketTextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -805,10 +807,10 @@ public class AdminModule : BaseAdminModule
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel == null) { await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true); return; }
-            await PostSeasonTableEmbedAsync(season, players, predictionsChannel);
-            await FollowupAsync("✅ Tabela sezonu została opublikowana w kanale typowanie.", ephemeral: true);
+            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            if (target == null) { await FollowupAsync($"❌ {err}", ephemeral: true); return; }
+            await PostSeasonTableEmbedAsync(season, players, target);
+            await FollowupAsync($"✅ Tabela sezonu opublikowana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -817,8 +819,11 @@ public class AdminModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki do kanału wyników (tylko dla adminów)")]
-    public async Task AdminPostRoundTableAsync([Summary(description: "Numer kolejki")] int round)
+    [SlashCommand("admin-tabela-kolejki", "Wyślij tabelę kolejki (tekst); opcjonalnie wybierz kanał docelowy")]
+    public async Task AdminPostRoundTableAsync(
+        [Summary(description: "Numer kolejki")] int round,
+        [Summary(description: "Kanał docelowy — puste = kanał typowania z konfiguracji")]
+        SocketTextChannel? kanał = null)
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null) { await RespondAsync("❌ Nie masz uprawnień.", ephemeral: true); return; }
@@ -849,10 +854,10 @@ public class AdminModule : BaseAdminModule
         if (!players.Any()) { await FollowupAsync("❌ Brak aktywnych graczy.", ephemeral: true); return; }
         try
         {
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel == null) { await FollowupAsync("❌ Nie znaleziono kanału typowanie.", ephemeral: true); return; }
-            await PostRoundTableEmbedAsync(season, roundEntity, players, predictionsChannel);
-            await FollowupAsync($"✅ Tabela kolejki {RoundHelper.GetRoundLabel(round)} została opublikowana.", ephemeral: true);
+            var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+            if (target == null) { await FollowupAsync($"❌ {err}", ephemeral: true); return; }
+            await PostRoundTableEmbedAsync(season, roundEntity, players, target);
+            await FollowupAsync($"✅ Tabela {RoundHelper.GetRoundLabel(round)} opublikowana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
         }
         catch (Exception ex)
         {

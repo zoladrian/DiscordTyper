@@ -49,14 +49,19 @@ public class MatchResultsTableService
             return false;
         }
 
-        await PostEmbedToThreadAsync(match, thread);
+        await PostEmbedAsync(match, thread);
         return true;
     }
 
     /// <summary>
     /// Posts the table to an already-resolved thread (e.g. admin manual send).
     /// </summary>
-    public Task PostToThreadAsync(Match match, IThreadChannel thread) => PostEmbedToThreadAsync(match, thread);
+    public Task PostToThreadAsync(Match match, IThreadChannel thread) => PostEmbedAsync(match, thread);
+
+    /// <summary>
+    /// Posts the match results embed to any text channel (e.g. admin-chosen destination).
+    /// </summary>
+    public Task PostToTextChannelAsync(Match match, SocketTextChannel channel) => PostEmbedAsync(match, channel);
 
     private static SocketThreadChannel? ResolveThread(Match match, SocketTextChannel predictionsChannel)
     {
@@ -71,7 +76,7 @@ public class MatchResultsTableService
         return predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
     }
 
-    private async Task PostEmbedToThreadAsync(Match match, IThreadChannel thread)
+    private async Task PostEmbedAsync(Match match, IMessageChannel channel)
     {
         var predictions = (await _predictionRepository.GetValidPredictionsByMatchAsync(match.Id))
             .OrderByDescending(p => p.PlayerScore?.Points ?? -1)
@@ -79,6 +84,13 @@ public class MatchResultsTableService
                 p.PlayerScore != null && (p.PlayerScore.Bucket == Bucket.P35 || p.PlayerScore.Bucket == Bucket.P50))
             .ToList();
 
+        var embed = BuildResultsEmbed(match, predictions);
+        await channel.SendMessageAsync(embed: embed);
+        _logger.LogInformation("Match results table posted — Match ID: {MatchId}, Channel ID: {ChannelId}", match.Id, channel.Id);
+    }
+
+    public static Embed BuildResultsEmbed(Match match, IReadOnlyList<Prediction> predictions)
+    {
         var embed = new EmbedBuilder()
             .WithTitle(DiscordApiLimits.Truncate($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
             .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
@@ -124,7 +136,6 @@ public class MatchResultsTableService
             embed.AddField("Typy graczy", "*Brak typów dla tego meczu*", false);
         }
 
-        await thread.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Match results table posted to thread — Match ID: {MatchId}", match.Id);
+        return embed.Build();
     }
 }

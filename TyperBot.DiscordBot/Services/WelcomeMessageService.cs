@@ -107,8 +107,11 @@ public class WelcomeMessageService
                     "• Kliknij przycisk \"👁️ Ujawnij typy\" na karcie meczu (po godzinie rozpoczęcia)\n" +
                     "• Typy są automatycznie ujawniane po wpisaniu wyniku", inline: false)
                 .AddField("📊 Publikowanie tabel",
-                    "`/admin-tabela-sezonu` - Wyślij tabelę sezonu do kanału wyników\n" +
-                    "`/admin-tabela-kolejki [numer]` - Wyślij tabelę kolejki do kanału wyników", inline: false)
+                    "`/admin-tabela-sezonu [kanał?]` - Tabela sezonu (tekst); bez kanału → kanał typowania\n" +
+                    "`/admin-tabela-kolejki [numer] [kanał?]` - Tabela kolejki (tekst)\n" +
+                    "`/admin-tabela-sezonu-obraz [kanał?]` - Tabela sezonu (PNG)\n" +
+                    "`/admin-tabela-kolejki-obraz [numer] [kanał?]` - Tabela kolejki (PNG)\n" +
+                    "`/admin-tabela-meczu [id] [kanał?]` - Tabela wyników meczu; bez kanału → wątek meczu", inline: false)
                 .AddField("💾 Eksport danych",
                     "`/admin-eksport-sezonu` - Eksportuj dane sezonu do CSV\n" +
                     "`/admin-eksport-kolejki [numer]` - Eksportuj dane kolejki do CSV", inline: false)

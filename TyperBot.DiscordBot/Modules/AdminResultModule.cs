@@ -24,7 +24,6 @@ public class AdminResultModule : BaseAdminModule
         ILogger<AdminResultModule> logger,
         IOptions<DiscordSettings> settings,
         IMatchRepository matchRepository,
-        IPredictionRepository predictionRepository,
         MatchResultHandler matchResultHandler,
         DiscordLookupService lookupService,
         MatchResultsTableService matchResultsTableService) : base(settings.Value)
@@ -172,6 +171,86 @@ public class AdminResultModule : BaseAdminModule
     public async Task HandleSetResultModalAsync(string matchIdStr, SetResultModal modal)
     {
         await _matchResultHandler.HandleSetResultAsync(Context, matchIdStr, modal.HomeScore, modal.AwayScore);
+    }
+
+    [SlashCommand("admin-tabela-meczu", "Wyślij tabelę wyników meczu (embed); opcjonalnie na wskazany kanał")]
+    public async Task AdminPostMatchTableSlashAsync(
+        [Summary(description: "ID meczu (z bazy / z przycisku na karcie)")] int mecz,
+        [Summary(description: "Kanał docelowy — puste = wątek meczu przy typowaniu")]
+        SocketTextChannel? kanał = null)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień do użycia tej komendy.", ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var match = await _matchRepository.GetByIdAsync(mecz);
+        if (match == null)
+        {
+            await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        if (match.Status != MatchStatus.Finished || !match.HomeScore.HasValue || !match.AwayScore.HasValue)
+        {
+            await FollowupAsync("❌ Mecz nie ma jeszcze wyniku.", ephemeral: true);
+            return;
+        }
+
+        try
+        {
+            if (kanał != null)
+            {
+                var (target, err) = await AdminTableChannelHelper.ResolveAsync(Context.Guild, kanał, _lookupService);
+                if (target == null)
+                {
+                    await FollowupAsync($"❌ {err}", ephemeral: true);
+                    return;
+                }
+
+                await _matchResultsTableService.PostToTextChannelAsync(match, target);
+                await FollowupAsync($"✅ Tabela wysłana na {MentionUtils.MentionChannel(target.Id)}.", ephemeral: true);
+                _logger.LogInformation("Match table sent via slash to channel — User: {User}, Match: {MatchId}", user.Username, mecz);
+                return;
+            }
+
+            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+            if (predictionsChannel == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono kanału typowania (potrzebnego do wątku meczu).", ephemeral: true);
+                return;
+            }
+
+            SocketThreadChannel? thread = null;
+            if (match.ThreadId.HasValue)
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
+
+            if (thread == null)
+            {
+                var roundLabel = Application.Services.RoundHelper.GetRoundLabel(match.Round?.Number ?? 0);
+                var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
+                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
+            }
+
+            if (thread == null)
+            {
+                await FollowupAsync("❌ Nie znaleziono wątku meczu — użyj parametru kanału lub utwórz wątek.", ephemeral: true);
+                return;
+            }
+
+            await _matchResultsTableService.PostToThreadAsync(match, thread);
+            await FollowupAsync("✅ Tabela wysłana do wątku meczu.", ephemeral: true);
+            _logger.LogInformation("Match table sent via slash to thread — User: {User}, Match: {MatchId}", user.Username, mecz);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending match table (slash) for match {MatchId}", mecz);
+            await FollowupAsync("❌ Wystąpił błąd podczas wysyłania tabeli.", ephemeral: true);
+        }
     }
 
     [ComponentInteraction("admin_send_match_table_*")]
