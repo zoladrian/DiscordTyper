@@ -99,7 +99,7 @@ public class TableImageGenerator
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                ctx.DrawText(titleOptions, $"🏆 {seasonName}", TextWhite);
+                ctx.DrawText(titleOptions, seasonName, TextWhite);
 
                 // Column headers
                 int yPos = padding + headerHeight + 15;
@@ -154,14 +154,7 @@ public class TableImageGenerator
                         VerticalAlignment = VerticalAlignment.Center
                     };
 
-                    // Position with medal emoji
-                    var positionText = player.Position switch
-                    {
-                        1 => "🥇",
-                        2 => "🥈",
-                        3 => "🥉",
-                        _ => player.Position.ToString()
-                    };
+                    var positionText = player.Position.ToString();
                     ctx.DrawText(textOptions, positionText, TextWhite);
 
                     // Player name
