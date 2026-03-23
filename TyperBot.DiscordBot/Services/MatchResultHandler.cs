@@ -19,6 +19,7 @@ public class MatchResultHandler
     private readonly PredictionService _predictionService;
     private readonly MatchCardService _matchCardService;
     private readonly MatchManagementService _matchService;
+    private readonly MatchResultsTableService _matchResultsTableService;
 
     public MatchResultHandler(
         ILogger<MatchResultHandler> logger,
@@ -27,7 +28,8 @@ public class MatchResultHandler
         IMatchRepository matchRepository,
         PredictionService predictionService,
         MatchCardService matchCardService,
-        MatchManagementService matchService)
+        MatchManagementService matchService,
+        MatchResultsTableService matchResultsTableService)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -36,6 +38,7 @@ public class MatchResultHandler
         _predictionService = predictionService;
         _matchCardService = matchCardService;
         _matchService = matchService;
+        _matchResultsTableService = matchResultsTableService;
     }
 
     public async Task HandleSetResultAsync(SocketInteractionContext context, string matchIdStr, string homeScore, string awayScore)
@@ -177,6 +180,17 @@ public class MatchResultHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating match card in thread - Match ID: {MatchId}", matchId);
+        }
+
+        try
+        {
+            var matchForTable = await _matchRepository.GetByIdAsync(matchId);
+            if (matchForTable != null)
+                await _matchResultsTableService.TryPostToMatchThreadAsync(matchForTable);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error posting match results table to thread - Match ID: {MatchId}", matchId);
         }
     }
 

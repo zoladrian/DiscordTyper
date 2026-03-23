@@ -16,9 +16,9 @@ public class AdminResultModule : BaseAdminModule
 {
     private readonly ILogger<AdminResultModule> _logger;
     private readonly IMatchRepository _matchRepository;
-    private readonly IPredictionRepository _predictionRepository;
     private readonly MatchResultHandler _matchResultHandler;
     private readonly DiscordLookupService _lookupService;
+    private readonly MatchResultsTableService _matchResultsTableService;
 
     public AdminResultModule(
         ILogger<AdminResultModule> logger,
@@ -26,13 +26,14 @@ public class AdminResultModule : BaseAdminModule
         IMatchRepository matchRepository,
         IPredictionRepository predictionRepository,
         MatchResultHandler matchResultHandler,
-        DiscordLookupService lookupService) : base(settings.Value)
+        DiscordLookupService lookupService,
+        MatchResultsTableService matchResultsTableService) : base(settings.Value)
     {
         _logger = logger;
         _matchRepository = matchRepository;
-        _predictionRepository = predictionRepository;
         _matchResultHandler = matchResultHandler;
         _lookupService = lookupService;
+        _matchResultsTableService = matchResultsTableService;
     }
 
     [ComponentInteraction("admin_set_result_*")]
@@ -230,7 +231,7 @@ public class AdminResultModule : BaseAdminModule
                 return;
             }
 
-            await PostMatchResultsTableAsync(match, thread);
+            await _matchResultsTableService.PostToThreadAsync(match, thread);
             await FollowupAsync("✅ Tabela meczu została wysłana do wątku meczu.", ephemeral: true);
 
             _logger.LogInformation(
@@ -244,63 +245,4 @@ public class AdminResultModule : BaseAdminModule
         }
     }
 
-    private async Task PostMatchResultsTableAsync(Domain.Entities.Match match, IThreadChannel thread)
-    {
-        var predictions = (await _predictionRepository.GetValidPredictionsByMatchAsync(match.Id))
-            .OrderByDescending(p => p.PlayerScore?.Points ?? -1)
-            .ThenByDescending(p =>
-                p.PlayerScore != null && (p.PlayerScore.Bucket == Bucket.P35 || p.PlayerScore.Bucket == Bucket.P50))
-            .ToList();
-
-        var embed = new EmbedBuilder()
-            .WithTitle(DiscordApiLimits.Truncate($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
-            .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
-            .WithColor(Color.Green)
-            .WithCurrentTimestamp();
-
-        var round = match.Round;
-        if (round != null)
-        {
-            var roundLabel = Application.Services.RoundHelper.GetRoundLabel(round.Number);
-            embed.AddField("Kolejka", roundLabel, inline: true);
-        }
-
-        if (predictions.Any())
-        {
-            var table = "```\n";
-            table += "Gracz                  Typ      Pkt\n";
-            table += "════════════════════════════════════\n";
-            table += $"🏆 Wynik rzeczywisty  {match.HomeScore?.ToString() ?? "?",2}:{match.AwayScore?.ToString() ?? "?",2}     -\n";
-            table += "────────────────────────────────────\n";
-
-            foreach (var pred in predictions)
-            {
-                var playerName = pred.Player.DiscordUsername;
-                if (playerName.Length > 20) playerName = playerName.Substring(0, 17) + "...";
-
-                if (pred.PlayerScore == null)
-                {
-                    table += $"{playerName,-20}  {pred.HomeTip,2}:{pred.AwayTip,2}       —   ⏳\n";
-                    continue;
-                }
-
-                var statusIcon = pred.PlayerScore.Bucket is Bucket.P35 or Bucket.P50
-                    ? "👑"
-                    : pred.PlayerScore.Points > 0 ? "👍" : "💩";
-
-                table += $"{playerName,-20}  {pred.HomeTip,2}:{pred.AwayTip,2}     {pred.PlayerScore.Points,3}   {statusIcon}\n";
-            }
-            table += "```";
-
-            embed.AddField("Typy graczy", table, false);
-            embed.WithFooter("👑 = Celny wynik | 👍 = Poprawny zwycięzca | 💩 = Brak punktów | ⏳ = Punkty jeszcze nie naliczone");
-        }
-        else
-        {
-            embed.AddField("Typy graczy", "*Brak typów dla tego meczu*", false);
-        }
-
-        await thread.SendMessageAsync(embed: embed.Build());
-        _logger.LogInformation("Match results table published - Match ID: {MatchId}", match.Id);
-    }
 }

@@ -63,6 +63,8 @@ logs/
 # App settings (contains secrets)
 TyperBot.DiscordBot/appsettings.json
 !TyperBot.DiscordBot/appsettings.json.example
+_pubtest/appsettings.json
+!_pubtest/appsettings.json.example
 
 # OS
 .DS_Store

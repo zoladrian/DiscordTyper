@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Discord.Net" Version="3.15.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.10" />
@@ -26,6 +27,7 @@
     <ProjectReference Include="..\TyperBot.Domain\TyperBot.Domain.csproj" />
     <ProjectReference Include="..\TyperBot.Application\TyperBot.Application.csproj" />
     <ProjectReference Include="..\TyperBot.Infrastructure\TyperBot.Infrastructure.csproj" />
+    <ProjectReference Include="..\TyperBot.DiscordBot\TyperBot.DiscordBot.csproj" />
   </ItemGroup>
 
 </Project>

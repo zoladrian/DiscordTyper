@@ -1,0 +1,38 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Discord": "Warning",
+      "TyperBot": "Information"
+    }
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.EntityFrameworkCore": "Information",
+        "Microsoft.EntityFrameworkCore.Database.Command": "Information",
+        "Microsoft.Hosting.Lifetime": "Information",
+        "System": "Warning",
+        "Discord": "Warning",
+        "TyperBot": "Information"
+      }
+    }
+  },
+  "Discord": {
+    "Token": "PASTE_BOT_TOKEN_HERE_OR_USE_ENV",
+    "GuildId": 0,
+    "PlayerRoleName": "Typer",
+    "AdminRoleName": "Admin",
+    "Channels": {
+      "PredictionsChannel": "typowanie",
+      "ResultsChannel": "wyniki-typera",
+      "AdminChannel": "typer-admin"
+    },
+    "Timezone": "Europe/Warsaw"
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=typerbot.db"
+  }
+}

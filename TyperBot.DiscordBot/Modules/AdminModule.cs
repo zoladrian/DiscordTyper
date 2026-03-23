@@ -946,22 +946,29 @@ public class AdminModule : BaseAdminModule
 
         foreach (var player in players)
         {
-            var roundPredictions = player.Predictions
-                .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid && p.PlayerScore != null).ToList();
-            var playerScores = roundPredictions.Select(p => p.PlayerScore!).ToList();
-            var totalPoints = playerScores.Sum(s => s.Points);
-            var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
-            var correctWinners = playerScores.Count(s => s.Points > 0);
-            if (roundPredictions.Count > 0)
-                allScores.Add((player.Id, player.DiscordUsername, totalPoints, roundPredictions.Count, exactScores, correctWinners));
+            var predsInRound = player.Predictions
+                .Where(p => roundMatches.Contains(p.MatchId) && p.IsValid)
+                .ToList();
+            var scored = predsInRound.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
+            var totalPoints = scored.Sum(s => s.Points);
+            var exactScores = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
+            var correctWinners = scored.Count(s => s.Points > 0);
+            var typCount = predsInRound.Count;
+            allScores.Add((player.Id, player.DiscordUsername, totalPoints, typCount, exactScores, correctWinners));
         }
 
-        var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+        var sortedScores = allScores
+            .OrderByDescending(s => s.TotalPoints)
+            .ThenByDescending(s => s.PredictionsCount)
+            .ToList();
         var roundLabel = RoundHelper.GetRoundLabel(round.Number);
 
-        var descriptionText = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
+        var anyTipInRound = sortedScores.Sum(s => s.PredictionsCount) > 0;
+        var baseDesc = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
             ? $"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? roundLabel}"
             : $"**Sezon**: {season.Name}\n**Kolejka**: {round.Description ?? roundLabel}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})";
+        var descriptionText = baseDesc + "\n\n_Pkt — mecze z wynikiem. Typ — wszystkie typy w tej kolejce._"
+            + (anyTipInRound ? "" : "\n\n⚠️ _Brak typów dla tej kolejki — sprawdź numer kolejki._");
 
         var embed = new EmbedBuilder()
             .WithTitle($"📊 Tabela Kolejki {round.Number}")
@@ -975,10 +982,10 @@ public class AdminModule : BaseAdminModule
         }
         else
         {
-            embed.WithDescription(descriptionText + "\n\n*Brak wyników dla tej kolejki.*");
+            embed.WithDescription(descriptionText + "\n\n*Brak graczy do wyświetlenia.*");
         }
 
-        embed.WithFooter("Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+        embed.WithFooter("Typ = typy w tej kolejce | Pkt/Cel/Wyg = tylko mecze z wynikiem");
         await channel.SendMessageAsync(embed: embed.Build());
         _logger.LogInformation("Round {Round} table published", round.Number);
     }
@@ -991,18 +998,26 @@ public class AdminModule : BaseAdminModule
         var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
         foreach (var player in players)
         {
-            var q = player.PlayerScores.Where(s => s.Prediction != null && s.Prediction.IsValid);
-            if (filterBySeason) q = q.Where(s => seasonMatchIds.Contains(s.Prediction!.MatchId));
-            var playerScores = q.ToList();
-            allScores.Add((player.DiscordUsername, playerScores.Sum(s => s.Points), playerScores.Count,
-                playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
-                playerScores.Count(s => s.Points > 0)));
+            var predsInSeason = player.Predictions
+                .Where(p => p.IsValid && (!filterBySeason || seasonMatchIds.Contains(p.MatchId)))
+                .ToList();
+            var scored = predsInSeason.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
+            allScores.Add((
+                player.DiscordUsername,
+                scored.Sum(s => s.Points),
+                predsInSeason.Count,
+                scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
+                scored.Count(s => s.Points > 0)));
         }
 
-        var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
-        var descriptionText = triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
+        var sortedScores = allScores
+            .OrderByDescending(s => s.TotalPoints)
+            .ThenByDescending(s => s.PredictionsCount)
+            .ToList();
+        var descriptionText = (triggerMatch == null || string.IsNullOrEmpty(triggerMatch.HomeTeam)
             ? $"**Sezon**: {season.Name}"
-            : $"**Sezon**: {season.Name}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})";
+            : $"**Sezon**: {season.Name}\n**Po meczu**: {triggerMatch.HomeTeam} vs {triggerMatch.AwayTeam} ({triggerMatch.HomeScore}:{triggerMatch.AwayScore})")
+            + "\n\n_Pkt — mecze z wynikiem. Typ — wszystkie typy w sezonie._";
 
         var embed = new EmbedBuilder()
             .WithTitle("🏆 Tabela Sezonu")
@@ -1012,7 +1027,7 @@ public class AdminModule : BaseAdminModule
 
         embed.AddField("Tabela punktowa - Sezon", BuildStandingsTable(
             sortedScores.Select(s => (0, s.PlayerName, s.TotalPoints, s.PredictionsCount, s.ExactScores, s.CorrectWinners)).ToList()), false);
-        embed.WithFooter("Typ = Liczba typów | Cel = Celne wyniki | Wyg = Poprawne zwycięzców");
+        embed.WithFooter("Typ = typy w sezonie | Pkt/Cel/Wyg = tylko mecze z wynikiem");
 
         await channel.SendMessageAsync(embed: embed.Build());
         _logger.LogInformation("Season table published");
