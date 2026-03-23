@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using TyperBot.DiscordBot.Models;
@@ -115,14 +116,28 @@ public class DiscordBotService : IHostedService
 
     private Task InteractionExecutedAsync(ICommandInfo commandInfo, IInteractionContext context, IResult result)
     {
-        if (!result.IsSuccess)
+        var moduleName = commandInfo.Module?.Name ?? "?";
+        if (result.IsSuccess)
         {
-            _logger.LogError("InteractionExecuted failed: {Error} - {ErrorReason}", result.Error, result.ErrorReason);
+            _logger.LogInformation(
+                "InteractionExecuted OK — handler {HandlerName} in {ModuleName}",
+                commandInfo.Name,
+                moduleName);
+        }
+        else
+        {
+            _logger.LogError(
+                "InteractionExecuted FAILED — handler {HandlerName} in {ModuleName}: {Error} — {ErrorReason}",
+                commandInfo.Name,
+                moduleName,
+                result.Error,
+                result.ErrorReason);
             if (result is ExecuteResult executeResult && executeResult.Exception != null)
             {
-                _logger.LogError(executeResult.Exception, "Exception details for command: {CommandName}", commandInfo.Name);
+                _logger.LogError(executeResult.Exception, "Exception in handler {HandlerName} ({ModuleName})", commandInfo.Name, moduleName);
             }
         }
+
         return Task.CompletedTask;
     }
 
@@ -215,57 +230,64 @@ public class DiscordBotService : IHostedService
 
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
-        // Log all interactions for debugging
-        if (interaction is SocketModal modal)
+        var guildId = interaction switch
         {
-            _logger.LogInformation(
-                "Modal interaction received - CustomId: '{CustomId}', User: {Username} (ID: {UserId}), Guild: {GuildId}, Channel: {ChannelId}",
-                modal.Data.CustomId,
-                interaction.User.Username,
-                interaction.User.Id,
-                modal.GuildId ?? 0,
-                modal.ChannelId ?? 0);
-            
-            // Log all modal components
-            foreach (var component in modal.Data.Components)
+            SocketSlashCommand s => s.GuildId,
+            SocketMessageComponent c => c.GuildId,
+            SocketModal m => m.GuildId,
+            _ => null
+        };
+        var channelId = interaction switch
+        {
+            SocketSlashCommand s => s.ChannelId,
+            SocketMessageComponent c => c.ChannelId,
+            SocketModal m => m.ChannelId,
+            _ => null
+        };
+
+        _logger.LogInformation(
+            "Interaction received — Id: {InteractionId}, Type: {Type}, User: {Username} ({UserId}), Guild: {GuildId}, Channel: {ChannelId}, Summary: {Summary}",
+            interaction.Id,
+            interaction.Type,
+            interaction.User.Username,
+            interaction.User.Id,
+            guildId ?? 0,
+            channelId ?? 0,
+            DescribeInteraction(interaction));
+
+        if (interaction is SocketModal modalForComponents)
+        {
+            foreach (var component in modalForComponents.Data.Components)
             {
-                _logger.LogInformation(
-                    "Modal component - CustomId: '{CustomId}', Value: '{Value}'",
+                _logger.LogDebug(
+                    "Modal field — CustomId: '{CustomId}', Value: '{Value}'",
                     component.CustomId,
-                    component.Value);
+                    TruncateForLog(component.Value, 200));
             }
-        }
-        else
-        {
-            _logger.LogInformation(
-                "Interaction received - Type: {Type}, User: {Username} (ID: {UserId}), CustomId: {CustomId}",
-                interaction.Type,
-                interaction.User.Username,
-                interaction.User.Id,
-                (interaction as SocketMessageComponent)?.Data?.CustomId ?? (interaction as SocketModal)?.Data?.CustomId ?? "N/A");
         }
 
         try
         {
             using var scope = _serviceProvider.CreateScope();
             var context = new SocketInteractionContext(_client, interaction);
-            
-            if (interaction is SocketModal modalInteraction)
-            {
-                _logger.LogInformation(
-                    "🔄 Executing ExecuteCommandAsync for modal '{CustomId}'...",
-                    modalInteraction.Data.CustomId);
-            }
-            
+
+            _logger.LogDebug("Dispatching ExecuteCommandAsync for interaction {InteractionId}", interaction.Id);
+
+            var sw = Stopwatch.StartNew();
             var result = await _interactionService.ExecuteCommandAsync(context, scope.ServiceProvider);
-            
+            sw.Stop();
+
             if (!result.IsSuccess)
             {
                 _logger.LogError(
-                    "❌❌❌ ExecuteCommandAsync FAILED!");
+                    "ExecuteCommandAsync FAILED — InteractionId: {InteractionId}, ElapsedMs: {ElapsedMs}, Summary: {Summary}",
+                    interaction.Id,
+                    sw.ElapsedMilliseconds,
+                    DescribeInteraction(interaction));
                 _logger.LogError("   Error: {Error}", result.Error);
                 _logger.LogError("   ErrorReason: {Reason}", result.ErrorReason);
-                
+                _logger.LogError("   HasResponded: {HasResponded}", interaction.HasResponded);
+
                 if (result.Error == InteractionCommandError.UnmetPrecondition)
                 {
                     _logger.LogError("   → UnmetPrecondition - Handler may not be found or parameter binding failed!");
@@ -281,7 +303,12 @@ public class DiscordBotService : IHostedService
             }
             else
             {
-                _logger.LogInformation("✅ ExecuteCommandAsync SUCCESS");
+                _logger.LogInformation(
+                    "ExecuteCommandAsync SUCCESS — InteractionId: {InteractionId}, ElapsedMs: {ElapsedMs}, HasResponded: {HasResponded}, Summary: {Summary}",
+                    interaction.Id,
+                    sw.ElapsedMilliseconds,
+                    interaction.HasResponded,
+                    DescribeInteraction(interaction));
             }
         }
         catch (Exception ex)
@@ -291,6 +318,8 @@ public class DiscordBotService : IHostedService
             _logger.LogError("Exception Type: {Type}", ex.GetType().FullName);
             _logger.LogError("Exception Message: {Message}", ex.Message);
             _logger.LogError("Interaction Type: {InteractionType}", interaction.Type);
+            _logger.LogError("Interaction Id: {InteractionId}", interaction.Id);
+            _logger.LogError("Summary: {Summary}", DescribeInteraction(interaction));
             _logger.LogError("User: {Username} (ID: {UserId})", interaction.User.Username, interaction.User.Id);
             _logger.LogError("Guild: {GuildId}, Channel: {ChannelId}",
                 (interaction as SocketSlashCommand)?.GuildId ?? (interaction as SocketMessageComponent)?.GuildId ?? (interaction as SocketModal)?.GuildId ?? 0,
@@ -372,6 +401,54 @@ public class DiscordBotService : IHostedService
                 }
             }
         }
+    }
+
+    private static string DescribeInteraction(SocketInteraction interaction)
+    {
+        return interaction switch
+        {
+            SocketSlashCommand sc => $"Slash /{sc.Data.Name}{FormatSlashOptions(sc.Data.Options)}",
+            SocketMessageComponent mc =>
+                $"Component {mc.Data.Type} customId={mc.Data.CustomId} messageId={mc.Message?.Id}",
+            SocketModal m => $"Modal customId={m.Data.CustomId}",
+            SocketUserCommand uc =>
+                $"UserCommand {uc.Data.Name} targetUserId={uc.User?.Id} targetUsername={uc.User?.Username}",
+            SocketMessageCommand msgc =>
+                $"MessageCommand {msgc.Data.Name} messageId={msgc.Data.Message?.Id}",
+            _ => interaction.Type.ToString()
+        };
+    }
+
+    private static string FormatSlashOptions(IReadOnlyCollection<SocketSlashCommandDataOption>? options, int depth = 0)
+    {
+        if (options == null || options.Count == 0)
+            return "";
+
+        if (depth > 4)
+            return " (...)";
+
+        var parts = new List<string>();
+        foreach (var o in options)
+        {
+            if (o.Type is ApplicationCommandOptionType.SubCommand or ApplicationCommandOptionType.SubCommandGroup)
+            {
+                var inner = FormatSlashOptions(o.Options, depth + 1);
+                parts.Add(string.IsNullOrEmpty(inner) ? o.Name : $"{o.Name}{inner}");
+            }
+            else
+            {
+                parts.Add($"{o.Name}={TruncateForLog(o.Value?.ToString(), 120)}");
+            }
+        }
+
+        return " " + string.Join(", ", parts);
+    }
+
+    private static string TruncateForLog(string? value, int maxLen)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+        return value.Length <= maxLen ? value : value[..maxLen] + "…";
     }
 }
 
