@@ -46,6 +46,36 @@ public sealed class StandingsAnalyticsGenerator
     private static readonly SKColor RoundBand = new(0xE4, 0xE8, 0xF5);
     private static readonly SKColor AxisLine = new(0x8E, 0x94, 0xA3);
 
+    /// <summary>
+    /// S, V w zakresie 0–1. Własna konwersja — <see cref="SKColor.FromHsv"/> w SkiaSharp bywa źle interpretowana (prawie czarne kolory, szare wykresy).
+    /// </summary>
+    private static SKColor ColorFromHsv(float hDegrees, float s, float v, byte a = 255)
+    {
+        hDegrees %= 360f;
+        if (hDegrees < 0) hDegrees += 360f;
+        s = Math.Clamp(s, 0f, 1f);
+        v = Math.Clamp(v, 0f, 1f);
+
+        float c = v * s;
+        float h = hDegrees / 60f;
+        float x = c * (1f - Math.Abs(h % 2f - 1f));
+        float m = v - c;
+
+        float r1, g1, b1;
+        if (h < 1f) { r1 = c; g1 = x; b1 = 0; }
+        else if (h < 2f) { r1 = x; g1 = c; b1 = 0; }
+        else if (h < 3f) { r1 = 0; g1 = c; b1 = x; }
+        else if (h < 4f) { r1 = 0; g1 = x; b1 = c; }
+        else if (h < 5f) { r1 = x; g1 = 0; b1 = c; }
+        else { r1 = c; g1 = 0; b1 = x; }
+
+        return new SKColor(
+            (byte)Math.Round(Math.Clamp((r1 + m) * 255, 0, 255)),
+            (byte)Math.Round(Math.Clamp((g1 + m) * 255, 0, 255)),
+            (byte)Math.Round(Math.Clamp((b1 + m) * 255, 0, 255)),
+            a);
+    }
+
     private static SKTypeface Body() =>
         SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
         ?? SKTypeface.FromFamilyName("DejaVu Sans", SKFontStyle.Normal)
@@ -357,7 +387,7 @@ public sealed class StandingsAnalyticsGenerator
         int outW = (int)(ChartWidth + 2 * cm);
         int outH = (int)(ChartHeight + 2 * cm);
 
-        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul));
         var c = surface.Canvas;
         c.Clear(SkiaChrome.ChartOuterFill);
         SkiaChrome.DrawCardDropShadow(c, cm, cm, ChartWidth, ChartHeight, cr);
@@ -479,7 +509,15 @@ public sealed class StandingsAnalyticsGenerator
 
         var colors = new List<SKColor>();
         for (var pi = 0; pi < active.Count; pi++)
-            colors.Add(HueColor(pi, active.Count));
+            colors.Add(PlayerLineColor(pi, active.Count));
+
+        float lineStroke = active.Count switch
+        {
+            <= 8 => 2.6f,
+            <= 14 => 2.2f,
+            <= 20 => 1.95f,
+            _ => 1.7f
+        };
 
         float lxEnd = MatchX(points.Count - 1);
         float labelX = Math.Min(plotR + 6f, lxEnd + 6f);
@@ -502,7 +540,9 @@ public sealed class StandingsAnalyticsGenerator
             {
                 Color = colors[pi],
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = active.Count > 20 ? 1.5f : 2.25f,
+                StrokeWidth = lineStroke,
+                StrokeCap = SKStrokeCap.Round,
+                StrokeJoin = SKStrokeJoin.Round,
                 IsAntialias = true
             };
             c.DrawPath(path, stroke);
@@ -554,7 +594,8 @@ public sealed class StandingsAnalyticsGenerator
             using var sq = new SKPaint { Color = colors[pi], IsAntialias = true };
             c.DrawRoundRect(new SKRect(legX, legY - 8f, legX + 12f, legY), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
             string nm = Ellipsize(active[pi].DiscordUsername, legFont, ChartMarginRight - 36f);
-            c.DrawText(nm, legX + 18f, legY, legFont, black);
+            using var nickPaint = new SKPaint { Color = colors[pi], IsAntialias = true };
+            c.DrawText(nm, legX + 18f, legY, legFont, nickPaint);
             legY += 14f;
             if (legY > plotB - 8f) break;
         }
@@ -747,7 +788,7 @@ public sealed class StandingsAnalyticsGenerator
         int outW = (int)(tableW + 2 * m);
         int outH = (int)(h + 2 * m);
 
-        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul));
         var c = surface.Canvas;
         c.Clear(SkiaChrome.PageBackground);
         SkiaChrome.DrawCardDropShadow(c, m, m, tableW, h, rad);
@@ -871,7 +912,7 @@ public sealed class StandingsAnalyticsGenerator
         int outW = (int)(PieChartWidth + 2 * m);
         int outH = (int)(innerH + 2 * m);
 
-        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul));
         var c = surface.Canvas;
         c.Clear(SkiaChrome.PageBackground);
         SkiaChrome.DrawCardDropShadow(c, m, m, PieChartWidth, innerH, rad);
@@ -927,7 +968,7 @@ public sealed class StandingsAnalyticsGenerator
         int outW = (int)(PieChartWidth + 2 * m);
         int outH = (int)(PieChartHeight + 2 * m);
 
-        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH, SKColorType.Rgba8888, SKAlphaType.Premul));
         var c = surface.Canvas;
         c.Clear(SkiaChrome.PageBackground);
         SkiaChrome.DrawCardDropShadow(c, m, m, PieChartWidth, PieChartHeight, rad);
@@ -1038,9 +1079,10 @@ public sealed class StandingsAnalyticsGenerator
             return;
         }
 
+        // AddArc dodaje osobny kontur (sam łuk) — wypełnienie daje artefakty. ArcTo łączy środek z łukiem (prawdziwy klin).
         using var path = new SKPath();
         path.MoveTo(cx, cy);
-        path.AddArc(oval, startAngleDeg, sweepAngleDeg);
+        path.ArcTo(oval, startAngleDeg, sweepAngleDeg, forceMoveTo: false);
         path.Close();
         using var sliceFill = new SKPaint { Color = fill, IsAntialias = true, Style = SKPaintStyle.Fill };
         canvas.DrawPath(path, sliceFill);
@@ -1056,15 +1098,15 @@ public sealed class StandingsAnalyticsGenerator
 
     /// <summary>Jedna barwa na wartość kolumny (jak w tabeli histogramu) — wypełnienie segmentu koła.</summary>
     private static SKColor PieSliceFillForPoints(int points) =>
-        SKColor.FromHsv(HueForPointColumn(points), 0.86f, 0.78f);
+        ColorFromHsv(HueForPointColumn(points), 0.88f, 0.82f);
 
     /// <summary>Liczby w tabeli rozkładu: mocny kolor, ciemniejszy niż wypełnienie — czytelnie na białym.</summary>
     private static SKColor HistogramValueTextForPoints(int points) =>
-        SKColor.FromHsv(HueForPointColumn(points), 0.90f, 0.40f);
+        ColorFromHsv(HueForPointColumn(points), 0.90f, 0.42f);
 
     /// <summary>Etykiety kolumn na ciemnym nagłówku — jasne, lekko nasycone.</summary>
     private static SKColor HistogramHeaderLabelForPoints(int points) =>
-        SKColor.FromHsv(HueForPointColumn(points), 0.62f, 0.98f);
+        ColorFromHsv(HueForPointColumn(points), 0.55f, 0.98f);
 
     private static float HueForPointColumn(int points) =>
         points switch
@@ -1085,11 +1127,15 @@ public sealed class StandingsAnalyticsGenerator
             _ => Math.Abs(points) * 47.371f % 360f
         };
 
-    private static SKColor HueColor(int index, int total)
+    /// <summary>Kolor linii / nicku gracza — złoty kąt rozdziela barwy przy wielu osobach (np. 20).</summary>
+    private static SKColor PlayerLineColor(int index, int totalPlayers)
     {
-        double hue = (index * 360.0 / Math.Max(1, Math.Min(total, 24))) + (index * 47 % 17);
-        hue %= 360;
-        return SKColor.FromHsv((float)hue, 0.72f, 0.92f);
+        totalPlayers = Math.Max(totalPlayers, 1);
+        float h = (index * 137.508f + 23f) % 360f;
+        float s = 0.90f;
+        // Przy dużej liczbie graczy lekko niższa jasność = mniej „pasteli”, lepszy kontrast linii obok siebie
+        float v = totalPlayers >= 18 ? 0.52f : totalPlayers >= 12 ? 0.56f : 0.60f;
+        return ColorFromHsv(h, s, v);
     }
 
     /// <summary>Oś X: przy jednym meczu punkt na środku wykresu; przy wielu — równomiernie od lewej do prawej.</summary>
