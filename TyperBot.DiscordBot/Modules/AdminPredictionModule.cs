@@ -159,8 +159,14 @@ public class AdminPredictionModule : BaseAdminModule
         }
     }
 
-    [SlashCommand("admin-ujawnij-typy", "Ujawnia typy dla meczu tego wątku (jak przycisk na karcie). Użyj wyłącznie w wątku meczu z kanału typowanie.")]
-    public async Task SlashRevealPredictionsInThreadAsync()
+    /// <summary>Opis max. 100 znaków (Discord) — dłuższy mógł blokować całą rejestrację komend w serwerze.</summary>
+    [SlashCommand("admin-ujawnij-typy", "Ujawnia typy jak przycisk na karcie. Tylko w wątku meczu (kanał typowanie).")]
+    public Task SlashRevealPredictionsAdminAsync() => ExecuteRevealInThreadSlashAsync();
+
+    [SlashCommand("ujawnij-typy", "Ujawnij typy — użyj w wątku meczu z typowania (admin). Jak przycisk na karcie.")]
+    public Task SlashRevealPredictionsShortAsync() => ExecuteRevealInThreadSlashAsync();
+
+    private async Task ExecuteRevealInThreadSlashAsync()
     {
         var user = Context.User as SocketGuildUser;
         if (!IsAdmin(user) || Context.Guild == null)
@@ -169,7 +175,7 @@ public class AdminPredictionModule : BaseAdminModule
             return;
         }
 
-        if (Context.Channel is not SocketThreadChannel thread)
+        if (Context.Channel is not SocketThreadChannel)
         {
             await RespondAsync(
                 "❌ **Nie ujawniam typów** — tej komendy możesz użyć tylko **w wątku meczu** (wejdź w wątek z kanału typowanie i wpisz komendę tam).",
@@ -177,16 +183,18 @@ public class AdminPredictionModule : BaseAdminModule
             return;
         }
 
+        var thread = (SocketThreadChannel)Context.Channel;
+        ulong threadId = thread.Id;
         await DeferAsync(ephemeral: true);
 
         try
         {
-            var (_, message) = await _revealService.RevealForThreadIdAsync(thread.Id, DateTimeOffset.UtcNow);
+            var (_, message) = await _revealService.RevealForThreadIdAsync(threadId, DateTimeOffset.UtcNow);
             await FollowupAsync(message, ephemeral: true);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Slash admin-ujawnij-typy failed for thread {ThreadId}", thread.Id);
+            _logger.LogError(ex, "Slash reveal-types failed for thread {ThreadId}", threadId);
             await FollowupAsync("❌ Wystąpił błąd podczas ujawniania typów.", ephemeral: true);
         }
     }

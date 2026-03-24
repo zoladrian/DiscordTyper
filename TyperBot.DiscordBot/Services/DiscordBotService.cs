@@ -102,6 +102,12 @@ public class DiscordBotService : IHostedService
         }
         _logger.LogInformation("═══════════════════════════════════════════════════════════");
 
+        var slashNames = _interactionService.SlashCommands.Select(c => c.Name).OrderBy(n => n).ToList();
+        _logger.LogInformation(
+            "Slash commands złożone lokalnie: {Count} — {Names}",
+            slashNames.Count,
+            string.Join(", ", slashNames));
+
         // Login and start
         await _client.LoginAsync(TokenType.Bot, _settings.Token);
         await _client.StartAsync();
@@ -234,11 +240,16 @@ public class DiscordBotService : IHostedService
                 }
             }
 
-            // Register commands to guild (not global)
+            // Register commands to guild (not global). deleteMissing: true — guild ma dokładnie ten zestaw co w kodzie (stare/zepsute wpisy znikają).
             if (_settings.GuildId != 0)
             {
-                await _interactionService.RegisterCommandsToGuildAsync(_settings.GuildId).ConfigureAwait(false);
-                _logger.LogInformation("Registered commands to guild {GuildId}", _settings.GuildId);
+                var synced = await _interactionService
+                    .RegisterCommandsToGuildAsync(_settings.GuildId, deleteMissing: true)
+                    .ConfigureAwait(false);
+                _logger.LogInformation(
+                    "Zsynchronizowano komendy aplikacji z guild {GuildId}: {Count} aktywnych (w tym slash).",
+                    _settings.GuildId,
+                    synced.Count);
             }
             else
             {
