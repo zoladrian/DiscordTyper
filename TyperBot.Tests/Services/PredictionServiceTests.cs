@@ -153,6 +153,23 @@ public class PredictionServiceTests
     }
 
     [Fact]
+    public async Task ValidatePrediction_NoTypingDeadline_UsesStartTime_AllowsUntilStart()
+    {
+        var match = new DomainMatch
+        {
+            Id = 1,
+            StartTime = DateTimeOffset.UtcNow.AddHours(2),
+            TypingDeadline = null,
+            Status = MatchStatus.Scheduled
+        };
+        _matchRepo.Setup(x => x.GetByIdAsync(1)).ReturnsAsync(match);
+
+        var result = await _service.ValidatePrediction(123, 1, 50, 40);
+
+        result.isValid.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task CreateOrUpdatePredictionAsync_PlayerNotFound_ReturnsNull()
     {
         // Arrange

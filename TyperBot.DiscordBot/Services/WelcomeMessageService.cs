@@ -88,53 +88,55 @@ public class WelcomeMessageService
         try
         {
             var newEmbed = new EmbedBuilder()
-                .WithTitle("📋 Komendy Admina - TyperBot")
-                .WithDescription("Lista dostępnych komend administracyjnych dla bota typera.")
+                .WithTitle("📋 Komendy admina — TyperBot")
+                .WithDescription(
+                    "Komendy administracyjne wymagają roli **TyperAdmin** (domyślna nazwa z konfiguracji) **albo** uprawnienia **Administrator** na serwerze Discord. " +
+                    "Odpowiedzi przy większości komend są **tylko dla Ciebie** (ephemeral); na wskazany kanał/wątek trafiają publicznie pliki PNG / embedy tabel.")
                 .WithColor(Color.Blue)
-                .AddField("🏁 Zarządzanie sezonem",
-                    "`/start-nowego-sezonu` - Rozpocznij nowy sezon (deaktywuje poprzednie)\n" +
-                    "`/panel-sezonu` - Otwórz panel zarządzania sezonem", inline: false)
-                .AddField("⚽ Zarządzanie meczami",
-                    "**Dodawanie:**\n" +
-                    "• Użyj `/panel-sezonu` → Dodaj kolejkę → Dodaj mecz\n" +
-                    "• Lub użyj przycisku \"➕ Dodaj mecz\" w panelu kolejki\n\n" +
-                    "**Edycja/Usuwanie:**\n" +
-                    "• Kliknij przycisk \"✏️ Edytuj\" na karcie meczu\n" +
-                    "• Kliknij przycisk \"🗑️ Usuń\" na karcie meczu\n\n" +
-                    "**Wyniki:**\n" +
-                    "• Kliknij przycisk \"📝 Wpisz wynik\" na karcie meczu\n\n" +
-                    "**Ujawnianie typów:**\n" +
-                    "• Kliknij przycisk \"👁️ Ujawnij typy\" na karcie meczu (po godzinie rozpoczęcia)\n" +
-                    "• Typy są automatycznie ujawniane po wpisaniu wyniku", inline: false)
-                .AddField("📊 Publikowanie tabel",
-                    "`/admin-tabela-sezonu [kanal_lub_watek?]` — PNG; domyślnie **ten kanał**, parametr = inny\n" +
-                    "`/admin-tabela-kolejki [numer] [kanal_lub_watek?]` — PNG; j.w.\n" +
-                    "`/admin-tabela-sezonu-obraz` / `admin-tabela-kolejki-obraz` — aliasy (PNG), jak wyżej\n" +
-                    "`/admin-tabela-meczu [mecz] [kanal_lub_watek?]` — embed; j.w.\n" +
-                    "• **Inny kanał/wątek:** w `kanal_lub_watek` często trzeba **zacząć pisać nazwę wątku** (wyszukiwanie).", inline: false)
-                .AddField("💾 Eksport danych",
-                    "`/admin-eksport-sezonu` - Eksportuj dane sezonu do CSV\n" +
-                    "`/admin-eksport-kolejki [numer]` - Eksportuj dane kolejki do CSV", inline: false)
-                .AddField("👤 Inne",
-                    "`/wyniki-gracza [użytkownik]` - Wyświetl szczegółowe wyniki gracza\n" +
-                    "`/admin-dane-testowe` - Wypełnij bazę danymi testowymi", inline: false)
-                .AddField("⚠️ Automatyczne funkcje",
-                    "• Przypomnienia o wynikach - automatycznie na kanale adminów dla meczów bez wyniku (3h po rozpoczęciu)\n" +
-                    "• Automatyczne publikowanie wyników - po wpisaniu wyniku na kanale `#wyniki-typera`\n" +
-                    "• Automatyczne publikowanie tabel - po zakończeniu ostatniego meczu w kolejce", inline: false)
-                .WithFooter("TyperBot - System zarządzania typerem")
+                .AddField("🏁 Sezon i struktura",
+                    "`/start-nowego-sezonu` — nowy sezon (poprzedni przestaje być aktywny)\n" +
+                    "`/panel-sezonu` — panel: kolejki, dodawanie meczów, skróty do kart", inline: false)
+                .AddField("⚽ Mecze (panel + przyciski na karcie w wątku)",
+                    "**Panel `/panel-sezonu`:** kolejki, dodawanie meczów, generowanie tabel (PNG) do pobrania.\n" +
+                    "**Na karcie meczu:** **✅ Wynik** (wpisanie wyniku), **✏** edycja, **🗑 Usuń mecz**, po starcie **👁️ Ujawnij typy**, po zakończeniu **📊 Wyślij tabelę meczu**, przed startem **🔔 Zawołaj niezatypowanych**, po odwołaniu **♻️ Przywróć mecz**.\n" +
+                    "`/admin-publikuj-mecz` — **wymuszenie** wątku na `#typowanie` + karta (gdy czekasz na automat z środy).", inline: false)
+                .AddField("📊 Tabele na kanał / wątek",
+                    "Opcja **kanal_lub_watek**: puste = bieżący kanał/wątek; inaczej wybierz kanał lub wątek (często trzeba **zacząć pisać nazwę wątku**).\n" +
+                    "`/admin-tabela-sezonu` [kanal_lub_watek?] — **PNG** tabeli sezonu\n" +
+                    "`/admin-tabela-sezonu-obraz` [kanal_lub_watek?] — to samo (alias)\n" +
+                    "`/admin-tabela-kolejki` [numer 1–18] [kanal_lub_watek?] — **PNG** kolejki\n" +
+                    "`/admin-tabela-kolejki-obraz` [numer] [kanal_lub_watek?] — alias\n" +
+                    "`/admin-tabela-meczu` [mecz ▶ autouzupełnianie] [kanal_lub_watek?] — tabela wyników **po meczu** (tylko gdy jest wynik)", inline: false)
+                .AddField("📈 Statystyki (PNG, zwykle ephemeral)",
+                    "`/admin-pkt-meczu` [mecz] — punkty graczy w meczu + Δ vs poprzedni zakończony mecz w sezonie\n" +
+                    "`/admin-pkt-kolejki` [numer] — suma punktów w kolejce + Δ vs poprzednia kolejka\n" +
+                    "`/admin-wykres-punktow` — skumulowane punkty w sezonie (linie wg graczy, pasma kolejek)\n" +
+                    "`/admin-rozklad-punktow` — histogram: ile razy który gracz dostał daną liczbę punktów w meczu", inline: false)
+                .AddField("💾 Eksport i gracze",
+                    "`/admin-eksport-sezonu` — CSV całego sezonu (plik w odpowiedzi)\n" +
+                    "`/admin-eksport-kolejki` [numer] — CSV kolejki\n" +
+                    "`/wyniki-gracza` [użytkownik] — podgląd wyników wybranego gracza", inline: false)
+                .AddField("🧪 Pomocnicze",
+                    "`/admin-dane-testowe` — zasilenie bazy danymi testowymi (tylko dev/test)\n" +
+                    "`/ping` — test czy bot żyje", inline: false)
+                .AddField("⚠️ Automatyzacja (zgodnie z kodem bota)",
+                    "• **Wątki** z kartą meczu na `#typowanie`: domyślnie **środa 8:00** (offset czasu jak przy meczu) w tygodniu poprzedzającym start; dokładny timestamp w bazie (`ThreadCreationTime`). Wymuszenie: `/admin-publikuj-mecz`.\n" +
+                    "• **Po zapisaniu wyniku:** w wątku meczu pojawia się **publiczny embed** z typami i punktami; karta meczu się odświeża.\n" +
+                    "• **Przypomnienia o braku wyniku:** jeśli od startu meczu minęło **>3 h** i nadal brak wyniku — **jeden** embed na **#typer-admin** z przyciskami (wpisz wynik / edytuj / odwołaj).\n" +
+                    "• Kanał **#wyniki-typera** jest w konfiguracji serwera; bot **nie publikuje** tam automatycznie po każdym meczu (możesz użyć go ręcznie).", inline: false)
+                .WithFooter("TyperBot — kanał admina; gracze mają osobne pinned na #typowanie")
                 .WithCurrentTimestamp()
                 .Build();
 
             // Check pinned messages from bot
             var pinnedMessages = await channel.GetPinnedMessagesAsync();
             var existingMessage = pinnedMessages
-                .Where(m => m.Author.Id == _client.CurrentUser.Id && m.Embeds.Any(e => e.Title?.Contains("Komendy Admina") == true))
+                .Where(m => m.Author.Id == _client.CurrentUser.Id && m.Embeds.Any(e => e.Title != null && e.Title.Contains("Komendy", StringComparison.OrdinalIgnoreCase) && e.Title.Contains("admin", StringComparison.OrdinalIgnoreCase)))
                 .FirstOrDefault();
 
             if (existingMessage != null)
             {
-                var existingEmbed = existingMessage.Embeds.FirstOrDefault(e => e.Title?.Contains("Komendy Admina") == true);
+                var existingEmbed = existingMessage.Embeds.FirstOrDefault(e => e.Title != null && e.Title.Contains("Komendy", StringComparison.OrdinalIgnoreCase) && e.Title.Contains("admin", StringComparison.OrdinalIgnoreCase));
                 if (existingEmbed != null)
                 {
                     if (AreEmbedsIdentical(existingEmbed, newEmbed))

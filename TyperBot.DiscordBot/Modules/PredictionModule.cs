@@ -69,11 +69,23 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     {
         try
         {
-            // Validate match hasn't started yet
-            if (DateTimeOffset.UtcNow >= match.StartTime)
+            // Spójnie z walidacją typów: po zamknięciu okna typowania nie publikujemy już komunikatu w wątku
+            if (match.Status == MatchStatus.Postponed)
             {
-                _logger.LogWarning("Attempted to post prediction message after match started - Match ID: {MatchId}", match.Id);
-                return;
+                if (DateTimeOffset.UtcNow >= match.StartTime)
+                {
+                    _logger.LogWarning("Skipped prediction thread message after postponed cutoff - Match ID: {MatchId}", match.Id);
+                    return;
+                }
+            }
+            else
+            {
+                var typingEnd = match.TypingDeadline ?? match.StartTime;
+                if (DateTimeOffset.UtcNow >= typingEnd)
+                {
+                    _logger.LogWarning("Skipped prediction thread message after typing window - Match ID: {MatchId}", match.Id);
+                    return;
+                }
             }
 
             var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
@@ -226,7 +238,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         }
         else
         {
-            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1);
+            var deadline = match.TypingDeadline ?? match.StartTime;
             if (DateTimeOffset.UtcNow >= deadline)
             {
                 await RespondAsync("❌ Czas na typowanie minął.", ephemeral: true);

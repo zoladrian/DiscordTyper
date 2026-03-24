@@ -47,7 +47,7 @@ public class PredictionService
             return (false, $"Suma punktów musi wynosić 90, a nie {homeTip + awayTip}. Oglądałeś kiedyś żużel?");
         }
 
-        // Validation 3: Before typing deadline (or match start time if deadline not set)
+        // Validation 3: Mecz istnieje
         var match = await _matchRepository.GetByIdAsync(matchId);
         if (match == null)
         {
@@ -70,7 +70,7 @@ public class PredictionService
             return (false, "Ten mecz jest w trakcie rozgrywania.");
         }
 
-        // Validation 5: Timing — postponed uses StartTime, others use TypingDeadline
+        // Validation 5: Timing — postponed: do pierwotnego StartTime; inaczej: opcjonalny TypingDeadline albo domyślnie do StartTime
         if (match.Status == MatchStatus.Postponed)
         {
             if (DateTimeOffset.UtcNow >= match.StartTime)
@@ -80,10 +80,10 @@ public class PredictionService
         }
         else
         {
-            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1);
+            var deadline = match.TypingDeadline ?? match.StartTime;
             if (DateTimeOffset.UtcNow >= deadline)
             {
-                return (false, "Czas na typowanie minął. Możesz typować tylko przed deadline typowania.");
+                return (false, "Czas na typowanie minął. Możesz typować tylko przed rozpoczęciem meczu (lub przed ustawionym deadline).");
             }
         }
 
@@ -105,7 +105,7 @@ public class PredictionService
                 return null;
             }
 
-            var deadline = match.TypingDeadline ?? match.StartTime.AddHours(-1); // Default: 1 hour before match
+            var deadline = match.TypingDeadline ?? match.StartTime;
             if (DateTimeOffset.UtcNow >= deadline)
             {
                 await transaction.RollbackAsync();

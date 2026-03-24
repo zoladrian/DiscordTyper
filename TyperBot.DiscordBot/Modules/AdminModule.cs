@@ -795,7 +795,7 @@ public class AdminModule : BaseAdminModule
 
     #region Slash Commands - Tables & Export
 
-    [SlashCommand("admin-tabela-sezonu", "Tabela sezonu (tekst): domyślnie w tym kanale; parametr = inny kanał/wątek")]
+    [SlashCommand("admin-tabela-sezonu", "Tabela sezonu (PNG): domyślnie w tym kanale; parametr = inny kanał/wątek")]
     public async Task AdminPostSeasonTableAsync(
         [Summary("kanal_lub_watek", "Opcjonalnie inny kanał/wątek. Puste = kanał, w którym wpisano komendę.")]
         [ChannelTypes(ChannelType.Text, ChannelType.News, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.NewsThread)]

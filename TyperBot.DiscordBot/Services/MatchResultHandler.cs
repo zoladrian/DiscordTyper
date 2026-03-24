@@ -420,7 +420,7 @@ public class MatchResultHandler
 
         var oldStartTime = match.StartTime;
         match.StartTime = newStartTime;
-        match.TypingDeadline = null; // Reset — default deadline: newStartTime - 1h
+        match.TypingDeadline = null; // Reset — domyślnie typy do momentu StartTime (ustaw deadline w edycji meczu)
         match.Status = MatchStatus.Scheduled;
         await _matchRepository.UpdateAsync(match);
 

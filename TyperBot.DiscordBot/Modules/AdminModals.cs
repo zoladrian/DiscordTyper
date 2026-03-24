@@ -84,8 +84,8 @@ public class EditMatchModal : IModal
     [RequiredInput(true)]
     public string Time { get; set; } = string.Empty;
 
-    [InputLabel("Deadline (YYYY-MM-DD HH:mm)")]
-    [ModalTextInput("typing_deadline", TextInputStyle.Short, placeholder: "Puste = 1h przed meczem")]
+    [InputLabel("Deadline typowania (YYYY-MM-DD HH:mm)")]
+    [ModalTextInput("typing_deadline", TextInputStyle.Short, placeholder: "Puste = typy do startu meczu")]
     [RequiredInput(false)]
     public string TypingDeadline { get; set; } = string.Empty;
 }

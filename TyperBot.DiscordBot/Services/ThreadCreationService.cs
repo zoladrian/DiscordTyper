@@ -105,17 +105,23 @@ public class ThreadCreationService : BackgroundService
                 // Create thread and post match card
                 var timestamp = match.StartTime.ToUnixTimeSeconds();
 
-                var embed = new EmbedBuilder()
+                var embedBuilder = new EmbedBuilder()
                     .WithTitle(DiscordApiLimits.Truncate($"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
                     .WithDescription(
                         "📋 **Zasady typowania:**\n" +
                         "• Typy są tajne (tylko ty je widzisz)\n" +
                         "• Suma musi wynosić 90 punktów (np. 50:40, 46:44, 45:45)\n" +
-                        "• Termin: czas rozpoczęcia meczu"
+                        "• Domyślnie typy **do startu meczu**; wcześniejszy deadline ustawia admin w **edycji meczu**"
                     )
                     .AddField("🏁 Czas rozpoczęcia", $"<t:{timestamp}:F>", inline: true)
-                    .WithColor(Color.Blue)
-                    .Build();
+                    .WithColor(Color.Blue);
+                if (match.TypingDeadline.HasValue)
+                {
+                    var dl = match.TypingDeadline.Value.ToUnixTimeSeconds();
+                    embedBuilder.AddField("🔒 Deadline typowania", $"<t:{dl}:F>", inline: true);
+                }
+
+                var embed = embedBuilder.Build();
 
                 var predictButton = new ButtonBuilder()
                     .WithCustomId($"predict_match_{match.Id}")
