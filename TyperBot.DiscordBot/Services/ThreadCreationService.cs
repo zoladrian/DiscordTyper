@@ -7,6 +7,7 @@ using TyperBot.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot;
+using TyperBot.Domain.Enums;
 
 namespace TyperBot.DiscordBot.Services;
 
@@ -150,7 +151,7 @@ public class ThreadCreationService : BackgroundService
                     .WithButton(deleteButton, row: 1);
 
                 // Add "Reveal Predictions" button for admins if match start time has passed and not yet revealed
-                if (now >= match.StartTime && !match.PredictionsRevealed)
+                if (now >= match.StartTime && !match.PredictionsRevealed && match.Status != MatchStatus.Cancelled)
                 {
                     var revealButton = new ButtonBuilder()
                         .WithCustomId($"admin_reveal_predictions_{match.Id}")

@@ -136,6 +136,7 @@ builder.Services.AddSingleton<DiscordLookupService>();
 builder.Services.AddSingleton<AdminMatchCreationStateService>();
 builder.Services.AddSingleton<WelcomeMessageService>();
 builder.Services.AddScoped<MatchCardService>();
+builder.Services.AddScoped<MatchPredictionRevealService>();
 builder.Services.AddScoped<MatchResultsTableService>();
 builder.Services.AddScoped<MatchResultHandler>();
 builder.Services.AddScoped<SeasonManagementService>();
@@ -147,6 +148,7 @@ builder.Services.AddScoped<MatchCreationService>();
 builder.Services.AddHostedService<DiscordBotService>();
 builder.Services.AddHostedService<ReminderService>();
 builder.Services.AddHostedService<ThreadCreationService>();
+builder.Services.AddHostedService<MatchRevealCardRefreshService>();
 
 var app = builder.Build();
 

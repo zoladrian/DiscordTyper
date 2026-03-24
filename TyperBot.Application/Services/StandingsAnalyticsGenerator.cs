@@ -112,8 +112,21 @@ public sealed class StandingsAnalyticsGenerator
 
     public static List<AnalyticsDeltaRow> BuildMatchDeltaRows(Match target, Match? previous, List<Player> players)
     {
-        var list = new List<AnalyticsDeltaRow>();
-        foreach (var p in players.Where(x => x.IsActive))
+        var sorted = players.Where(x => x.IsActive).ToList();
+        sorted.Sort((a, b) =>
+        {
+            int ca = PointsInMatch(a, target.Id);
+            int cb = PointsInMatch(b, target.Id);
+            int c = cb.CompareTo(ca);
+            if (c != 0) return c;
+            int ba = (int)(BucketInMatch(a, target.Id) ?? Bucket.P0);
+            int bb = (int)(BucketInMatch(b, target.Id) ?? Bucket.P0);
+            c = bb.CompareTo(ba);
+            return c != 0 ? c : string.Compare(a.DiscordUsername, b.DiscordUsername, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var list = new List<AnalyticsDeltaRow>(sorted.Count);
+        foreach (var p in sorted)
         {
             var cur = PointsInMatch(p, target.Id);
             int? prevPts = previous == null ? null : PointsInMatch(p, previous.Id);
@@ -121,18 +134,30 @@ public sealed class StandingsAnalyticsGenerator
             list.Add(new AnalyticsDeltaRow(p.DiscordUsername, cur, delta));
         }
 
-        list.Sort((a, b) =>
-        {
-            var c = b.PointsCurrent.CompareTo(a.PointsCurrent);
-            return c != 0 ? c : string.Compare(a.PlayerName, b.PlayerName, StringComparison.OrdinalIgnoreCase);
-        });
         return list;
     }
 
     public static List<AnalyticsDeltaRow> BuildRoundDeltaRows(Round target, Round? previousRound, List<Player> players)
     {
-        var list = new List<AnalyticsDeltaRow>();
-        foreach (var p in players.Where(x => x.IsActive))
+        var roundFinishedIds = (target.Matches ?? Enumerable.Empty<Match>())
+            .Where(IsFinishedWithScore)
+            .Select(m => m.Id)
+            .ToHashSet();
+
+        var sorted = players.Where(x => x.IsActive).ToList();
+        sorted.Sort((a, b) =>
+        {
+            int ca = PointsInRound(a, target);
+            int cb = PointsInRound(b, target);
+            int c = cb.CompareTo(ca);
+            if (c != 0) return c;
+            if (roundFinishedIds.Count == 0)
+                return string.Compare(a.DiscordUsername, b.DiscordUsername, StringComparison.OrdinalIgnoreCase);
+            return StandingsTieBreak.ComparePlayersByPredictions(a, b, roundFinishedIds);
+        });
+
+        var list = new List<AnalyticsDeltaRow>(sorted.Count);
+        foreach (var p in sorted)
         {
             var cur = PointsInRound(p, target);
             int? prevPts = previousRound == null ? null : PointsInRound(p, previousRound);
@@ -140,12 +165,18 @@ public sealed class StandingsAnalyticsGenerator
             list.Add(new AnalyticsDeltaRow(p.DiscordUsername, cur, delta));
         }
 
-        list.Sort((a, b) =>
-        {
-            var c = b.PointsCurrent.CompareTo(a.PointsCurrent);
-            return c != 0 ? c : string.Compare(a.PlayerName, b.PlayerName, StringComparison.OrdinalIgnoreCase);
-        });
         return list;
+    }
+
+    private static Bucket? BucketInMatch(Player player, int matchId)
+    {
+        foreach (var pr in player.Predictions ?? Enumerable.Empty<Prediction>())
+        {
+            if (pr.MatchId != matchId || !pr.IsValid || pr.PlayerScore == null) continue;
+            return pr.PlayerScore.Bucket;
+        }
+
+        return null;
     }
 
     public static Round? GetPreviousRound(Season season, Round target)
@@ -584,7 +615,10 @@ public sealed class StandingsAnalyticsGenerator
         IReadOnlyList<int> columns)
     {
         var list = new List<PointsHistogramRow>();
-        foreach (var pl in players.Where(p => p.IsActive).OrderBy(p => p.DiscordUsername))
+        var active = players.Where(p => p.IsActive).ToList();
+        active.Sort((a, b) => StandingsTieBreak.ComparePlayersByPredictions(a, b, finishedMatchIds));
+
+        foreach (var pl in active)
         {
             var counts = new int[columns.Count];
             foreach (var pr in pl.Predictions ?? Enumerable.Empty<Prediction>())
@@ -741,7 +775,7 @@ public sealed class StandingsAnalyticsGenerator
             SkiaChrome.Darken(HeaderBg, 5));
 
         using var fH = new SKFont(Bold(), 9f);
-        using var fHdr = new SKPaint { Color = SKColors.White, IsAntialias = true };
+        using var fHdr = new SKPaint { IsAntialias = true };
         using var pen = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
 
         float xName = 0f;
@@ -749,18 +783,22 @@ public sealed class StandingsAnalyticsGenerator
         c.DrawRect(0.5f, TitleBarHeight + 0.5f, tableW - 1f, HeaderHeight + n * RowHeight, pen);
         c.DrawLine(x0, TitleBarHeight, x0, TitleBarHeight + HeaderHeight + n * RowHeight, pen);
 
+        fHdr.Color = SKColors.White;
         DrawCellCentered(c, "UCZESTNIK", xName, TitleBarHeight, x0 - xName, HeaderHeight, fH, fHdr);
 
         for (var col = 0; col < columns.Count; col++)
         {
             float xc = x0 + col * colW;
             string lab = columns[col].ToString();
+            fHdr.Color = HistogramHeaderLabelForPoints(columns[col]);
             DrawCellCentered(c, lab, xc, TitleBarHeight, colW, HeaderHeight, fH, fHdr);
             c.DrawLine(xc + colW, TitleBarHeight, xc + colW, TitleBarHeight + HeaderHeight + n * RowHeight, pen);
         }
 
         using var fBody = new SKFont(Body(), 12f);
         using var txt = new SKPaint { Color = new SKColor(0x12, 0x12, 0x18), IsAntialias = true };
+        using var cellPaint = new SKPaint { IsAntialias = true };
+        var zeroMuted = new SKColor(0x6E, 0x72, 0x7C);
 
         if (rows.Count == 0)
         {
@@ -788,9 +826,11 @@ public sealed class StandingsAnalyticsGenerator
                 for (var col = 0; col < columns.Count; col++)
                 {
                     float xc = x0 + col * colW;
-                    string cell = row.CountsByColumnIndex[col].ToString();
+                    int val = row.CountsByColumnIndex[col];
+                    string cell = val.ToString();
                     float cw = fBody.MeasureText(cell);
-                    c.DrawText(cell, xc + (colW - cw) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
+                    cellPaint.Color = val == 0 ? zeroMuted : HistogramValueTextForPoints(columns[col]);
+                    c.DrawText(cell, xc + (colW - cw) / 2f, y + RowHeight / 2f + 5f, fBody, cellPaint);
                 }
             }
         }
@@ -934,7 +974,7 @@ public sealed class StandingsAnalyticsGenerator
             float sweep = si == n - 1
                 ? 360f - accDeg
                 : 360f * slices[si].Count / (float)totalPredictions;
-            var col = HueColor(si, Math.Max(n, 3));
+            var col = PieSliceFillForPoints(slices[si].Points);
             DrawPieSlice(c, cx, cy, r, startDeg, sweep, col);
             startDeg += sweep;
             accDeg += sweep;
@@ -947,16 +987,18 @@ public sealed class StandingsAnalyticsGenerator
         using var black = new SKPaint { Color = new SKColor(0x20, 0x20, 0x28), IsAntialias = true };
         c.DrawText("Pkt — ile razy", legX, legY, legTitle, black);
         legY += 22f;
+        using var legLinePaint = new SKPaint { IsAntialias = true };
         for (var si = 0; si < n; si++)
         {
             var (pts, cnt) = slices[si];
-            var col = HueColor(si, Math.Max(n, 3));
+            var col = PieSliceFillForPoints(pts);
             using var sq = new SKPaint { Color = col, IsAntialias = true };
             c.DrawRoundRect(new SKRect(legX, legY - 9f, legX + 12f, legY + 1f), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
             float pct = 100f * cnt / totalPredictions;
             string legLine = $"{pts} pkt: {cnt}× ({pct:0.#}%)";
             legLine = Ellipsize(legLine, legBody, PieLegendWidth - 28f);
-            c.DrawText(legLine, legX + 18f, legY, legBody, black);
+            legLinePaint.Color = HistogramValueTextForPoints(pts);
+            c.DrawText(legLine, legX + 18f, legY, legBody, legLinePaint);
             legY += 16f;
             if (legY > plotBottom - 4f) break;
         }
@@ -987,10 +1029,10 @@ public sealed class StandingsAnalyticsGenerator
             canvas.DrawOval(oval, fillP);
             using var edge = new SKPaint
             {
-                Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE8),
+                Color = new SKColor(0x38, 0x3A, 0x44),
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1.5f
+                StrokeWidth = 1.35f
             };
             canvas.DrawOval(oval, edge);
             return;
@@ -1004,13 +1046,44 @@ public sealed class StandingsAnalyticsGenerator
         canvas.DrawPath(path, sliceFill);
         using var sliceEdge = new SKPaint
         {
-            Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE8),
+            Color = new SKColor(0x38, 0x3A, 0x44),
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1.5f
+            StrokeWidth = 1.35f
         };
         canvas.DrawPath(path, sliceEdge);
     }
+
+    /// <summary>Jedna barwa na wartość kolumny (jak w tabeli histogramu) — wypełnienie segmentu koła.</summary>
+    private static SKColor PieSliceFillForPoints(int points) =>
+        SKColor.FromHsv(HueForPointColumn(points), 0.86f, 0.78f);
+
+    /// <summary>Liczby w tabeli rozkładu: mocny kolor, ciemniejszy niż wypełnienie — czytelnie na białym.</summary>
+    private static SKColor HistogramValueTextForPoints(int points) =>
+        SKColor.FromHsv(HueForPointColumn(points), 0.90f, 0.40f);
+
+    /// <summary>Etykiety kolumn na ciemnym nagłówku — jasne, lekko nasycone.</summary>
+    private static SKColor HistogramHeaderLabelForPoints(int points) =>
+        SKColor.FromHsv(HueForPointColumn(points), 0.62f, 0.98f);
+
+    private static float HueForPointColumn(int points) =>
+        points switch
+        {
+            50 => 352f,
+            35 => 18f,
+            20 => 205f,
+            18 => 168f,
+            16 => 265f,
+            14 => 132f,
+            12 => 312f,
+            10 => 88f,
+            8 => 348f,
+            6 => 55f,
+            4 => 28f,
+            2 => 238f,
+            0 => 0f,
+            _ => Math.Abs(points) * 47.371f % 360f
+        };
 
     private static SKColor HueColor(int index, int total)
     {

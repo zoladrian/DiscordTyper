@@ -78,6 +78,32 @@ public class MatchRepository : IMatchRepository
         return candidates.Where(m => m.StartTime <= startedOnOrBeforeUtc);
     }
 
+    public async Task<IEnumerable<Match>> GetMatchesNeedingRevealCardRefreshAsync(DateTimeOffset nowUtc, TimeSpan maxAgeSinceStart)
+    {
+        var cutoff = nowUtc - maxAgeSinceStart;
+        var candidates = await _context.Matches
+            .AsNoTracking()
+            .Include(m => m.Round)
+            .Where(m =>
+                m.ThreadId != null &&
+                !m.PredictionsRevealed &&
+                m.Status != MatchStatus.Cancelled)
+            .ToListAsync();
+
+        return candidates
+            .Where(m => m.StartTime <= nowUtc && m.StartTime >= cutoff)
+            .OrderBy(m => m.StartTime)
+            .ToList();
+    }
+
+    public async Task<Match?> GetByThreadIdAsync(ulong threadId)
+    {
+        return await _context.Matches
+            .AsNoTracking()
+            .Include(m => m.Round)
+            .FirstOrDefaultAsync(m => m.ThreadId == threadId);
+    }
+
     public async Task<IEnumerable<Match>> GetAllAsync()
     {
         return await _context.Matches

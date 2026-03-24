@@ -22,6 +22,14 @@ public interface IMatchRepository
     /// </summary>
     Task<IEnumerable<Match>> GetMatchesPossiblyAwaitingResultEntryAsync(DateTimeOffset startedOnOrBeforeUtc);
 
+    /// <summary>
+    /// Mecze z wątkiem, bez ujawnionych typów, nieodwołane — do okresowej aktualizacji karty (przycisk „Ujawnij typy” po starcie meczu).
+    /// Filtrowanie „start już minął” w pamięci (SQLite/DateTimeOffset).
+    /// </summary>
+    Task<IEnumerable<Match>> GetMatchesNeedingRevealCardRefreshAsync(DateTimeOffset nowUtc, TimeSpan maxAgeSinceStart);
+
+    Task<Match?> GetByThreadIdAsync(ulong threadId);
+
     Task<IEnumerable<Match>> GetAllAsync(); // ← For demo data cleanup
     Task<Match> AddAsync(Match match);
     Task UpdateAsync(Match match);

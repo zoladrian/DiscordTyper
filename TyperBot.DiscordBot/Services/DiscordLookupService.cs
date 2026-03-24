@@ -174,6 +174,32 @@ public class DiscordLookupService
     }
 
     /// <summary>
+    /// Wątek meczu: cache klienta, potem wątki pod kanałem typowanie, potem próba REST (np. wątek zarchiwizowany).
+    /// </summary>
+    public async Task<SocketThreadChannel?> TryGetMatchThreadAsync(ulong threadId)
+    {
+        if (_client.GetChannel(threadId) is SocketThreadChannel direct)
+            return direct;
+
+        var predictions = await GetPredictionsChannelAsync();
+        var fromParent = predictions?.Threads.FirstOrDefault(t => t.Id == threadId);
+        if (fromParent != null)
+            return fromParent;
+
+        try
+        {
+            await _client.Rest.GetChannelAsync(threadId);
+            return _client.GetChannel(threadId) as SocketThreadChannel;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "TryGetMatchThreadAsync: REST GetChannel failed for thread {ThreadId}", threadId);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Finds the match card message in a thread. The card is the first bot message with an embed.
     /// GetMessagesAsync(limit) returns most-recent-first, so we need to search further back.
     /// </summary>

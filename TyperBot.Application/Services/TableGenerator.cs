@@ -326,8 +326,9 @@ public class TableGenerator
                 continue;
             }
 
-            // Remis z osobą wyżej: puste NR (jak na klasycznych tabelach)
-            rows[i].DisplayRank = rows[i].TotalPoints == rows[i - 1].TotalPoints ? null : i + 1;
+            // Remis z osobą wyżej (te same punkty i ta sama hierarchia kubełków): puste NR
+            bool tiedWithAbove = StandingsTieBreak.ComparePlayerScores(rows[i - 1].Scored, rows[i].Scored) == 0;
+            rows[i].DisplayRank = tiedWithAbove ? null : i + 1;
 
             int gapAbove = rows[i - 1].TotalPoints - rows[i].TotalPoints;
             rows[i].GapToRowAbove = gapAbove == 0 ? "0" : gapAbove.ToString();
@@ -402,14 +403,13 @@ public class TableGenerator
         {
             PlayerName = playerName,
             TotalPoints = scored.Sum(s => s.Points),
-            TrafioneWyniki = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50)
+            TrafioneWyniki = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
+            Scored = scored
         };
 
     private static int CompareStandingsRows(StandingsRow a, StandingsRow b)
     {
-        int c = b.TotalPoints.CompareTo(a.TotalPoints);
-        if (c != 0) return c;
-        c = b.TrafioneWyniki.CompareTo(a.TrafioneWyniki);
+        int c = StandingsTieBreak.ComparePlayerScores(a.Scored, b.Scored);
         return c != 0 ? c : string.Compare(a.PlayerName, b.PlayerName, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -418,6 +418,7 @@ public class TableGenerator
         public string PlayerName { get; set; } = string.Empty;
         public int TotalPoints { get; set; }
         public int TrafioneWyniki { get; set; }
+        public List<PlayerScore> Scored { get; set; } = new();
         public int? DisplayRank { get; set; }
         public string? GapToRowAbove { get; set; }
         public string? GapToLeader { get; set; }

@@ -59,7 +59,10 @@ public class EnhancedTableGenerator
         // Calculate season scores
         var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int TrafioneWyniki)>();
 
-        foreach (var player in players)
+        var orderedPlayers = players.ToList();
+        orderedPlayers.Sort((a, b) => StandingsTieBreak.ComparePlayersByPlayerScores(a, b, seasonMatchIds));
+
+        foreach (var player in orderedPlayers)
         {
             var q = player.PlayerScores.Where(s => s.Prediction != null && s.Prediction.IsValid);
             if (filterBySeason)
@@ -74,7 +77,7 @@ public class EnhancedTableGenerator
             allScores.Add((player.DiscordUsername, totalPoints, predCount, trafioneWyniki));
         }
 
-        var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
+        var sortedScores = allScores;
 
         // Build table using code block for monospace alignment
         var table = "```\n";

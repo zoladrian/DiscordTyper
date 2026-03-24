@@ -16,18 +16,21 @@ public class AdminPredictionModule : BaseAdminModule
     private readonly IMatchRepository _matchRepository;
     private readonly IPredictionRepository _predictionRepository;
     private readonly DiscordLookupService _lookupService;
+    private readonly MatchPredictionRevealService _revealService;
 
     public AdminPredictionModule(
         ILogger<AdminPredictionModule> logger,
         IOptions<DiscordSettings> settings,
         IMatchRepository matchRepository,
         IPredictionRepository predictionRepository,
-        DiscordLookupService lookupService) : base(settings.Value)
+        DiscordLookupService lookupService,
+        MatchPredictionRevealService revealService) : base(settings.Value)
     {
         _logger = logger;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
         _lookupService = lookupService;
+        _revealService = revealService;
     }
 
     [ComponentInteraction("admin_mention_untyped_*")]
@@ -146,91 +149,44 @@ public class AdminPredictionModule : BaseAdminModule
 
         try
         {
-            var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
-            if (match == null)
-            {
-                await FollowupAsync("❌ Mecz nie znaleziony.", ephemeral: true);
-                return;
-            }
-
-            if (match.PredictionsRevealed)
-            {
-                await FollowupAsync("✅ Typy dla tego meczu zostały już ujawnione.", ephemeral: true);
-                return;
-            }
-
-            // Get valid predictions for this match
-            var predictions = await _predictionRepository.GetByMatchIdAsync(match.Id);
-            var predictionsList = predictions.Where(p => p.IsValid).ToList();
-
-            // Build predictions table
-            var tableLines = new List<string>();
-            tableLines.Add("```");
-            tableLines.Add("┌─────────────────────┬───────────┐");
-            tableLines.Add("│ Gracz               │ Typ       │");
-            tableLines.Add("├─────────────────────┼───────────┤");
-
-            if (predictionsList.Any())
-            {
-                foreach (var pred in predictionsList.OrderBy(p => p.Player.DiscordUsername))
-                {
-                    var playerName = pred.Player.DiscordUsername;
-                    if (playerName.Length > 19)
-                    {
-                        playerName = playerName.Substring(0, 16) + "...";
-                    }
-                    tableLines.Add($"│ {playerName,-19} │ {pred.HomeTip,2}:{pred.AwayTip,-2} │");
-                }
-            }
-            else
-            {
-                tableLines.Add("│ Brak typów          │ -- : --   │");
-            }
-            tableLines.Add("└─────────────────────┴───────────┘");
-            tableLines.Add("```");
-
-            var tableText = string.Join("\n", tableLines);
-
-            // Get match thread
-            var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-            if (predictionsChannel == null)
-            {
-                await FollowupAsync("❌ Kanał typowań nie znaleziony.", ephemeral: true);
-                return;
-            }
-
-            SocketThreadChannel? thread = null;
-            if (match.ThreadId.HasValue)
-            {
-                thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
-            }
-
-            if (thread == null)
-            {
-                await FollowupAsync("❌ Wątek meczu nie został znaleziony.", ephemeral: true);
-                return;
-            }
-
-            // Send table message
-            var embed = new EmbedBuilder()
-                .WithTitle(DiscordApiLimits.Truncate($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
-                .WithDescription(DiscordApiLimits.Truncate(tableText, DiscordApiLimits.EmbedDescription))
-                .WithColor(Color.Gold)
-                .WithCurrentTimestamp()
-                .Build();
-
-            var revealMessage = await thread.SendMessageAsync(embed: embed);
-            await revealMessage.PinAsync();
-
-            // Mark as revealed
-            match.PredictionsRevealed = true;
-            await _matchRepository.UpdateAsync(match);
-
-            await FollowupAsync("✅ Typy zostały ujawnione i przypięte w wątku meczu.", ephemeral: true);
+            var (_, message) = await _revealService.RevealForMatchIdAsync(matchId, DateTimeOffset.UtcNow);
+            await FollowupAsync(message, ephemeral: true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error revealing predictions for match {MatchId}", matchId);
+            await FollowupAsync("❌ Wystąpił błąd podczas ujawniania typów.", ephemeral: true);
+        }
+    }
+
+    [SlashCommand("admin-ujawnij-typy", "Ujawnia typy dla meczu tego wątku (jak przycisk na karcie). Użyj wyłącznie w wątku meczu z kanału typowanie.")]
+    public async Task SlashRevealPredictionsInThreadAsync()
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user) || Context.Guild == null)
+        {
+            await RespondAsync("❌ Nie masz uprawnień administratora (rola admin lub uprawnienie Administrator).", ephemeral: true);
+            return;
+        }
+
+        if (Context.Channel is not SocketThreadChannel thread)
+        {
+            await RespondAsync(
+                "❌ **Nie ujawniam typów** — tej komendy możesz użyć tylko **w wątku meczu** (wejdź w wątek z kanału typowanie i wpisz komendę tam).",
+                ephemeral: true);
+            return;
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        try
+        {
+            var (_, message) = await _revealService.RevealForThreadIdAsync(thread.Id, DateTimeOffset.UtcNow);
+            await FollowupAsync(message, ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Slash admin-ujawnij-typy failed for thread {ThreadId}", thread.Id);
             await FollowupAsync("❌ Wystąpił błąd podczas ujawniania typów.", ephemeral: true);
         }
     }
