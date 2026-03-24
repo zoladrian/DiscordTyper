@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Domain.Enums;
@@ -20,6 +21,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
     private readonly IPredictionRepository _predictionRepository;
     private readonly RoundManager _roundManager;
     private readonly TableGenerator _tableGenerator;
+    private readonly StandingsAnalyticsGenerator _analyticsGenerator;
     private readonly ISeasonRepository _seasonRepository;
     private readonly IRoundRepository _roundRepository;
 
@@ -31,6 +33,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         IPredictionRepository predictionRepository,
         RoundManager roundManager,
         TableGenerator tableGenerator,
+        StandingsAnalyticsGenerator analyticsGenerator,
         ISeasonRepository seasonRepository,
         IRoundRepository roundRepository)
     {
@@ -41,6 +44,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         _predictionRepository = predictionRepository;
         _roundManager = roundManager;
         _tableGenerator = tableGenerator;
+        _analyticsGenerator = analyticsGenerator;
         _seasonRepository = seasonRepository;
         _roundRepository = roundRepository;
     }
@@ -293,6 +297,161 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             _logger.LogError(ex, "Failed to generate season table");
             await FollowupAsync("❌ Nie udało się wygenerować tabeli sezonu.", ephemeral: true);
         }
+    }
+
+    [SlashCommand("pkt-meczu", "PNG: punkty w meczu i różnica względem poprzedniego zakończonego meczu")]
+    public async Task PlayerMatchPointsDeltaAsync(
+        [Summary(description: "Mecz z listy")]
+        [Autocomplete(typeof(AdminMatchChoiceAutocompleteHandler))]
+        string mecz)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!int.TryParse(mecz, out var matchId))
+        {
+            await FollowupAsync("Wybierz mecz z autouzupełniania.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: true);
+        if (match?.Round == null)
+        {
+            await FollowupAsync("Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var active = await _seasonRepository.GetActiveSeasonAsync();
+        if (active == null || active.Id != match.Round.SeasonId)
+        {
+            await FollowupAsync("Mecz musi być z aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        if (!StandingsAnalyticsGenerator.IsFinishedWithScore(match))
+        {
+            await FollowupAsync("Dostępne tylko dla meczów zakończonych z wynikiem.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(active.Id);
+        if (seasonFull == null)
+        {
+            await FollowupAsync("Nie udało się wczytać sezonu.", ephemeral: true);
+            return;
+        }
+
+        var ordered = StandingsAnalyticsGenerator.OrderFinishedMatches(seasonFull);
+        var prev = StandingsAnalyticsGenerator.GetPreviousFinishedMatch(ordered, match);
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var rows = StandingsAnalyticsGenerator.BuildMatchDeltaRows(match, prev, players);
+        var title = $"{match.HomeTeam} vs {match.AwayTeam}";
+        var bytes = _analyticsGenerator.GenerateMatchDeltaTablePng(seasonFull.Name, title, rows,
+            $"Poprzedni mecz: {(prev == null ? "brak" : $"{prev.HomeTeam} vs {prev.AwayTeam}")}");
+        using var stream = new MemoryStream(bytes, writable: false);
+        await FollowupWithFileAsync(stream, $"pkt_meczu_{matchId}.png", text: $"Punkty w meczu — {title}", ephemeral: true);
+    }
+
+    [SlashCommand("pkt-kolejki", "PNG: punkty w kolejce i różnica względem poprzedniej kolejki")]
+    public async Task PlayerRoundPointsDeltaAsync([Summary(description: "Numer kolejki 1–18")] int numer)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!RoundHelper.IsValidRoundNumber(numer))
+        {
+            await FollowupAsync($"Numer kolejki 1–18 (podano: {numer}).", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var round = await _roundRepository.GetByNumberAsync(season.Id, numer);
+        if (round == null)
+        {
+            await FollowupAsync($"Brak kolejki {numer} w aktywnym sezonie.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var prevRound = StandingsAnalyticsGenerator.GetPreviousRound(seasonFull, round);
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var rows = StandingsAnalyticsGenerator.BuildRoundDeltaRows(round, prevRound, players);
+        var roundLabel = RoundHelper.GetRoundLabel(numer);
+        var bytes = _analyticsGenerator.GenerateRoundDeltaTablePng(seasonFull.Name, roundLabel, rows,
+            prevRound == null ? "Brak poprzedniej kolejki." : $"vs {RoundHelper.GetRoundLabel(prevRound.Number)}.");
+        using var stream = new MemoryStream(bytes, writable: false);
+        await FollowupWithFileAsync(stream, $"pkt_kolejki_{numer}.png", text: $"Punkty w kolejce — {roundLabel}", ephemeral: true);
+    }
+
+    [SlashCommand("wykres-punktow", "PNG: skumulowane punkty — tylko cały aktywny sezon (linie wg graczy, kolejki)")]
+    public async Task PlayerSeasonChartAsync()
+    {
+        await DeferAsync(ephemeral: true);
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var bytes = _analyticsGenerator.GenerateSeasonCumulativeChartPng(seasonFull, players);
+        using var stream = new MemoryStream(bytes, writable: false);
+        await FollowupWithFileAsync(stream, $"wykres_punktow_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png",
+            text: $"Wykres punktów (cały sezon) — {seasonFull.Name}", ephemeral: true);
+    }
+
+    [SlashCommand("rozklad-punktow", "PNG: ile razy dostałeś daną liczbę punktów w meczu — cały aktywny sezon (wszyscy gracze)")]
+    public async Task PlayerSeasonPointsHistogramAsync()
+    {
+        await DeferAsync(ephemeral: true);
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var bytes = _analyticsGenerator.GenerateSeasonPointsHistogramPng(seasonFull, players);
+        using var stream = new MemoryStream(bytes, writable: false);
+        await FollowupWithFileAsync(stream, $"rozklad_punktow_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png",
+            text: $"Rozkład punktów (cały sezon) — {seasonFull.Name}", ephemeral: true);
+    }
+
+    [SlashCommand("kolowy-rozklad-punktow",
+        "PNG: Twój wykres kołowy — ile razy która liczba punktów w meczu (tylko Ty, cały aktywny sezon)")]
+    public async Task PlayerSeasonPointsPieAsync()
+    {
+        await DeferAsync(ephemeral: true);
+
+        var player = await _playerRepository.GetByDiscordUserIdAsync(Context.User.Id);
+        if (player == null)
+        {
+            await FollowupAsync("❌ Nie masz jeszcze konta w typerze.", ephemeral: true);
+            return;
+        }
+
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await FollowupAsync("Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var bytes = _analyticsGenerator.GeneratePlayerSeasonPointsPiePng(seasonFull, player);
+        using var stream = new MemoryStream(bytes, writable: false);
+        await FollowupWithFileAsync(stream, $"kolowy_rozklad_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png",
+            text: $"Twój rozkład punktów (kołowo, cały sezon) — {seasonFull.Name}", ephemeral: true);
     }
 }
 

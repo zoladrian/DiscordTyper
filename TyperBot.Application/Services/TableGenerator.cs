@@ -5,11 +5,11 @@ using TyperBot.Domain.Enums;
 namespace TyperBot.Application.Services;
 
 /// <summary>
-/// PNG standings table styled like classic results sheets: WYNIKI, strata vs row above / vs leader, poprawne typy.
+/// PNG tabeli: WYNIKI, strata, dokładny wynik (buckety 35/50), trafiony zwycięzca (dowolne dodatnie punkty).
 /// </summary>
 public class TableGenerator
 {
-    private const int TableWidth = 920;
+    private const int TableWidth = 880;
     private const int RowHeight = 40;
     private const int TitleBarHeight = 56;
     private const int HeaderHeight = 52;
@@ -46,7 +46,7 @@ public class TableGenerator
     {
         var rows = CalculateSeasonRows(players, season);
         return RenderPng(
-            footer: $"Sezon: {season.Name}  •  Pkt i poprawne typy = mecze z wynikiem  •  {players.Count(p => p.IsActive)} graczy",
+            footer: $"Sezon: {season.Name}  •  Dokładny wynik = idealny typ (35/50 pkt)  •  Trafiony zwycięzca = dowolne pkt > 0  •  {players.Count(p => p.IsActive)} graczy",
             rows);
     }
 
@@ -105,13 +105,14 @@ public class TableGenerator
         canvas.DrawText(title, (TableWidth - w) / 2f, baseline, titleFont, titlePaint);
     }
 
-    /// <summary>Column boundaries: NR | UCZESTNIK | PKT | MIEJSCE WYŻEJ | DO LIDERA | POPRAWNE TYPY</summary>
+    /// <summary>Column boundaries: NR | UCZESTNIK | PKT | MIEJSCE WYŻEJ | DO LIDERA | DOKŁADNY WYNIK | TRAF. ZWYCIĘZCA</summary>
     private static float XNr => 0f;
-    private static float XName => 52f;
-    private static float XPkt => 380f;
-    private static float XMwyzej => 468f;
-    private static float XDolidera => 628f;
-    private static float XPoprawne => 788f;
+    private static float XName => 46f;
+    private static float XPkt => 312f;
+    private static float XMwyzej => 372f;
+    private static float XDolidera => 438f;
+    private static float XDokladnie => 504f;
+    private static float XTrafZwyc => 584f;
     private static float XEnd => TableWidth;
 
     private static void DrawHeaderGrid(SKCanvas canvas, float yTop)
@@ -120,7 +121,7 @@ public class TableGenerator
         float h2 = h / 2f;
         float yMid = yTop + h2;
 
-        // Grey = NR + UCZESTNIK + PKT; green = strata + poprawne typy
+        // Grey = NR + UCZESTNIK + PKT; green = strata + kolumny statystyk typów
         using var grey = new SKPaint { Color = HeaderGrey, IsAntialias = true };
         using var green = new SKPaint { Color = HeaderGreen, IsAntialias = true };
         canvas.DrawRect(XNr, yTop, XMwyzej - XNr, h, grey);
@@ -134,12 +135,14 @@ public class TableGenerator
         DrawTextCenteredInRect(canvas, "NR", XNr, yTop, XName - XNr, h, fontSmall, paint);
         DrawTextCenteredInRect(canvas, "UCZESTNIK", XName, yTop, XPkt - XName, h, fontSmall, paint);
         DrawTextCenteredInRect(canvas, "PKT", XPkt, yTop, XMwyzej - XPkt, h, fontSmall, paint);
-        DrawTextCenteredInRect(canvas, "POPRAWNE TYPY", XPoprawne, yTop, XEnd - XPoprawne, h, fontSmall, paint);
 
-        // STRATA only above MIEJSCE WYŻEJ | DO LIDERA
-        DrawTextCenteredInRect(canvas, "STRATA", XMwyzej, yTop, XPoprawne - XMwyzej, h2, fontStrata, paint);
+        // STRATA only above MIEJSCE WYŻEJ | DO LIDERA (not above stat columns)
+        DrawTextCenteredInRect(canvas, "STRATA", XMwyzej, yTop, XDokladnie - XMwyzej, h2, fontStrata, paint);
         DrawTextCenteredInRect(canvas, "", XMwyzej, yMid, XDolidera - XMwyzej, h2, fontSmall, paint, twoLines: ("MIEJSCE", "WYŻEJ"));
-        DrawTextCenteredInRect(canvas, "", XDolidera, yMid, XPoprawne - XDolidera, h2, fontSmall, paint, twoLines: ("DO", "LIDERA"));
+        DrawTextCenteredInRect(canvas, "", XDolidera, yMid, XDokladnie - XDolidera, h2, fontSmall, paint, twoLines: ("DO", "LIDERA"));
+
+        DrawTextCenteredInRect(canvas, "", XDokladnie, yTop, XTrafZwyc - XDokladnie, h, fontSmall, paint, twoLines: ("DOKŁADNY", "WYNIK"));
+        DrawTextCenteredInRect(canvas, "", XTrafZwyc, yTop, XEnd - XTrafZwyc, h, fontSmall, paint, twoLines: ("TRAFIONY", "ZWYCIĘZCA"));
 
         DrawHeaderBorders(canvas, yTop, h, yMid);
     }
@@ -185,13 +188,14 @@ public class TableGenerator
         float yBot = yTop + h;
         canvas.DrawRect(0.5f, yTop + 0.5f, TableWidth - 1f, h - 1f, border);
 
-        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XPoprawne;
+        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XDokladnie, x6 = XTrafZwyc;
         canvas.DrawLine(x1, yTop, x1, yBot, border);
         canvas.DrawLine(x2, yTop, x2, yBot, border);
         canvas.DrawLine(x3, yTop, x3, yBot, border);
         // Split MIEJSCE WYŻEJ | DO LIDERA only in lower header row (STRATA spans both columns above)
         canvas.DrawLine(x4, yMid, x4, yBot, border);
         canvas.DrawLine(x5, yTop, x5, yBot, border);
+        canvas.DrawLine(x6, yTop, x6, yBot, border);
         canvas.DrawLine(x3, yMid, x5, yMid, border);
     }
 
@@ -208,12 +212,13 @@ public class TableGenerator
         float yBot = yTop + height;
         canvas.DrawRect(0.5f, yTop + 0.5f, TableWidth - 1f, height - 1f, border);
 
-        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XPoprawne;
+        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XDokladnie, x6 = XTrafZwyc;
         canvas.DrawLine(x1, yTop, x1, yBot, border);
         canvas.DrawLine(x2, yTop, x2, yBot, border);
         canvas.DrawLine(x3, yTop, x3, yBot, border);
         canvas.DrawLine(x4, yTop, x4, yBot, border);
         canvas.DrawLine(x5, yTop, x5, yBot, border);
+        canvas.DrawLine(x6, yTop, x6, yBot, border);
     }
 
     private static void DrawDataRow(SKCanvas canvas, float y, StandingsRow row, bool alternate)
@@ -254,11 +259,15 @@ public class TableGenerator
 
         string dl = row.GapToLeader ?? "";
         float dlw = font.MeasureText(dl);
-        canvas.DrawText(dl, XDolidera + (XPoprawne - XDolidera - dlw) / 2f, baseline, font, paint);
+        canvas.DrawText(dl, XDolidera + (XDokladnie - XDolidera - dlw) / 2f, baseline, font, paint);
 
-        string pop = row.PoprawneTypy.ToString();
-        float popw = font.MeasureText(pop);
-        canvas.DrawText(pop, XPoprawne + (XEnd - XPoprawne - popw) / 2f, baseline, font, paint);
+        string dok = row.DokladneWyniki.ToString();
+        float dokw = font.MeasureText(dok);
+        canvas.DrawText(dok, XDokladnie + (XTrafZwyc - XDokladnie - dokw) / 2f, baseline, font, paint);
+
+        string tz = row.TrafieniZwyciezcy.ToString();
+        float tzw = font.MeasureText(tz);
+        canvas.DrawText(tz, XTrafZwyc + (XEnd - XTrafZwyc - tzw) / 2f, baseline, font, paint);
     }
 
     private static void DrawNoDataRow(SKCanvas canvas, float y)
@@ -357,19 +366,10 @@ public class TableGenerator
                 .Where(p => p.IsValid && (!filterBySeason || seasonMatchIds.Contains(p.MatchId)))
                 .ToList();
             var scored = predsInSeason.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            list.Add(new StandingsRow
-            {
-                PlayerName = player.DiscordUsername,
-                TotalPoints = scored.Sum(s => s.Points),
-                PoprawneTypy = scored.Count(s => s.Points > 0)
-            });
+            list.Add(BuildRow(player.DiscordUsername, scored));
         }
 
-        list.Sort((a, b) =>
-        {
-            int c = b.TotalPoints.CompareTo(a.TotalPoints);
-            return c != 0 ? c : b.PoprawneTypy.CompareTo(a.PoprawneTypy);
-        });
+        list.Sort(CompareStandingsRows);
         return list;
     }
 
@@ -384,27 +384,36 @@ public class TableGenerator
                 .Where(p => roundMatchIds.Contains(p.MatchId) && p.IsValid)
                 .ToList();
             var scored = predsInRound.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            list.Add(new StandingsRow
-            {
-                PlayerName = player.DiscordUsername,
-                TotalPoints = scored.Sum(s => s.Points),
-                PoprawneTypy = scored.Count(s => s.Points > 0)
-            });
+            list.Add(BuildRow(player.DiscordUsername, scored));
         }
 
-        list.Sort((a, b) =>
-        {
-            int c = b.TotalPoints.CompareTo(a.TotalPoints);
-            return c != 0 ? c : b.PoprawneTypy.CompareTo(a.PoprawneTypy);
-        });
+        list.Sort(CompareStandingsRows);
         return list;
+    }
+
+    private static StandingsRow BuildRow(string playerName, List<PlayerScore> scored) =>
+        new()
+        {
+            PlayerName = playerName,
+            TotalPoints = scored.Sum(s => s.Points),
+            DokladneWyniki = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
+            TrafieniZwyciezcy = scored.Count(s => s.Points > 0)
+        };
+
+    private static int CompareStandingsRows(StandingsRow a, StandingsRow b)
+    {
+        int c = b.TotalPoints.CompareTo(a.TotalPoints);
+        if (c != 0) return c;
+        c = b.DokladneWyniki.CompareTo(a.DokladneWyniki);
+        return c != 0 ? c : b.TrafieniZwyciezcy.CompareTo(a.TrafieniZwyciezcy);
     }
 
     private sealed class StandingsRow
     {
         public string PlayerName { get; set; } = string.Empty;
         public int TotalPoints { get; set; }
-        public int PoprawneTypy { get; set; }
+        public int DokladneWyniki { get; set; }
+        public int TrafieniZwyciezcy { get; set; }
         public int? DisplayRank { get; set; }
         public string? GapToRowAbove { get; set; }
         public string? GapToLeader { get; set; }
