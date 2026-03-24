@@ -319,10 +319,14 @@ public class DiscordBotService : IHostedService
         {
             foreach (var component in modalForComponents.Data.Components)
             {
+                // Wartości typu (modal gracza) nie trafiają do logów — tylko customId.
+                var isPredictionTipField = string.Equals(component.CustomId, "home_points", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(component.CustomId, "away_points", StringComparison.OrdinalIgnoreCase);
+                var valueForLog = isPredictionTipField ? "[ukryte]" : TruncateForLog(component.Value, 200);
                 _logger.LogDebug(
                     "Modal field — CustomId: '{CustomId}', Value: '{Value}'",
                     component.CustomId,
-                    TruncateForLog(component.Value, 200));
+                    valueForLog);
             }
         }
 

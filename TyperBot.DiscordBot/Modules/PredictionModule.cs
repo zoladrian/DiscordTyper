@@ -47,6 +47,21 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         return user.Roles.Any(r => r.Name == _settings.PlayerRoleName);
     }
 
+    /// <summary>Krótki kod do logów — bez wartości typu (suma/liczby z modala).</summary>
+    private static string ValidationRejectionCodeForLog(string? errorMessage)
+    {
+        if (string.IsNullOrEmpty(errorMessage)) return "unknown";
+        if (errorMessage.Contains("Suma punktów", StringComparison.Ordinal)) return "sum_not_90";
+        if (errorMessage.Contains("większe lub równe 0", StringComparison.Ordinal)) return "scores_non_negative";
+        if (errorMessage.Contains("nie znaleziony", StringComparison.Ordinal)) return "match_not_found";
+        if (errorMessage.Contains("odwołany", StringComparison.Ordinal)) return "match_cancelled";
+        if (errorMessage.Contains("zakończył", StringComparison.Ordinal)) return "match_finished";
+        if (errorMessage.Contains("w trakcie rozgrywania", StringComparison.Ordinal)) return "match_in_progress";
+        if (errorMessage.Contains("pierwotną godziną", StringComparison.Ordinal)) return "typing_closed_postponed";
+        if (errorMessage.Contains("Czas na typowanie minął", StringComparison.Ordinal)) return "typing_closed_deadline";
+        return "other";
+    }
+
     private async Task<Domain.Entities.Player?> EnsurePlayerExistsAsync(ulong discordUserId, string discordUsername)
     {
         var player = await _playerRepository.GetByDiscordUserIdAsync(discordUserId);
@@ -147,11 +162,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     }
 
     /// <summary>Posts the public "invalid input" thread message while the interaction scope is still active.</summary>
-    private async Task TryPostInvalidPredictionShameAsync(
-        int matchId,
-        SocketGuildUser user,
-        string homeRaw,
-        string awayRaw)
+    private async Task TryPostInvalidPredictionShameAsync(int matchId, SocketGuildUser user)
     {
         try
         {
@@ -175,8 +186,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             {
                 await thread.SendMessageAsync($"{user.Username} próbował zatypować jak skończony imbecyl");
                 _logger.LogInformation(
-                    "Public shaming - invalid characters - User: {Username} (ID: {UserId}), Match ID: {MatchId}, Prediction: {Home}:{Away}",
-                    user.Username, user.Id, matchId, homeRaw, awayRaw);
+                    "Typ odrzucony — nieprawidłowy format liczb (modal). User: {Username} (ID: {UserId}), MatchId: {MatchId}",
+                    user.Username, user.Id, matchId);
             }
         }
         catch (Exception ex)
@@ -297,7 +308,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         {
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
             // Must await: interaction scope (and DbContext) ends when handler returns — no fire-and-forget Task.Run.
-            await TryPostInvalidPredictionShameAsync(matchId, user!, modal.HomePoints, modal.AwayPoints);
+            await TryPostInvalidPredictionShameAsync(matchId, user!);
             return;
         }
 
@@ -314,6 +325,9 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var (isValid, errorMessage) = await _predictionService.ValidatePrediction(user!.Id, matchId, homeTip, awayTip);
         if (!isValid)
         {
+            _logger.LogInformation(
+                "Typ odrzucony po walidacji — User: {DiscordUserId}, MatchId: {MatchId}, Powód: {ReasonCode}",
+                user!.Id, matchId, ValidationRejectionCodeForLog(errorMessage));
             await FollowupAsync($"❌ {errorMessage}", ephemeral: true);
             return;
         }
@@ -332,13 +346,15 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         
         if (prediction == null)
         {
+            _logger.LogWarning("Zapis typu nieudany (serwis zwrócił null) — User: {DiscordUserId}, MatchId: {MatchId}", user.Id, matchId);
             await FollowupAsync("❌ Nie udało się zapisać typu. Spróbuj ponownie.", ephemeral: true);
             return;
         }
 
         await FollowupAsync($"✅ Typ zapisany: **{homeTip}:{awayTip}**\nPowodzenia! 🍀", ephemeral: true);
-        _logger.LogInformation("Prediction saved: User {DiscordUserId}, Match {MatchId}, {Home}:{Away}", 
-            user.Id, matchId, homeTip, awayTip);
+        _logger.LogInformation(
+            "Typ zapisany poprawnie — User: {DiscordUserId}, MatchId: {MatchId}, Aktualizacja: {IsUpdate}",
+            user.Id, matchId, isUpdate);
 
         // Post normal message in match thread
         await PostPredictionMessageInThreadAsync(match2, user, isUpdate);
