@@ -5,7 +5,7 @@ using TyperBot.Domain.Enums;
 namespace TyperBot.Application.Services;
 
 /// <summary>
-/// PNG tabeli: WYNIKI, strata, dokładny wynik (buckety 35/50), trafiony zwycięzca (dowolne dodatnie punkty).
+/// PNG tabeli: WYNIKI, strata, trafiony wynik (dokładny typ: buckety 35/50).
 /// </summary>
 public class TableGenerator
 {
@@ -46,7 +46,7 @@ public class TableGenerator
     {
         var rows = CalculateSeasonRows(players, season);
         return RenderPng(
-            footer: $"Sezon: {season.Name}  •  Dokładny wynik = idealny typ (35/50 pkt)  •  Trafiony zwycięzca = dowolne pkt > 0  •  {players.Count(p => p.IsActive)} graczy",
+            footer: $"Sezon: {season.Name}  •  Trafiony wynik = liczba trafionych dokładnych wyników (35 lub 50 pkt)  •  {players.Count(p => p.IsActive)} graczy",
             rows);
     }
 
@@ -105,14 +105,13 @@ public class TableGenerator
         canvas.DrawText(title, (TableWidth - w) / 2f, baseline, titleFont, titlePaint);
     }
 
-    /// <summary>Column boundaries: NR | UCZESTNIK | PKT | MIEJSCE WYŻEJ | DO LIDERA | DOKŁADNY WYNIK | TRAF. ZWYCIĘZCA</summary>
+    /// <summary>Column boundaries: NR | UCZESTNIK | PKT | MIEJSCE WYŻEJ | DO LIDERA | TRAFIONY WYNIK</summary>
     private static float XNr => 0f;
     private static float XName => 46f;
     private static float XPkt => 312f;
     private static float XMwyzej => 372f;
     private static float XDolidera => 438f;
-    private static float XDokladnie => 504f;
-    private static float XTrafZwyc => 584f;
+    private static float XTrafWynik => 504f;
     private static float XEnd => TableWidth;
 
     private static void DrawHeaderGrid(SKCanvas canvas, float yTop)
@@ -136,13 +135,12 @@ public class TableGenerator
         DrawTextCenteredInRect(canvas, "UCZESTNIK", XName, yTop, XPkt - XName, h, fontSmall, paint);
         DrawTextCenteredInRect(canvas, "PKT", XPkt, yTop, XMwyzej - XPkt, h, fontSmall, paint);
 
-        // STRATA only above MIEJSCE WYŻEJ | DO LIDERA (not above stat columns)
-        DrawTextCenteredInRect(canvas, "STRATA", XMwyzej, yTop, XDokladnie - XMwyzej, h2, fontStrata, paint);
+        // STRATA only above MIEJSCE WYŻEJ | DO LIDERA (not above TRAFIONY WYNIK)
+        DrawTextCenteredInRect(canvas, "STRATA", XMwyzej, yTop, XTrafWynik - XMwyzej, h2, fontStrata, paint);
         DrawTextCenteredInRect(canvas, "", XMwyzej, yMid, XDolidera - XMwyzej, h2, fontSmall, paint, twoLines: ("MIEJSCE", "WYŻEJ"));
-        DrawTextCenteredInRect(canvas, "", XDolidera, yMid, XDokladnie - XDolidera, h2, fontSmall, paint, twoLines: ("DO", "LIDERA"));
+        DrawTextCenteredInRect(canvas, "", XDolidera, yMid, XTrafWynik - XDolidera, h2, fontSmall, paint, twoLines: ("DO", "LIDERA"));
 
-        DrawTextCenteredInRect(canvas, "", XDokladnie, yTop, XTrafZwyc - XDokladnie, h, fontSmall, paint, twoLines: ("DOKŁADNY", "WYNIK"));
-        DrawTextCenteredInRect(canvas, "", XTrafZwyc, yTop, XEnd - XTrafZwyc, h, fontSmall, paint, twoLines: ("TRAFIONY", "ZWYCIĘZCA"));
+        DrawTextCenteredInRect(canvas, "", XTrafWynik, yTop, XEnd - XTrafWynik, h, fontSmall, paint, twoLines: ("TRAFIONY", "WYNIK"));
 
         DrawHeaderBorders(canvas, yTop, h, yMid);
     }
@@ -188,14 +186,13 @@ public class TableGenerator
         float yBot = yTop + h;
         canvas.DrawRect(0.5f, yTop + 0.5f, TableWidth - 1f, h - 1f, border);
 
-        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XDokladnie, x6 = XTrafZwyc;
+        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XTrafWynik;
         canvas.DrawLine(x1, yTop, x1, yBot, border);
         canvas.DrawLine(x2, yTop, x2, yBot, border);
         canvas.DrawLine(x3, yTop, x3, yBot, border);
         // Split MIEJSCE WYŻEJ | DO LIDERA only in lower header row (STRATA spans both columns above)
         canvas.DrawLine(x4, yMid, x4, yBot, border);
         canvas.DrawLine(x5, yTop, x5, yBot, border);
-        canvas.DrawLine(x6, yTop, x6, yBot, border);
         canvas.DrawLine(x3, yMid, x5, yMid, border);
     }
 
@@ -212,13 +209,12 @@ public class TableGenerator
         float yBot = yTop + height;
         canvas.DrawRect(0.5f, yTop + 0.5f, TableWidth - 1f, height - 1f, border);
 
-        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XDokladnie, x6 = XTrafZwyc;
+        float x1 = XName, x2 = XPkt, x3 = XMwyzej, x4 = XDolidera, x5 = XTrafWynik;
         canvas.DrawLine(x1, yTop, x1, yBot, border);
         canvas.DrawLine(x2, yTop, x2, yBot, border);
         canvas.DrawLine(x3, yTop, x3, yBot, border);
         canvas.DrawLine(x4, yTop, x4, yBot, border);
         canvas.DrawLine(x5, yTop, x5, yBot, border);
-        canvas.DrawLine(x6, yTop, x6, yBot, border);
     }
 
     private static void DrawDataRow(SKCanvas canvas, float y, StandingsRow row, bool alternate)
@@ -259,15 +255,11 @@ public class TableGenerator
 
         string dl = row.GapToLeader ?? "";
         float dlw = font.MeasureText(dl);
-        canvas.DrawText(dl, XDolidera + (XDokladnie - XDolidera - dlw) / 2f, baseline, font, paint);
+        canvas.DrawText(dl, XDolidera + (XTrafWynik - XDolidera - dlw) / 2f, baseline, font, paint);
 
-        string dok = row.DokladneWyniki.ToString();
-        float dokw = font.MeasureText(dok);
-        canvas.DrawText(dok, XDokladnie + (XTrafZwyc - XDokladnie - dokw) / 2f, baseline, font, paint);
-
-        string tz = row.TrafieniZwyciezcy.ToString();
-        float tzw = font.MeasureText(tz);
-        canvas.DrawText(tz, XTrafZwyc + (XEnd - XTrafZwyc - tzw) / 2f, baseline, font, paint);
+        string tw = row.TrafioneWyniki.ToString();
+        float tww = font.MeasureText(tw);
+        canvas.DrawText(tw, XTrafWynik + (XEnd - XTrafWynik - tww) / 2f, baseline, font, paint);
     }
 
     private static void DrawNoDataRow(SKCanvas canvas, float y)
@@ -396,24 +388,22 @@ public class TableGenerator
         {
             PlayerName = playerName,
             TotalPoints = scored.Sum(s => s.Points),
-            DokladneWyniki = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50),
-            TrafieniZwyciezcy = scored.Count(s => s.Points > 0)
+            TrafioneWyniki = scored.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50)
         };
 
     private static int CompareStandingsRows(StandingsRow a, StandingsRow b)
     {
         int c = b.TotalPoints.CompareTo(a.TotalPoints);
         if (c != 0) return c;
-        c = b.DokladneWyniki.CompareTo(a.DokladneWyniki);
-        return c != 0 ? c : b.TrafieniZwyciezcy.CompareTo(a.TrafieniZwyciezcy);
+        c = b.TrafioneWyniki.CompareTo(a.TrafioneWyniki);
+        return c != 0 ? c : string.Compare(a.PlayerName, b.PlayerName, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StandingsRow
     {
         public string PlayerName { get; set; } = string.Empty;
         public int TotalPoints { get; set; }
-        public int DokladneWyniki { get; set; }
-        public int TrafieniZwyciezcy { get; set; }
+        public int TrafioneWyniki { get; set; }
         public int? DisplayRank { get; set; }
         public string? GapToRowAbove { get; set; }
         public string? GapToLeader { get; set; }

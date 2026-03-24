@@ -334,8 +334,7 @@ public sealed class StandingsAnalyticsGenerator
             return e0.ToArray();
         }
 
-        float denom = Math.Max(1, points.Count - 1);
-
+        int nMatches = points.Count;
         var cumByPlayer = new Dictionary<int, int[]>();
         var maxY = 1;
         foreach (var pl in active)
@@ -351,14 +350,16 @@ public sealed class StandingsAnalyticsGenerator
             cumByPlayer[pl.Id] = cum;
         }
 
+        float MatchX(int i) => MatchIndexToX(i, nMatches, plotL, plotW);
+
         // Pasma kolejek (na przemian)
         int segStart = 0;
         for (var j = 1; j <= points.Count; j++)
         {
             var endSeg = j == points.Count || points[j].RoundNumber != points[segStart].RoundNumber;
             if (!endSeg) continue;
-            float xa = plotL + segStart / denom * plotW;
-            float xb = plotL + (j - 1) / denom * plotW;
+            float xa = MatchX(segStart);
+            float xb = MatchX(j - 1);
             var bandColor = points[segStart].RoundNumber % 2 == 1 ? RoundBand : new SKColor(0xF2, 0xF2, 0xF6);
             using var bandPaint = new SKPaint { Color = bandColor, IsAntialias = true };
             c.DrawRect(xa, plotT, Math.Max(2f, xb - xa + 1f), plotH, bandPaint);
@@ -405,7 +406,7 @@ public sealed class StandingsAnalyticsGenerator
             int rn = points[i].RoundNumber;
             if (rn == prevRoundLabel) continue;
             prevRoundLabel = rn;
-            float x = plotL + i / denom * plotW;
+            float x = MatchX(i);
             string rl = RoundHelper.GetRoundLabel(rn);
             float rw = axisFont.MeasureText(rl);
             c.DrawText(rl, x - rw / 2f, plotB + 18f, axisFont, black);
@@ -416,6 +417,9 @@ public sealed class StandingsAnalyticsGenerator
         for (var pi = 0; pi < active.Count; pi++)
             colors.Add(HueColor(pi, active.Count));
 
+        float lxEnd = MatchX(points.Count - 1);
+        float labelX = Math.Min(plotR + 6f, lxEnd + 6f);
+
         for (var pi = 0; pi < active.Count; pi++)
         {
             var pl = active[pi];
@@ -423,7 +427,7 @@ public sealed class StandingsAnalyticsGenerator
             using var path = new SKPath();
             for (var i = 0; i < points.Count; i++)
             {
-                float x = plotL + i / denom * plotW;
+                float x = MatchX(i);
                 float yNorm = cum[i] / (float)maxY;
                 float y = plotB - yNorm * plotH;
                 if (i == 0) path.MoveTo(x, y);
@@ -438,14 +442,40 @@ public sealed class StandingsAnalyticsGenerator
                 IsAntialias = true
             };
             c.DrawPath(path, stroke);
+        }
 
-            if (points.Count > 0)
+        // Etykiety nicków przy ostatnim punkcie — przy tym samym wyniku układane pionowo
+        var endNickRows = new List<(int PointsTotal, string Nick, SKColor Color)>();
+        for (var pi = 0; pi < active.Count; pi++)
+        {
+            var pl = active[pi];
+            if (!cumByPlayer.TryGetValue(pl.Id, out var cum)) continue;
+            string nick = Ellipsize(pl.DiscordUsername, legFont, 140f);
+            endNickRows.Add((cum[^1], nick, colors[pi]));
+        }
+
+        float lineStep = legFont.Size * 1.22f;
+        float minY = plotT + legFont.Size + 2f;
+        float maxYText = plotB - 4f;
+        foreach (var grp in endNickRows.GroupBy(r => r.PointsTotal).OrderBy(g => g.Key))
+        {
+            var ordered = grp.OrderBy(r => r.Nick, StringComparer.OrdinalIgnoreCase).ToList();
+            int n = ordered.Count;
+            float yNorm = grp.Key / (float)maxY;
+            float baseLine = plotB - yNorm * plotH + 4f;
+            float totalStack = (n - 1) * lineStep;
+            float startY = baseLine - totalStack / 2f;
+            if (startY < minY)
+                startY = minY;
+            if (n > 1 && startY + totalStack > maxYText)
+                startY = Math.Max(minY, maxYText - totalStack);
+            for (var i = 0; i < n; i++)
             {
-                float lx = plotL + (points.Count - 1) / denom * plotW;
-                float yNorm = cum[^1] / (float)maxY;
-                float ly = plotB - yNorm * plotH;
-                string nick = Ellipsize(pl.DiscordUsername, legFont, 140f);
-                c.DrawText(nick, Math.Min(plotR + 6f, lx + 6f), ly + 4f, legFont, black);
+                float yText = startY + i * lineStep;
+                yText = Math.Clamp(yText, minY, maxYText);
+                var row = ordered[i];
+                using var np = new SKPaint { Color = row.Color, IsAntialias = true };
+                c.DrawText(row.Nick, labelX, yText, legFont, np);
             }
         }
 
@@ -897,6 +927,14 @@ public sealed class StandingsAnalyticsGenerator
         double hue = (index * 360.0 / Math.Max(1, Math.Min(total, 24))) + (index * 47 % 17);
         hue %= 360;
         return SKColor.FromHsv((float)hue, 0.72f, 0.92f);
+    }
+
+    /// <summary>Oś X: przy jednym meczu punkt na środku wykresu; przy wielu — równomiernie od lewej do prawej.</summary>
+    private static float MatchIndexToX(int i, int matchCount, float plotL, float plotW)
+    {
+        if (matchCount <= 1)
+            return plotL + plotW / 2f;
+        return plotL + i / (float)(matchCount - 1) * plotW;
     }
 }
 

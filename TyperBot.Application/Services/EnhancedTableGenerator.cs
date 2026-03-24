@@ -57,7 +57,7 @@ public class EnhancedTableGenerator
         var filterBySeason = seasonMatchIds.Count > 0;
 
         // Calculate season scores
-        var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int ExactScores, int CorrectWinners)>();
+        var allScores = new List<(string PlayerName, int TotalPoints, int PredictionsCount, int TrafioneWyniki)>();
 
         foreach (var player in players)
         {
@@ -67,21 +67,19 @@ public class EnhancedTableGenerator
             var playerScores = q.ToList();
 
             var totalPoints = playerScores.Sum(s => s.Points);
-            // Exact scores = P35 (exact match) or P50 (perfect draw)
-            var exactScores = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
-            // Correct winners = all scores > 0
-            var correctWinners = playerScores.Count(s => s.Points > 0);
+            // Trafiony wynik = dokładny typ (P35 lub P50)
+            var trafioneWyniki = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
             var predCount = playerScores.Count;
 
-            allScores.Add((player.DiscordUsername, totalPoints, predCount, exactScores, correctWinners));
+            allScores.Add((player.DiscordUsername, totalPoints, predCount, trafioneWyniki));
         }
 
         var sortedScores = allScores.OrderByDescending(s => s.TotalPoints).ToList();
 
         // Build table using code block for monospace alignment
         var table = "```\n";
-        table += "Poz  Gracz                    Pkt   Typ   Cel   Wyg\n";
-        table += "═══════════════════════════════════════════════════\n";
+        table += "Poz  Gracz                    Pkt   Typ  Traf\n";
+        table += "══════════════════════════════════════════════════\n";
 
         for (int i = 0; i < sortedScores.Count; i++)
         {
@@ -101,7 +99,7 @@ public class EnhancedTableGenerator
                 _ => "  "
             };
 
-            table += $"{medal} {i + 1,2}  {playerName,-22}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.ExactScores,4}  {score.CorrectWinners,4}\n";
+            table += $"{medal} {i + 1,2}  {playerName,-22}  {score.TotalPoints,3}  {score.PredictionsCount,4}  {score.TrafioneWyniki,4}\n";
         }
 
         table += "```";

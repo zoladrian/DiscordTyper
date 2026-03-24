@@ -266,7 +266,7 @@ public class EnhancedTableGeneratorTests
         // Assert
         result.textTable.Should().NotBeNullOrEmpty();
         // Player should have 2 exact scores (P35 and P50)
-        // The exact count should be visible in the Cel column
+        // The exact-score count should be visible in the Traf column
         result.textTable.Should().Contain("Player1");
     }
 
