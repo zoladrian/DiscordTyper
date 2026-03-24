@@ -37,14 +37,14 @@ public sealed class StandingsAnalyticsGenerator
 
     private static readonly SKColor TitleBg = new(0x3D, 0x3D, 0x45);
     private static readonly SKColor HeaderBg = new(0x55, 0x55, 0x5E);
-    private static readonly SKColor RowA = new(0xEE, 0xEE, 0xF0);
-    private static readonly SKColor RowB = new(0xE0, 0xE0, 0xE6);
-    private static readonly SKColor Border = SKColors.Black;
-    private static readonly SKColor FooterBg = new(0x2A, 0x2A, 0x2E);
-    private static readonly SKColor FooterText = new(0xB0, 0xB8, 0xC0);
-    private static readonly SKColor ChartBg = new(0xFA, 0xFA, 0xFC);
-    private static readonly SKColor GridColor = new(0xCC, 0xCC, 0xD5);
-    private static readonly SKColor RoundBand = new(0xE8, 0xEC, 0xF8);
+    private static readonly SKColor RowA = new(0xF0, 0xF1, 0xF6);
+    private static readonly SKColor RowB = new(0xE2, 0xE4, 0xED);
+    private static readonly SKColor FooterBg = new(0x2A, 0x2C, 0x34);
+    private static readonly SKColor FooterText = new(0xC0, 0xC6, 0xD0);
+    private static readonly SKColor ChartBg = new(0xF6, 0xF7, 0xFB);
+    private static readonly SKColor GridColor = new(0xD8, 0xDC, 0xE6);
+    private static readonly SKColor RoundBand = new(0xE4, 0xE8, 0xF5);
+    private static readonly SKColor AxisLine = new(0x8E, 0x94, 0xA3);
 
     private static SKTypeface Body() =>
         SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
@@ -175,12 +175,22 @@ public sealed class StandingsAnalyticsGenerator
         int dataY = TitleBarHeight + HeaderHeight;
         int h = dataY + n * RowHeight + FooterHeight;
 
-        using var surface = SKSurface.Create(new SKImageInfo(DeltaTableWidth, h));
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(DeltaTableWidth + 2 * m);
+        int outH = (int)(h + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var c = surface.Canvas;
+        c.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(c, m, m, DeltaTableWidth, h, rad);
+        SkiaChrome.PushClippedCard(c, m, m, DeltaTableWidth, h, rad);
         c.Clear(RowA);
 
-        using (var p = new SKPaint { Color = TitleBg, IsAntialias = true })
-            c.DrawRect(0, 0, DeltaTableWidth, TitleBarHeight, p);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, 0, DeltaTableWidth, TitleBarHeight),
+            SkiaChrome.Lighten(TitleBg, 16),
+            SkiaChrome.Darken(TitleBg, 8));
         using var tfB = Bold();
         using var fTitle = new SKFont(tfB, 18f);
         using var fSub = new SKFont(Body(), 12f);
@@ -192,8 +202,10 @@ public sealed class StandingsAnalyticsGenerator
         float sw = fSub.MeasureText(sub);
         c.DrawText(sub, (DeltaTableWidth - sw) / 2f, TitleBarHeight - 8f, fSub, grey);
 
-        using (var p = new SKPaint { Color = HeaderBg, IsAntialias = true })
-            c.DrawRect(0, TitleBarHeight, DeltaTableWidth, HeaderHeight, p);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, TitleBarHeight, DeltaTableWidth, TitleBarHeight + HeaderHeight),
+            SkiaChrome.Lighten(HeaderBg, 12),
+            SkiaChrome.Darken(HeaderBg, 5));
 
         using var fH = new SKFont(tfB, 11f);
         using var blk = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -239,6 +251,8 @@ public sealed class StandingsAnalyticsGenerator
         DrawDeltaTableGrid(c, TitleBarHeight, HeaderHeight, dataY, rows.Count == 0 ? RowHeight : n * RowHeight, x1, x2, x3);
         DrawFooter(c, h, footer);
 
+        SkiaChrome.PopClippedCard(c, m, m, DeltaTableWidth, h, rad);
+
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
         return enc.ToArray();
@@ -248,7 +262,7 @@ public sealed class StandingsAnalyticsGenerator
     {
         float yTop = titleH;
         float yBot = dataY + dataH;
-        using var pen = new SKPaint { Color = Border, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = false };
+        using var pen = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
         c.DrawRect(0.5f, yTop + 0.5f, DeltaTableWidth - 1f, yBot - yTop - 0.5f, pen);
         c.DrawLine(x1, yTop, x1, yBot, pen);
         c.DrawLine(x2, yTop, x2, yBot, pen);
@@ -264,8 +278,10 @@ public sealed class StandingsAnalyticsGenerator
     private static void DrawFooter(SKCanvas c, int totalH, string text)
     {
         float y = totalH - FooterHeight;
-        using var bg = new SKPaint { Color = FooterBg, IsAntialias = true };
-        c.DrawRect(0, y, DeltaTableWidth, FooterHeight, bg);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, y, DeltaTableWidth, y + FooterHeight),
+            SkiaChrome.Lighten(FooterBg, 10),
+            FooterBg);
         using var f = new SKFont(Body(), 10f);
         using var p = new SKPaint { Color = FooterText, IsAntialias = true };
         string line = text;
@@ -305,8 +321,16 @@ public sealed class StandingsAnalyticsGenerator
         var points = OrderFinishedMatchesWithRoundNumbers(season);
         var active = players.Where(p => p.IsActive).OrderBy(p => p.DiscordUsername).ToList();
 
-        using var surface = SKSurface.Create(new SKImageInfo(ChartWidth, ChartHeight));
+        float cm = SkiaChrome.CardMargin;
+        float cr = SkiaChrome.CardRadius;
+        int outW = (int)(ChartWidth + 2 * cm);
+        int outH = (int)(ChartHeight + 2 * cm);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var c = surface.Canvas;
+        c.Clear(SkiaChrome.ChartOuterFill);
+        SkiaChrome.DrawCardDropShadow(c, cm, cm, ChartWidth, ChartHeight, cr);
+        SkiaChrome.PushClippedCard(c, cm, cm, ChartWidth, ChartHeight, cr);
         c.Clear(ChartBg);
 
         float plotL = ChartMarginLeft;
@@ -329,6 +353,7 @@ public sealed class StandingsAnalyticsGenerator
             const string empty = "Brak zakończonych meczów z wynikiem — wykres niedostępny.";
             float ew = axisFont.MeasureText(empty);
             c.DrawText(empty, (ChartWidth - ew) / 2f, ChartHeight / 2f, axisFont, black);
+            SkiaChrome.PopClippedCard(c, cm, cm, ChartWidth, ChartHeight, cr);
             using var img0 = surface.Snapshot();
             using var e0 = img0.Encode(SKEncodedImageFormat.Png, 100);
             return e0.ToArray();
@@ -352,6 +377,14 @@ public sealed class StandingsAnalyticsGenerator
 
         float MatchX(int i) => MatchIndexToX(i, nMatches, plotL, plotW);
 
+        using (var panelFill = new SKPaint { Color = SkiaChrome.ChartPlotPanel, IsAntialias = true })
+        using (var panelEdge = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, IsAntialias = true })
+        {
+            var panelR = new SKRoundRect(new SKRect(plotL - 8f, plotT - 6f, plotR + 8f, plotB + 6f), 10f, 10f);
+            c.DrawRoundRect(panelR, panelFill);
+            c.DrawRoundRect(panelR, panelEdge);
+        }
+
         // Pasma kolejek (na przemian)
         int segStart = 0;
         for (var j = 1; j <= points.Count; j++)
@@ -360,7 +393,7 @@ public sealed class StandingsAnalyticsGenerator
             if (!endSeg) continue;
             float xa = MatchX(segStart);
             float xb = MatchX(j - 1);
-            var bandColor = points[segStart].RoundNumber % 2 == 1 ? RoundBand : new SKColor(0xF2, 0xF2, 0xF6);
+            var bandColor = points[segStart].RoundNumber % 2 == 1 ? RoundBand : new SKColor(0xEE, 0xF0, 0xF7);
             using var bandPaint = new SKPaint { Color = bandColor, IsAntialias = true };
             c.DrawRect(xa, plotT, Math.Max(2f, xb - xa + 1f), plotH, bandPaint);
             segStart = j;
@@ -375,7 +408,7 @@ public sealed class StandingsAnalyticsGenerator
             }
         }
 
-        using (var axis = new SKPaint { Color = Border, StrokeWidth = 1.25f, Style = SKPaintStyle.Stroke, IsAntialias = true })
+        using (var axis = new SKPaint { Color = AxisLine, StrokeWidth = 1.25f, Style = SKPaintStyle.Stroke, IsAntialias = true })
         {
             c.DrawLine(plotL, plotT, plotL, plotB, axis);
             c.DrawLine(plotL, plotB, plotR, plotB, axis);
@@ -488,7 +521,7 @@ public sealed class StandingsAnalyticsGenerator
         for (var pi = 0; pi < active.Count; pi++)
         {
             using var sq = new SKPaint { Color = colors[pi], IsAntialias = true };
-            c.DrawRect(legX, legY - 8f, 12f, 8f, sq);
+            c.DrawRoundRect(new SKRect(legX, legY - 8f, legX + 12f, legY), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
             string nm = Ellipsize(active[pi].DiscordUsername, legFont, ChartMarginRight - 36f);
             c.DrawText(nm, legX + 18f, legY, legFont, black);
             legY += 14f;
@@ -500,6 +533,8 @@ public sealed class StandingsAnalyticsGenerator
         using var fp = new SKPaint { Color = FooterText, IsAntialias = true };
         float fw = ff.MeasureText(foot);
         c.DrawText(foot, (ChartWidth - fw) / 2f, ChartHeight - 14f, ff, fp);
+
+        SkiaChrome.PopClippedCard(c, cm, cm, ChartWidth, ChartHeight, cr);
 
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
@@ -673,12 +708,22 @@ public sealed class StandingsAnalyticsGenerator
         int dataY = TitleBarHeight + HeaderHeight;
         int h = dataY + n * RowHeight + FooterHeight;
 
-        using var surface = SKSurface.Create(new SKImageInfo(tableW, h));
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(tableW + 2 * m);
+        int outH = (int)(h + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var c = surface.Canvas;
+        c.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(c, m, m, tableW, h, rad);
+        SkiaChrome.PushClippedCard(c, m, m, tableW, h, rad);
         c.Clear(RowA);
 
-        using (var p = new SKPaint { Color = TitleBg, IsAntialias = true })
-            c.DrawRect(0, 0, tableW, TitleBarHeight, p);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, 0, tableW, TitleBarHeight),
+            SkiaChrome.Lighten(TitleBg, 16),
+            SkiaChrome.Darken(TitleBg, 8));
         using var fTitle = new SKFont(Bold(), 17f);
         using var fSub = new SKFont(Body(), 11f);
         using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -690,12 +735,14 @@ public sealed class StandingsAnalyticsGenerator
         float sw = fSub.MeasureText(sub);
         c.DrawText(sub, (tableW - sw) / 2f, TitleBarHeight - 6f, fSub, grey);
 
-        using (var hp = new SKPaint { Color = HeaderBg, IsAntialias = true })
-            c.DrawRect(0, TitleBarHeight, tableW, HeaderHeight, hp);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, TitleBarHeight, tableW, TitleBarHeight + HeaderHeight),
+            SkiaChrome.Lighten(HeaderBg, 12),
+            SkiaChrome.Darken(HeaderBg, 5));
 
         using var fH = new SKFont(Bold(), 9f);
         using var fHdr = new SKPaint { Color = SKColors.White, IsAntialias = true };
-        using var pen = new SKPaint { Color = Border, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = false };
+        using var pen = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
 
         float xName = 0f;
         float x0 = HistogramNameCol;
@@ -752,6 +799,8 @@ public sealed class StandingsAnalyticsGenerator
 
         DrawHistogramFooter(c, tableW, h, footer);
 
+        SkiaChrome.PopClippedCard(c, m, m, tableW, h, rad);
+
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
         return enc.ToArray();
@@ -760,8 +809,10 @@ public sealed class StandingsAnalyticsGenerator
     private static void DrawHistogramFooter(SKCanvas c, int tableW, int totalH, string text)
     {
         float y = totalH - FooterHeight;
-        using var bg = new SKPaint { Color = FooterBg, IsAntialias = true };
-        c.DrawRect(0, y, tableW, FooterHeight, bg);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, y, tableW, y + FooterHeight),
+            SkiaChrome.Lighten(FooterBg, 10),
+            FooterBg);
         using var f = new SKFont(Body(), 9f);
         using var p = new SKPaint { Color = FooterText, IsAntialias = true };
         string line = text;
@@ -774,13 +825,23 @@ public sealed class StandingsAnalyticsGenerator
 
     private byte[] RenderPlayerPointsPieMessage(string seasonName, string playerName, string message)
     {
-        int h = TitleBarHeight + 120 + FooterHeight;
-        using var surface = SKSurface.Create(new SKImageInfo(PieChartWidth, h));
+        int innerH = TitleBarHeight + 120 + FooterHeight;
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(PieChartWidth + 2 * m);
+        int outH = (int)(innerH + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var c = surface.Canvas;
+        c.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(c, m, m, PieChartWidth, innerH, rad);
+        SkiaChrome.PushClippedCard(c, m, m, PieChartWidth, innerH, rad);
         c.Clear(ChartBg);
 
-        using (var p = new SKPaint { Color = TitleBg, IsAntialias = true })
-            c.DrawRect(0, 0, PieChartWidth, TitleBarHeight, p);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, 0, PieChartWidth, TitleBarHeight),
+            SkiaChrome.Lighten(TitleBg, 16),
+            SkiaChrome.Darken(TitleBg, 8));
         using var fTitle = new SKFont(Bold(), 16f);
         using var fSub = new SKFont(Body(), 11f);
         using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -792,12 +853,22 @@ public sealed class StandingsAnalyticsGenerator
         float sw = fSub.MeasureText(sub);
         c.DrawText(sub, (PieChartWidth - sw) / 2f, TitleBarHeight - 8f, fSub, grey);
 
+        using (var panel = new SKPaint { Color = SkiaChrome.ChartPlotPanel, IsAntialias = true })
+        using (var panelEdge = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, IsAntialias = true })
+        {
+            var pr = new SKRoundRect(new SKRect(12f, TitleBarHeight + 10f, PieChartWidth - 12f, innerH - FooterHeight - 10f), 10f, 10f);
+            c.DrawRoundRect(pr, panel);
+            c.DrawRoundRect(pr, panelEdge);
+        }
+
         using var fMsg = new SKFont(Body(), 13f);
         using var blk = new SKPaint { Color = new SKColor(0x28, 0x28, 0x32), IsAntialias = true };
         float mw = fMsg.MeasureText(message);
         c.DrawText(message, (PieChartWidth - mw) / 2f, TitleBarHeight + 70f, fMsg, blk);
 
-        DrawHistogramFooter(c, PieChartWidth, h, "Tylko Ty widzisz ten obrazek.");
+        DrawHistogramFooter(c, PieChartWidth, innerH, "Tylko Ty widzisz ten obrazek.");
+
+        SkiaChrome.PopClippedCard(c, m, m, PieChartWidth, innerH, rad);
 
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
@@ -811,12 +882,22 @@ public sealed class StandingsAnalyticsGenerator
         int totalPredictions,
         int finishedMatchesInSeason)
     {
-        using var surface = SKSurface.Create(new SKImageInfo(PieChartWidth, PieChartHeight));
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(PieChartWidth + 2 * m);
+        int outH = (int)(PieChartHeight + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var c = surface.Canvas;
+        c.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(c, m, m, PieChartWidth, PieChartHeight, rad);
+        SkiaChrome.PushClippedCard(c, m, m, PieChartWidth, PieChartHeight, rad);
         c.Clear(ChartBg);
 
-        using (var p = new SKPaint { Color = TitleBg, IsAntialias = true })
-            c.DrawRect(0, 0, PieChartWidth, TitleBarHeight, p);
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, 0, PieChartWidth, TitleBarHeight),
+            SkiaChrome.Lighten(TitleBg, 16),
+            SkiaChrome.Darken(TitleBg, 8));
         using var fTitle = new SKFont(Bold(), 16f);
         using var fSub = new SKFont(Body(), 11f);
         using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -832,6 +913,15 @@ public sealed class StandingsAnalyticsGenerator
         float plotBottom = PieChartHeight - FooterHeight - 16f;
         float plotH = plotBottom - plotTop;
         float pieAreaW = PieChartWidth - PieLegendWidth - 32f;
+
+        using (var plotFill = new SKPaint { Color = SkiaChrome.ChartPlotPanel, IsAntialias = true })
+        using (var plotEdge = new SKPaint { Color = SkiaChrome.SoftStroke, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, IsAntialias = true })
+        {
+            var plotR = new SKRoundRect(new SKRect(12f, plotTop - 4f, PieChartWidth - 12f, plotBottom + 4f), 12f, 12f);
+            c.DrawRoundRect(plotR, plotFill);
+            c.DrawRoundRect(plotR, plotEdge);
+        }
+
         float cx = pieAreaW / 2f + 8f;
         float cy = plotTop + plotH / 2f;
         float r = Math.Min(pieAreaW / 2f - 12f, plotH / 2f - 12f);
@@ -862,7 +952,7 @@ public sealed class StandingsAnalyticsGenerator
             var (pts, cnt) = slices[si];
             var col = HueColor(si, Math.Max(n, 3));
             using var sq = new SKPaint { Color = col, IsAntialias = true };
-            c.DrawRect(legX, legY - 9f, 12f, 10f, sq);
+            c.DrawRoundRect(new SKRect(legX, legY - 9f, legX + 12f, legY + 1f), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
             float pct = 100f * cnt / totalPredictions;
             string legLine = $"{pts} pkt: {cnt}× ({pct:0.#}%)";
             legLine = Ellipsize(legLine, legBody, PieLegendWidth - 28f);
@@ -874,13 +964,13 @@ public sealed class StandingsAnalyticsGenerator
         string foot =
             $"{seasonName}  •  Zakończonych meczów w sezonie: {finishedMatchesInSeason}  •  Twych typów w nich: {totalPredictions}  •  Cały sezon";
         using var ff = new SKFont(Body(), 9f);
-        using var fp = new SKPaint { Color = FooterText, IsAntialias = true };
         string footLine = foot;
         while (footLine.Length > 16 && ff.MeasureText(footLine + "…") > PieChartWidth - 16f)
             footLine = footLine[..^1];
         if (footLine != foot) footLine += "…";
-        float fw = ff.MeasureText(footLine);
-        c.DrawText(footLine, (PieChartWidth - fw) / 2f, PieChartHeight - 14f, ff, fp);
+        DrawHistogramFooter(c, PieChartWidth, PieChartHeight, footLine);
+
+        SkiaChrome.PopClippedCard(c, m, m, PieChartWidth, PieChartHeight, rad);
 
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
@@ -897,10 +987,10 @@ public sealed class StandingsAnalyticsGenerator
             canvas.DrawOval(oval, fillP);
             using var edge = new SKPaint
             {
-                Color = SKColors.White,
+                Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE8),
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 2f
+                StrokeWidth = 1.5f
             };
             canvas.DrawOval(oval, edge);
             return;
@@ -914,10 +1004,10 @@ public sealed class StandingsAnalyticsGenerator
         canvas.DrawPath(path, sliceFill);
         using var sliceEdge = new SKPaint
         {
-            Color = SKColors.White,
+            Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE8),
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2f
+            StrokeWidth = 1.5f
         };
         canvas.DrawPath(path, sliceEdge);
     }

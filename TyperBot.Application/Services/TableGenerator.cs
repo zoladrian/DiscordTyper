@@ -16,21 +16,18 @@ public class TableGenerator
     private const int FooterHeight = 38;
     private const float BorderWidth = 1f;
 
-    // Title bar — burgundy
+    // Kolorystyka jak na screenie (burgundia / grafit / oliwka) — lekko „żywsze” odcienie na przemian
     private static readonly SKColor TitleBg = new(0x5C, 0x2A, 0x2A);
-    // Header — charcoal (left) / olive (right)
     private static readonly SKColor HeaderGrey = new(0x42, 0x42, 0x48);
     private static readonly SKColor HeaderGreen = new(0x4A, 0x5C, 0x3A);
     private static readonly SKColor HeaderText = SKColors.White;
-    // Body — zebra greys + green-tinted right block
-    private static readonly SKColor BodyGreyA = new(0xE8, 0xE8, 0xE8);
-    private static readonly SKColor BodyGreyB = new(0xD4, 0xD4, 0xD4);
-    private static readonly SKColor BodyGreenA = new(0xD4, 0xDE, 0xCC);
-    private static readonly SKColor BodyGreenB = new(0xC0, 0xCC, 0xB4);
-    private static readonly SKColor BodyText = new SKColor(0x10, 0x10, 0x10);
-    private static readonly SKColor BorderBlack = SKColors.Black;
-    private static readonly SKColor FooterBg = new(0x2A, 0x2A, 0x2E);
-    private static readonly SKColor FooterText = new(0xB0, 0xB8, 0xC0);
+    private static readonly SKColor BodyGreyA = new(0xEC, 0xE9, 0xEB);
+    private static readonly SKColor BodyGreyB = new(0xDF, 0xDA, 0xDD);
+    private static readonly SKColor BodyGreenA = new(0xD6, 0xE4, 0xCA);
+    private static readonly SKColor BodyGreenB = new(0xC5, 0xD5, 0xB6);
+    private static readonly SKColor BodyText = new SKColor(0x14, 0x16, 0x1C);
+    private static readonly SKColor FooterBg = new(0x2A, 0x2C, 0x32);
+    private static readonly SKColor FooterText = new(0xC4, 0xCA, 0xD4);
 
     private static SKTypeface ResolveBodyTypeface() =>
         SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
@@ -68,9 +65,17 @@ public class TableGenerator
         int dataStartY = TitleBarHeight + HeaderHeight;
         int totalHeight = dataStartY + dataRows * RowHeight + FooterHeight;
 
-        using var surface = SKSurface.Create(new SKImageInfo(TableWidth, totalHeight));
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(TableWidth + 2 * m);
+        int outH = (int)(totalHeight + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
         var canvas = surface.Canvas;
-        canvas.Clear(BodyGreyA);
+        canvas.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(canvas, m, m, TableWidth, totalHeight, rad);
+        SkiaChrome.PushClippedCard(canvas, m, m, TableWidth, totalHeight, rad);
+        canvas.Clear(new SKColor(0xFA, 0xFA, 0xFC));
 
         DrawTitleBar(canvas);
         DrawHeaderGrid(canvas, TitleBarHeight);
@@ -86,6 +91,8 @@ public class TableGenerator
 
         DrawFooter(canvas, totalHeight, footer);
 
+        SkiaChrome.PopClippedCard(canvas, m, m, TableWidth, totalHeight, rad);
+
         using var image = surface.Snapshot();
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
@@ -93,8 +100,10 @@ public class TableGenerator
 
     private static void DrawTitleBar(SKCanvas canvas)
     {
-        using var bg = new SKPaint { Color = TitleBg, IsAntialias = true };
-        canvas.DrawRect(0, 0, TableWidth, TitleBarHeight, bg);
+        SkiaChrome.FillLinearGradientRect(canvas,
+            new SKRect(0, 0, TableWidth, TitleBarHeight),
+            SkiaChrome.Lighten(TitleBg, 18),
+            SkiaChrome.Darken(TitleBg, 10));
 
         using var titleTf = ResolveBoldTypeface();
         using var titleFont = new SKFont(titleTf, 24f);
@@ -120,11 +129,14 @@ public class TableGenerator
         float h2 = h / 2f;
         float yMid = yTop + h2;
 
-        // Grey = NR + UCZESTNIK + PKT; green = strata + kolumny statystyk typów
-        using var grey = new SKPaint { Color = HeaderGrey, IsAntialias = true };
-        using var green = new SKPaint { Color = HeaderGreen, IsAntialias = true };
-        canvas.DrawRect(XNr, yTop, XMwyzej - XNr, h, grey);
-        canvas.DrawRect(XMwyzej, yTop, XEnd - XMwyzej, h, green);
+        SkiaChrome.FillLinearGradientRect(canvas,
+            new SKRect(XNr, yTop, XMwyzej, yTop + h),
+            SkiaChrome.Lighten(HeaderGrey, 14),
+            SkiaChrome.Darken(HeaderGrey, 6));
+        SkiaChrome.FillLinearGradientRect(canvas,
+            new SKRect(XMwyzej, yTop, XEnd, yTop + h),
+            SkiaChrome.Lighten(HeaderGreen, 12),
+            SkiaChrome.Darken(HeaderGreen, 8));
 
         using var tf = ResolveBoldTypeface();
         using var fontSmall = new SKFont(tf, 11f);
@@ -177,10 +189,10 @@ public class TableGenerator
     {
         using var border = new SKPaint
         {
-            Color = BorderBlack,
+            Color = SkiaChrome.SoftStroke,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = BorderWidth,
-            IsAntialias = false
+            IsAntialias = true
         };
 
         float yBot = yTop + h;
@@ -200,10 +212,10 @@ public class TableGenerator
     {
         using var border = new SKPaint
         {
-            Color = BorderBlack,
+            Color = SkiaChrome.SoftStroke,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = BorderWidth,
-            IsAntialias = false
+            IsAntialias = true
         };
 
         float yBot = yTop + height;
@@ -278,8 +290,10 @@ public class TableGenerator
     private static void DrawFooter(SKCanvas canvas, int totalHeight, string footerText)
     {
         float y = totalHeight - FooterHeight;
-        using var paint = new SKPaint { Color = FooterBg, Style = SKPaintStyle.Fill, IsAntialias = true };
-        canvas.DrawRect(0, y, TableWidth, FooterHeight, paint);
+        SkiaChrome.FillLinearGradientRect(canvas,
+            new SKRect(0, y, TableWidth, y + FooterHeight),
+            SkiaChrome.Lighten(FooterBg, 8),
+            FooterBg);
 
         using var tf = ResolveBodyTypeface();
         using var font = new SKFont(tf, 11f);
