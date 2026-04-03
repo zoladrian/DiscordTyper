@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot;
+using TyperBot.DiscordBot.Constants;
 using TyperBot.DiscordBot.Models;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
@@ -87,10 +88,16 @@ public class MatchCardService
         if (match.Status != MatchStatus.Finished && match.Status != MatchStatus.Cancelled)
         {
             var predictButton = new ButtonBuilder()
-                .WithCustomId($"predict_match_{match.Id}")
+                .WithCustomId($"{CustomIds.Prediction.PredictMatch}{match.Id}")
                 .WithLabel("🔢 Typuj wynik")
                 .WithStyle(ButtonStyle.Primary);
-            componentBuilder.WithButton(predictButton, row: 0);
+            var myTypButton = new ButtonBuilder()
+                .WithCustomId($"{CustomIds.Prediction.MyMatchPrediction}{match.Id}")
+                .WithLabel("🔎 Mój typ")
+                .WithStyle(ButtonStyle.Secondary);
+            componentBuilder
+                .WithButton(predictButton, row: 0)
+                .WithButton(myTypButton, row: 0);
         }
 
         var setResultButton = new ButtonBuilder()

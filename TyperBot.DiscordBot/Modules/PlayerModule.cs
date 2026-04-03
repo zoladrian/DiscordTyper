@@ -49,9 +49,9 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         _roundRepository = roundRepository;
     }
 
-    [SlashCommand("moje-typy", "Wyświetl swoje typy dla nadchodzących meczów lub konkretnej kolejki")]
+    [SlashCommand("moje-typy", "Wyświetl swoje typy: cały aktywny sezon lub jedna kolejka")]
     public async Task MyPredictionsAsync(
-        [Summary(description: "Numer kolejki (opcjonalne, pokazuje wszystkie nadchodzące jeśli nie podano)")] int? round = null)
+        [Summary(description: "Numer kolejki (opcjonalne; bez numeru — wszystkie typy w aktywnym sezonie)")] int? round = null)
     {
         await DeferAsync(ephemeral: true);
 
@@ -91,9 +91,19 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         }
         else
         {
-            // Show upcoming predictions
-            var upcomingMatches = await _matchRepository.GetUpcomingMatchesAsync();
-            var matchIds = upcomingMatches.Select(m => m.Id).ToList();
+            // Wszystkie mecze aktywnego sezonu (GetActiveSeasonAsync już ładuje Rounds + Matches)
+            var season = await _seasonRepository.GetActiveSeasonAsync();
+            if (season == null)
+            {
+                await FollowupAsync("❌ Brak aktywnego sezonu.", ephemeral: true);
+                return;
+            }
+
+            var matchIds = season.Rounds
+                .SelectMany(r => r.Matches)
+                .Select(m => m.Id)
+                .Distinct()
+                .ToList();
             predictions = await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds);
         }
         
@@ -101,16 +111,16 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         if (!predictionsList.Any())
         {
-            var message = round.HasValue 
+            var message = round.HasValue
                 ? $"❌ Nie masz typów dla kolejki {round.Value}."
-                : "❌ Nie masz typów dla nadchodzących meczów.";
+                : "❌ Nie masz typów w aktywnym sezonie.";
             await FollowupAsync(message, ephemeral: true);
             return;
         }
 
         var roundNumber = round;
         var embed = new EmbedBuilder()
-            .WithTitle(roundNumber.HasValue ? $"📝 Moje Typy - Kolejka {roundNumber.Value}" : "📝 Moje Typy - Nadchodzące")
+            .WithTitle(roundNumber.HasValue ? $"📝 Moje typy — kolejka {roundNumber.Value}" : "📝 Moje typy — aktywny sezon")
             .WithColor(Color.Blue)
             .WithCurrentTimestamp();
 

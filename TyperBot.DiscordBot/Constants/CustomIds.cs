@@ -93,6 +93,8 @@ public static class CustomIds
         public const string PredictMatchWildcard = "predict_match_*";
         public const string PredictMatchModal = "predict_match_modal_";
         public const string PredictMatchModalWildcard = "predict_match_modal_*";
+        public const string MyMatchPrediction = "my_match_prediction_";
+        public const string MyMatchPredictionWildcard = "my_match_prediction_*";
         public const string MentionUntyped = "admin_mention_untyped_";
         public const string MentionUntypedWildcard = "admin_mention_untyped_*";
         public const string RevealPredictions = "admin_reveal_predictions_";

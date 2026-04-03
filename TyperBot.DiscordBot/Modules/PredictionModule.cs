@@ -7,6 +7,7 @@ using TyperBot.Application.Services;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
 using TyperBot.DiscordBot;
+using TyperBot.DiscordBot.Constants;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
 using TyperBot.Infrastructure.Repositories;
@@ -284,6 +285,51 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             .Build();
 
         await RespondWithModalAsync(modal);
+    }
+
+    [ComponentInteraction(CustomIds.Prediction.MyMatchPredictionWildcard)]
+    public async Task HandleMyMatchPredictionAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+
+        if (!HasPlayerRole(user))
+        {
+            await RespondAsync("❌ Musisz mieć rolę Typer, aby korzystać z typera.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var matchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var match = await _matchRepository.GetByIdAsync(matchId, includeRound: false);
+        if (match == null)
+        {
+            await RespondAsync("❌ Mecz nie znaleziony.", ephemeral: true);
+            return;
+        }
+
+        var player = await _playerRepository.GetByDiscordUserIdAsync(user!.Id);
+        if (player == null)
+        {
+            await RespondAsync("❌ Nie złożyłeś jeszcze żadnych typów.", ephemeral: true);
+            return;
+        }
+
+        var prediction = await _predictionRepository.GetByMatchAndPlayerAsync(matchId, player.Id);
+        if (prediction == null)
+        {
+            await RespondAsync(
+                $"❌ Nie złożyłeś typu na mecz **{match.HomeTeam} vs {match.AwayTeam}**.",
+                ephemeral: true);
+            return;
+        }
+
+        await RespondAsync(
+            $"Twój typ na **{match.HomeTeam} vs {match.AwayTeam}**: **`{prediction.HomeTip}:{prediction.AwayTip}`**",
+            ephemeral: true);
     }
 
     [ModalInteraction("predict_match_modal_*", true)]

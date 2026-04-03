@@ -201,12 +201,12 @@ public class WelcomeMessageService
                     "3. Wpisz swój typ (np. 52:38)\n" +
                     "4. Gotowe! Możesz zmienić typ w każdej chwili przed pierwotną godziną rozpoczęcia meczu", inline: false)
                 .AddField("📊 Sprawdzanie wyników",
-                    "`/moje-typy` - Zobacz wszystkie swoje typy\n" +
-                    "`/moje-typy [numer kolejki]` - Zobacz typy dla konkretnej kolejki\n\n" +
+                    "`/moje-typy` - Wszystkie Twoje typy w **aktywnym sezonie**\n" +
+                    "`/moje-typy [numer kolejki]` - Typy tylko z wybranej kolejki\n\n" +
                     "Widzisz tam:\n" +
                     "• ✅ Zakończone mecze z wynikami\n" +
                     "• 🎯 Zdobyte punkty za celne typy\n" +
-                    "• ⏰ Nadchodzące mecze", inline: false)
+                    "• ⏰ Mecze jeszcze bez wyniku", inline: false)
                 .AddField("🏆 Tabele",
                     "`/tabela-sezonu` - Tabela sezonu (PNG)\n" +
                     "`/tabela-kolejki [numer]` - Tabela kolejki (PNG)\n\n" +

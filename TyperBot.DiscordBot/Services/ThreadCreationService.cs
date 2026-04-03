@@ -7,6 +7,7 @@ using TyperBot.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot;
+using TyperBot.DiscordBot.Constants;
 using TyperBot.Domain.Enums;
 
 namespace TyperBot.DiscordBot.Services;
@@ -125,9 +126,14 @@ public class ThreadCreationService : BackgroundService
                 var embed = embedBuilder.Build();
 
                 var predictButton = new ButtonBuilder()
-                    .WithCustomId($"predict_match_{match.Id}")
+                    .WithCustomId($"{CustomIds.Prediction.PredictMatch}{match.Id}")
                     .WithLabel("🔢 Typuj wynik")
                     .WithStyle(ButtonStyle.Primary);
+
+                var myTypButton = new ButtonBuilder()
+                    .WithCustomId($"{CustomIds.Prediction.MyMatchPrediction}{match.Id}")
+                    .WithLabel("🔎 Mój typ")
+                    .WithStyle(ButtonStyle.Secondary);
 
                 var setResultButton = new ButtonBuilder()
                     .WithCustomId($"admin_set_result_{match.Id}")
@@ -146,6 +152,7 @@ public class ThreadCreationService : BackgroundService
 
                 var componentBuilder = new ComponentBuilder()
                     .WithButton(predictButton, row: 0)
+                    .WithButton(myTypButton, row: 0)
                     .WithButton(setResultButton, row: 0)
                     .WithButton(editButton, row: 1)
                     .WithButton(deleteButton, row: 1);
