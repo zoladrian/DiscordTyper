@@ -23,7 +23,6 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     private readonly IPlayerRepository _playerRepository;
     private readonly IMatchRepository _matchRepository;
     private readonly IPredictionRepository _predictionRepository;
-    private readonly IPlayerDisplayNameResolver _displayNameResolver;
 
     public PredictionModule(
         ILogger<PredictionModule> logger,
@@ -32,8 +31,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         PredictionService predictionService,
         IPlayerRepository playerRepository,
         IMatchRepository matchRepository,
-        IPredictionRepository predictionRepository,
-        IPlayerDisplayNameResolver displayNameResolver)
+        IPredictionRepository predictionRepository)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -42,7 +40,6 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         _playerRepository = playerRepository;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
-        _displayNameResolver = displayNameResolver;
     }
 
     private bool HasPlayerRole(SocketGuildUser? user)
@@ -438,6 +435,13 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
         await DeferAsync(ephemeral: true);
 
+        var player = await _playerRepository.GetByDiscordUserIdAsync(user!.Id);
+        if (player == null)
+        {
+            await FollowupAsync("❌ Nie masz jeszcze konta w typerze (złóż choć jeden typ lub skontaktuj się z adminem).", ephemeral: true);
+            return;
+        }
+
         var anchor = await _matchRepository.GetByIdAsync(anchorMatchId, includeRound: true);
         if (anchor?.Round == null)
         {
@@ -453,36 +457,32 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var players = (await _playerRepository.GetActivePlayersAsync())
-            .OrderBy(p => _displayNameResolver.GetDisplayName(p), StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
         var matchIds = matches.Select(m => m.Id).ToList();
-        var allPreds = await _predictionRepository.GetByMatchIdsAsync(matchIds);
-        var predByMatchAndPlayer = allPreds
-            .GroupBy(p => (p.MatchId, p.PlayerId))
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt).First());
+        var myPreds = (await _predictionRepository.GetByPlayerIdAndMatchIdsAsync(player.Id, matchIds)).ToList();
+        var predByMatchId = myPreds
+            .GroupBy(p => p.MatchId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt).First());
 
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_settings.Timezone);
         const int maxFieldChars = 1024;
         const int maxFieldsPerEmbed = 24;
         var roundLabel = RoundHelper.GetRoundLabel(round.Number);
         var embeds = new List<Embed>();
         EmbedBuilder? current = null;
         var fieldCount = 0;
+        var totalPointsRound = 0;
 
         void StartNewEmbed(bool first)
         {
             current = new EmbedBuilder()
                 .WithColor(Color.Blue)
                 .WithTitle(first
-                    ? $"📋 Typy w kolejce — {roundLabel}"
-                    : $"📋 Typy w kolejce — {roundLabel} (cd.)")
+                    ? $"📋 Twoje typy — {roundLabel}"
+                    : $"📋 Twoje typy — {roundLabel} (cd.)")
                 .WithDescription(
                     first
-                        ? "Wszyscy **aktywni** gracze i status typu na każdy mecz kolejki. Brak wpisu = osoba nie zatypowała."
-                        : null);
+                        ? "Widzisz **tylko swoje** typy na mecze tej kolejki. Typy innych graczy pozostają tajne."
+                        : "\u200b");
             fieldCount = 0;
         }
 
@@ -490,17 +490,51 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
         foreach (var m in matches)
         {
-            var lines = new List<string>(players.Count);
-            foreach (var pl in players)
+            predByMatchId.TryGetValue(m.Id, out var pred);
+
+            var localTime = TimeZoneInfo.ConvertTimeFromUtc(m.StartTime.UtcDateTime, tz);
+            var statusIcon = m.Status switch
             {
-                predByMatchAndPlayer.TryGetValue((m.Id, pl.Id), out var pred);
-                lines.Add(FormatRoundTypyLine(pl, pred));
+                MatchStatus.Finished => "✅",
+                MatchStatus.InProgress => "▶️",
+                MatchStatus.Cancelled => "❌",
+                _ => "⏰"
+            };
+
+            string tipLine;
+            if (pred == null)
+                tipLine = "**Twój typ:** _nie złożyłeś_";
+            else if (!pred.IsValid)
+                tipLine = $"**Twój typ:** _nieważny_ (`{pred.HomeTip}:{pred.AwayTip}`)";
+            else
+                tipLine = $"**Twój typ:** `{pred.HomeTip}:{pred.AwayTip}`";
+
+            var extra = "";
+            if (m.Status == MatchStatus.Finished)
+            {
+                if (m.HomeScore.HasValue && m.AwayScore.HasValue)
+                {
+                    extra = $"\n**Wynik:** `{m.HomeScore.Value}:{m.AwayScore.Value}`";
+                    if (pred?.PlayerScore != null)
+                    {
+                        var score = pred.PlayerScore;
+                        var pointsDesc = score.Bucket switch
+                        {
+                            Bucket.P35 or Bucket.P50 => "🎯 Celny wynik",
+                            _ when score.Points > 0 => "✓ Poprawny zwycięzca",
+                            _ => "✗ Brak punktów"
+                        };
+                        extra += $" → {pointsDesc} **+{score.Points}pkt**";
+                        totalPointsRound += score.Points;
+                    }
+                }
+                else
+                    extra = "\n**Wynik:** *Brak*";
             }
+            else if (m.Status == MatchStatus.Cancelled)
+                extra = "\n*Mecz odwołany*";
 
-            var body = players.Count == 0
-                ? "_Brak aktywnych graczy._"
-                : string.Join('\n', lines);
-
+            var body = $"{statusIcon} `{localTime:yyyy-MM-dd HH:mm}`\n{tipLine}{extra}";
             if (body.Length > maxFieldChars)
                 body = body[..(maxFieldChars - 1)] + "…";
 
@@ -524,6 +558,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             fieldCount++;
         }
 
+        if (totalPointsRound > 0)
+            current!.WithFooter($"Suma punktów w tej kolejce: {totalPointsRound} · Meczów w kolejce: {matches.Count}");
+        else
+            current!.WithFooter($"Meczów w kolejce: {matches.Count}");
+
         embeds.Add(current!.Build());
 
         const int maxEmbedsPerMessage = 10;
@@ -535,16 +574,6 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             else
                 await FollowupAsync(embeds: batch, ephemeral: true);
         }
-    }
-
-    private string FormatRoundTypyLine(Player player, Prediction? pred)
-    {
-        var name = DiscordApiLimits.Truncate(_displayNameResolver.GetDisplayName(player), 72);
-        if (pred == null)
-            return $"• **{name}** — _nie zatypował(a)_";
-        if (!pred.IsValid)
-            return $"• **{name}** — _typ nieważny_ (`{pred.HomeTip}:{pred.AwayTip}`)";
-        return $"• **{name}** — `{pred.HomeTip}:{pred.AwayTip}`";
     }
 
     [ModalInteraction("predict_match_modal_*", true)]

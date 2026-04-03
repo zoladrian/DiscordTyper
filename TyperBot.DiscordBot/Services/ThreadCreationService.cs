@@ -140,7 +140,7 @@ public class ThreadCreationService : BackgroundService
 
                 var roundTypyButton = new ButtonBuilder()
                     .WithCustomId($"{CustomIds.Prediction.RoundTypyKolejka}{match.Id}")
-                    .WithLabel("📋 Typy w kolejce")
+                    .WithLabel("📋 Moja kolejka")
                     .WithStyle(ButtonStyle.Secondary);
 
                 var setResultButton = new ButtonBuilder()

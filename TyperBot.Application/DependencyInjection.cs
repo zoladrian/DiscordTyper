@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<RoundManager>();
         services.AddScoped<TableGenerator>();
         services.AddScoped<MatchResultsTableImageGenerator>();
+        services.AddScoped<RevealedPredictionsTableImageGenerator>();
         services.AddScoped<StandingsAnalyticsGenerator>();
         services.AddScoped<ExportService>();
         services.AddScoped<MatchManagementService>();

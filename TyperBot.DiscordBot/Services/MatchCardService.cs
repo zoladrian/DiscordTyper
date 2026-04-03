@@ -89,7 +89,7 @@ public class MatchCardService
 
         var roundTypyButton = new ButtonBuilder()
             .WithCustomId($"{CustomIds.Prediction.RoundTypyKolejka}{match.Id}")
-            .WithLabel("📋 Typy w kolejce")
+            .WithLabel("📋 Moja kolejka")
             .WithStyle(ButtonStyle.Secondary);
 
         // Only show "Typuj wynik" button if match doesn't have a result yet and is not cancelled

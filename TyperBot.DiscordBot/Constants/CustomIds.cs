@@ -100,7 +100,7 @@ public static class CustomIds
         public const string RevealPredictions = "admin_reveal_predictions_";
         public const string RevealPredictionsWildcard = "admin_reveal_predictions_*";
 
-        /// <summary>Przycisk na karcie meczu: podsumowanie typów wszystkich graczy w całej kolejce (ephemeral).</summary>
+        /// <summary>Przycisk na karcie meczu: Twoje typy na wszystkie mecze tej kolejki (ephemeral; bez typów innych).</summary>
         public const string RoundTypyKolejka = "round_typy_kolejka_";
         public const string RoundTypyKolejkaWildcard = "round_typy_kolejka_*";
     }

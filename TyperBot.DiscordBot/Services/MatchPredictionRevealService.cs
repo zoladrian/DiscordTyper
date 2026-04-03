@@ -1,6 +1,7 @@
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
+using TyperBot.Application.Services;
 using TyperBot.DiscordBot;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
@@ -18,19 +19,22 @@ public sealed class MatchPredictionRevealService
     private readonly IPredictionRepository _predictionRepository;
     private readonly DiscordLookupService _lookupService;
     private readonly MatchCardService _matchCardService;
+    private readonly RevealedPredictionsTableImageGenerator _revealTablePng;
 
     public MatchPredictionRevealService(
         ILogger<MatchPredictionRevealService> logger,
         IMatchRepository matchRepository,
         IPredictionRepository predictionRepository,
         DiscordLookupService lookupService,
-        MatchCardService matchCardService)
+        MatchCardService matchCardService,
+        RevealedPredictionsTableImageGenerator revealTablePng)
     {
         _logger = logger;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
         _lookupService = lookupService;
         _matchCardService = matchCardService;
+        _revealTablePng = revealTablePng;
     }
 
     /// <summary>Zwraca listę powodów blokady (pusta = można ujawniać).</summary>
@@ -93,37 +97,39 @@ public sealed class MatchPredictionRevealService
 
         var guild = thread.Guild;
 
-        var tableLines = new List<string>
-        {
-            "```",
-            "┌─────────────────────┬───────────┐",
-            "│ Gracz               │ Typ       │",
-            "├─────────────────────┼───────────┤"
-        };
-
-        if (predictionsList.Any())
+        var rows = new List<RevealedTipRow>();
+        if (predictionsList.Count > 0)
         {
             foreach (var pred in predictionsList.OrderBy(p =>
                          DiscordDisplayNameHelper.ForPlayerInGuild(p.Player, guild),
                      StringComparer.OrdinalIgnoreCase))
             {
                 var playerName = DiscordDisplayNameHelper.ForPlayerInGuild(pred.Player, guild);
-                if (playerName.Length > 19)
-                    playerName = playerName.Substring(0, 16) + "...";
-                tableLines.Add($"│ {playerName,-19} │ {pred.HomeTip,2}:{pred.AwayTip,-2} │");
+                rows.Add(new RevealedTipRow(playerName, $"{pred.HomeTip}:{pred.AwayTip}"));
             }
         }
         else
-            tableLines.Add("│ Brak typów          │ -- : --   │");
+            rows.Add(new RevealedTipRow("Brak typów", "—"));
 
-        tableLines.Add("└─────────────────────┴───────────┘");
-        tableLines.Add("```");
+        var roundLabel = match.Round != null ? RoundHelper.GetRoundLabel(match.Round.Number) : "Kolejka";
+        var footer = predictionsList.Count == 0
+            ? $"{match.HomeTeam} vs {match.AwayTeam} · {roundLabel} · brak typów"
+            : $"{match.HomeTeam} vs {match.AwayTeam} · {roundLabel} · {predictionsList.Count} typów";
 
-        var tableText = string.Join("\n", tableLines);
+        byte[] pngBytes;
+        try
+        {
+            pngBytes = _revealTablePng.Generate(rows, footer);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Reveal: PNG table generation failed for match {MatchId}", match.Id);
+            return (false, "❌ Nie udało się wygenerować tabeli PNG. Sprawdź logi bota.");
+        }
 
         var embed = new EmbedBuilder()
             .WithTitle(DiscordApiLimits.Truncate($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
-            .WithDescription(DiscordApiLimits.Truncate(tableText, DiscordApiLimits.EmbedDescription))
+            .WithDescription("Tabela typów w załączniku (PNG).")
             .WithColor(Color.Gold)
             .WithCurrentTimestamp()
             .Build();
@@ -131,7 +137,8 @@ public sealed class MatchPredictionRevealService
         IUserMessage revealMessage;
         try
         {
-            revealMessage = await thread.SendMessageAsync(embed: embed);
+            await using var stream = new MemoryStream(pngBytes, writable: false);
+            revealMessage = await thread.SendFileAsync(stream, $"ujawnione_typy_{match.Id}.png", embed: embed);
             await revealMessage.PinAsync();
         }
         catch (Exception ex)
