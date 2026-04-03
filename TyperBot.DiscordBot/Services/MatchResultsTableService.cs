@@ -10,22 +10,25 @@ using TyperBot.Infrastructure.Repositories;
 namespace TyperBot.DiscordBot.Services;
 
 /// <summary>
-/// Builds and posts the per-match results embed (typy + punkty) to the match thread — public message.
+/// Publikuje wynik meczu w wątku/kanał: embed + PNG tabeli (Gracz / Typ / Pkt), kolorystyka jak tabela kolejki/sezonu.
 /// </summary>
 public class MatchResultsTableService
 {
     private readonly ILogger<MatchResultsTableService> _logger;
     private readonly DiscordLookupService _lookupService;
     private readonly IPredictionRepository _predictionRepository;
+    private readonly MatchResultsTableImageGenerator _tableImageGenerator;
 
     public MatchResultsTableService(
         ILogger<MatchResultsTableService> logger,
         DiscordLookupService lookupService,
-        IPredictionRepository predictionRepository)
+        IPredictionRepository predictionRepository,
+        MatchResultsTableImageGenerator tableImageGenerator)
     {
         _logger = logger;
         _lookupService = lookupService;
         _predictionRepository = predictionRepository;
+        _tableImageGenerator = tableImageGenerator;
     }
 
     /// <summary>
@@ -91,16 +94,21 @@ public class MatchResultsTableService
         else if (channel is SocketTextChannel txt)
             guild = txt.Guild;
 
-        var embed = BuildResultsEmbed(match, predictions, guild);
-        await channel.SendMessageAsync(embed: embed);
+        var rows = BuildResultRows(match, predictions, guild);
+        var footer = BuildFooterLine(match, predictions.Count);
+        var png = _tableImageGenerator.Generate(rows, footer);
+        var embed = BuildSummaryEmbed(match);
+
+        await using var stream = new MemoryStream(png, writable: false);
+        await channel.SendFileAsync(stream, $"wynik_meczu_{match.Id}.png", embed: embed);
         _logger.LogInformation("Match results table posted — Match ID: {MatchId}, Channel ID: {ChannelId}", match.Id, channel.Id);
     }
 
-    public static Embed BuildResultsEmbed(Match match, IReadOnlyList<Prediction> predictions, SocketGuild? guild = null)
+    private static Embed BuildSummaryEmbed(Match match)
     {
         var embed = new EmbedBuilder()
-            .WithTitle(DiscordApiLimits.Truncate($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
-            .WithDescription($"**Wynik rzeczywisty:** {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
+            .WithTitle(DiscordApiLimits.Truncate($"Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
+            .WithDescription($"Wynik rzeczywisty: {match.HomeScore?.ToString() ?? "?"}:{match.AwayScore?.ToString() ?? "?"}")
             .WithColor(Color.Green)
             .WithCurrentTimestamp();
 
@@ -108,41 +116,44 @@ public class MatchResultsTableService
         if (round != null)
             embed.AddField("Kolejka", RoundHelper.GetRoundLabel(round.Number), inline: true);
 
-        if (predictions.Count > 0)
-        {
-            var table = "```\n";
-            table += "Gracz                  Typ      Pkt\n";
-            table += "════════════════════════════════════\n";
-            table += $"🏆 Wynik rzeczywisty  {match.HomeScore?.ToString() ?? "?",2}:{match.AwayScore?.ToString() ?? "?",2}     -\n";
-            table += "────────────────────────────────────\n";
-
-            foreach (var pred in predictions)
-            {
-                var playerName = DiscordDisplayNameHelper.ForPlayerInGuild(pred.Player, guild);
-                if (playerName.Length > 20) playerName = playerName[..17] + "...";
-
-                if (pred.PlayerScore == null)
-                {
-                    table += $"{playerName,-20}  {pred.HomeTip,2}:{pred.AwayTip,2}       —   ⏳\n";
-                    continue;
-                }
-
-                var statusIcon = pred.PlayerScore.Bucket is Bucket.P35 or Bucket.P50
-                    ? "👑"
-                    : pred.PlayerScore.Points > 0 ? "👍" : "💩";
-
-                table += $"{playerName,-20}  {pred.HomeTip,2}:{pred.AwayTip,2}     {pred.PlayerScore.Points,3}   {statusIcon}\n";
-            }
-
-            table += "```";
-            embed.AddField("Typy graczy", table, false);
-            embed.WithFooter("👑 = Celny wynik | 👍 = Poprawny zwycięzca | 💩 = Brak punktów | ⏳ = Punkty jeszcze nie naliczone");
-        }
-        else
-        {
-            embed.AddField("Typy graczy", "*Brak typów dla tego meczu*", false);
-        }
-
         return embed.Build();
+    }
+
+    /// <summary>Wiersze jak w poprzedniej tabeli tekstowej: pierwszy = wynik rzeczywisty, potem gracze (bez ikon statusu).</summary>
+    private static List<MatchResultTableRow> BuildResultRows(Match match, IReadOnlyList<Prediction> predictions, SocketGuild? guild)
+    {
+        var rows = new List<MatchResultTableRow>();
+        var wynikTyp =
+            $"{(match.HomeScore?.ToString() ?? "?"),2}:{(match.AwayScore?.ToString() ?? "?"),2}";
+        rows.Add(new MatchResultTableRow("Wynik rzeczywisty", wynikTyp, "-"));
+
+        if (predictions.Count == 0)
+        {
+            rows.Add(new MatchResultTableRow("Brak typów dla tego meczu", "—", "—"));
+            return rows;
+        }
+
+        foreach (var pred in predictions)
+        {
+            var playerName = DiscordDisplayNameHelper.ForPlayerInGuild(pred.Player, guild);
+            var typ = $"{pred.HomeTip,2}:{pred.AwayTip,2}";
+            if (pred.PlayerScore == null)
+                rows.Add(new MatchResultTableRow(playerName, typ, "—"));
+            else
+                rows.Add(new MatchResultTableRow(playerName, typ, $"{pred.PlayerScore.Points,3}"));
+        }
+
+        return rows;
+    }
+
+    private static string BuildFooterLine(Match match, int typCount)
+    {
+        var parts = new List<string>();
+        if (match.Round != null)
+            parts.Add(RoundHelper.GetRoundLabel(match.Round.Number));
+        parts.Add($"{match.HomeTeam} vs {match.AwayTeam}");
+        parts.Add($"Wynik {match.HomeScore}:{match.AwayScore}");
+        parts.Add($"{typCount} typów");
+        return string.Join(" • ", parts);
     }
 }
