@@ -99,6 +99,10 @@ public static class CustomIds
         public const string MentionUntypedWildcard = "admin_mention_untyped_*";
         public const string RevealPredictions = "admin_reveal_predictions_";
         public const string RevealPredictionsWildcard = "admin_reveal_predictions_*";
+
+        /// <summary>Przycisk na karcie meczu: podsumowanie typów wszystkich graczy w całej kolejce (ephemeral).</summary>
+        public const string RoundTypyKolejka = "round_typy_kolejka_";
+        public const string RoundTypyKolejkaWildcard = "round_typy_kolejka_*";
     }
 
     public static class Season
@@ -124,5 +128,23 @@ public static class CustomIds
         public const string SeasonTable = "admin_table_season";
         public const string RoundTable = "admin_table_round";
         public const string RoundTableSelect = "admin_table_round_select";
+    }
+
+    /// <summary>Panel komend gracza na kanale typowanie (przyciski + selecty). Usuwany i wysyłany na nowo, by był na dole kanału.</summary>
+    public static class PredictionsPanel
+    {
+        /// <summary>Ten sam tekst w stopce embedów panelu — do wykrywania wiadomości do skasowania przy odświeżeniu.</summary>
+        public const string FooterToken = "TyperPanel:v2";
+
+        public const string BtnMojeTypySezon = "predictions_panel_moje_typy_sezon";
+        public const string BtnTabelaSezonu = "predictions_panel_tabela_sezonu";
+        public const string BtnWykres = "predictions_panel_wykres";
+        public const string BtnRozklad = "predictions_panel_rozklad";
+        public const string BtnKolowy = "predictions_panel_kolowy";
+
+        public const string SelMojeTypyRound = "predictions_panel_sel_moje_typy";
+        public const string SelTabelaRound = "predictions_panel_sel_tabela";
+        public const string SelPktRound = "predictions_panel_sel_pkt_kolejki";
+        public const string SelPktMatch = "predictions_panel_sel_pkt_meczu";
     }
 }

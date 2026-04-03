@@ -23,6 +23,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     private readonly IPlayerRepository _playerRepository;
     private readonly IMatchRepository _matchRepository;
     private readonly IPredictionRepository _predictionRepository;
+    private readonly IPlayerDisplayNameResolver _displayNameResolver;
 
     public PredictionModule(
         ILogger<PredictionModule> logger,
@@ -31,7 +32,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         PredictionService predictionService,
         IPlayerRepository playerRepository,
         IMatchRepository matchRepository,
-        IPredictionRepository predictionRepository)
+        IPredictionRepository predictionRepository,
+        IPlayerDisplayNameResolver displayNameResolver)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -40,6 +42,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         _playerRepository = playerRepository;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
+        _displayNameResolver = displayNameResolver;
     }
 
     private bool HasPlayerRole(SocketGuildUser? user)
@@ -404,6 +407,144 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         await RespondAsync(
             $"Twój typ na **{match.HomeTeam} vs {match.AwayTeam}**: **`{prediction.HomeTip}:{prediction.AwayTip}`**",
             ephemeral: true);
+    }
+
+    [ComponentInteraction(CustomIds.Prediction.RoundTypyKolejkaWildcard)]
+    public async Task HandleRoundTypyKolejkaAsync(string matchIdStr)
+    {
+        var user = Context.User as SocketGuildUser;
+
+        if (!HasPlayerRole(user))
+        {
+            await RespondAsync("❌ Musisz mieć rolę Typer, aby korzystać z typera.", ephemeral: true);
+            return;
+        }
+
+        if (!int.TryParse(matchIdStr, out var anchorMatchId))
+        {
+            await RespondAsync("❌ Nieprawidłowy mecz.", ephemeral: true);
+            return;
+        }
+
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel != null && Context.Channel is SocketThreadChannel threadCh)
+        {
+            if (threadCh.ParentChannel?.Id != predictionsChannel.Id)
+            {
+                await RespondAsync("❌ Użyj tego przycisku w wątku meczu na kanale typowania.", ephemeral: true);
+                return;
+            }
+        }
+
+        await DeferAsync(ephemeral: true);
+
+        var anchor = await _matchRepository.GetByIdAsync(anchorMatchId, includeRound: true);
+        if (anchor?.Round == null)
+        {
+            await FollowupAsync("❌ Nie znaleziono meczu lub kolejki.", ephemeral: true);
+            return;
+        }
+
+        var round = anchor.Round;
+        var matches = (await _matchRepository.GetByRoundIdAsync(round.Id)).ToList();
+        if (matches.Count == 0)
+        {
+            await FollowupAsync("W tej kolejce nie ma jeszcze meczów.", ephemeral: true);
+            return;
+        }
+
+        var players = (await _playerRepository.GetActivePlayersAsync())
+            .OrderBy(p => _displayNameResolver.GetDisplayName(p), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var matchIds = matches.Select(m => m.Id).ToList();
+        var allPreds = await _predictionRepository.GetByMatchIdsAsync(matchIds);
+        var predByMatchAndPlayer = allPreds
+            .GroupBy(p => (p.MatchId, p.PlayerId))
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt).First());
+
+        const int maxFieldChars = 1024;
+        const int maxFieldsPerEmbed = 24;
+        var roundLabel = RoundHelper.GetRoundLabel(round.Number);
+        var embeds = new List<Embed>();
+        EmbedBuilder? current = null;
+        var fieldCount = 0;
+
+        void StartNewEmbed(bool first)
+        {
+            current = new EmbedBuilder()
+                .WithColor(Color.Blue)
+                .WithTitle(first
+                    ? $"📋 Typy w kolejce — {roundLabel}"
+                    : $"📋 Typy w kolejce — {roundLabel} (cd.)")
+                .WithDescription(
+                    first
+                        ? "Wszyscy **aktywni** gracze i status typu na każdy mecz kolejki. Brak wpisu = osoba nie zatypowała."
+                        : null);
+            fieldCount = 0;
+        }
+
+        StartNewEmbed(first: true);
+
+        foreach (var m in matches)
+        {
+            var lines = new List<string>(players.Count);
+            foreach (var pl in players)
+            {
+                predByMatchAndPlayer.TryGetValue((m.Id, pl.Id), out var pred);
+                lines.Add(FormatRoundTypyLine(pl, pred));
+            }
+
+            var body = players.Count == 0
+                ? "_Brak aktywnych graczy._"
+                : string.Join('\n', lines);
+
+            if (body.Length > maxFieldChars)
+                body = body[..(maxFieldChars - 1)] + "…";
+
+            var statusNote = m.Status switch
+            {
+                MatchStatus.Finished when m.HomeScore.HasValue && m.AwayScore.HasValue =>
+                    $" ✅ {m.HomeScore}:{m.AwayScore}",
+                MatchStatus.Cancelled => " (odwołany)",
+                _ => ""
+            };
+
+            var fieldName = DiscordApiLimits.Truncate($"⚽ {m.HomeTeam} vs {m.AwayTeam}{statusNote}", DiscordApiLimits.EmbedTitle);
+
+            if (fieldCount >= maxFieldsPerEmbed)
+            {
+                embeds.Add(current!.Build());
+                StartNewEmbed(first: false);
+            }
+
+            current!.AddField(fieldName, body, inline: false);
+            fieldCount++;
+        }
+
+        embeds.Add(current!.Build());
+
+        const int maxEmbedsPerMessage = 10;
+        for (var i = 0; i < embeds.Count; i += maxEmbedsPerMessage)
+        {
+            var batch = embeds.Skip(i).Take(maxEmbedsPerMessage).ToArray();
+            if (i == 0)
+                await FollowupAsync(embeds: batch, ephemeral: true);
+            else
+                await FollowupAsync(embeds: batch, ephemeral: true);
+        }
+    }
+
+    private string FormatRoundTypyLine(Player player, Prediction? pred)
+    {
+        var name = DiscordApiLimits.Truncate(_displayNameResolver.GetDisplayName(player), 72);
+        if (pred == null)
+            return $"• **{name}** — _nie zatypował(a)_";
+        if (!pred.IsValid)
+            return $"• **{name}** — _typ nieważny_ (`{pred.HomeTip}:{pred.AwayTip}`)";
+        return $"• **{name}** — `{pred.HomeTip}:{pred.AwayTip}`";
     }
 
     [ModalInteraction("predict_match_modal_*", true)]

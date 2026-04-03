@@ -18,17 +18,20 @@ public class ThreadCreationService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly DiscordLookupService _lookupService;
     private readonly DiscordSocketClient _client;
+    private readonly IPredictionsChannelTyperPanelService _typerPanel;
 
     public ThreadCreationService(
         ILogger<ThreadCreationService> logger,
         IServiceProvider serviceProvider,
         DiscordLookupService lookupService,
-        DiscordSocketClient client)
+        DiscordSocketClient client,
+        IPredictionsChannelTyperPanelService typerPanel)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _lookupService = lookupService;
         _client = client;
+        _typerPanel = typerPanel;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -135,6 +138,11 @@ public class ThreadCreationService : BackgroundService
                     .WithLabel("🔎 Mój typ")
                     .WithStyle(ButtonStyle.Secondary);
 
+                var roundTypyButton = new ButtonBuilder()
+                    .WithCustomId($"{CustomIds.Prediction.RoundTypyKolejka}{match.Id}")
+                    .WithLabel("📋 Typy w kolejce")
+                    .WithStyle(ButtonStyle.Secondary);
+
                 var setResultButton = new ButtonBuilder()
                     .WithCustomId($"admin_set_result_{match.Id}")
                     .WithLabel($"✅ Wynik {TeamNameHelper.GetMatchShortcut(match.HomeTeam, match.AwayTeam)}")
@@ -153,6 +161,7 @@ public class ThreadCreationService : BackgroundService
                 var componentBuilder = new ComponentBuilder()
                     .WithButton(predictButton, row: 0)
                     .WithButton(myTypButton, row: 0)
+                    .WithButton(roundTypyButton, row: 0)
                     .WithButton(setResultButton, row: 0)
                     .WithButton(editButton, row: 1)
                     .WithButton(deleteButton, row: 1);
@@ -185,10 +194,19 @@ public class ThreadCreationService : BackgroundService
                 // Save ThreadId to database
                 match.ThreadId = thread.Id;
                 await matchRepository.UpdateAsync(match);
-                
+
+                try
+                {
+                    await _typerPanel.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Typer panel refresh failed after scheduled thread creation");
+                }
+
                 // Don't mention players when creating thread - admin can use button to mention untyped players
-                
-                _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away}), Thread ID: {ThreadId}", 
+
+                _logger.LogInformation("Thread created for match {MatchId} ({Home} vs {Away}), Thread ID: {ThreadId}",
                     match.Id, match.HomeTeam, match.AwayTeam, thread.Id);
             }
             catch (Exception ex)

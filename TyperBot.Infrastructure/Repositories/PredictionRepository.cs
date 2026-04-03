@@ -42,6 +42,19 @@ public class PredictionRepository : IPredictionRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<Prediction>> GetByMatchIdsAsync(IEnumerable<int> matchIds)
+    {
+        var ids = matchIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return Array.Empty<Prediction>();
+
+        return await _context.Predictions
+            .AsNoTracking()
+            .Include(p => p.Player)
+            .Where(p => ids.Contains(p.MatchId))
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Prediction>> GetByPlayerIdAsync(int playerId)
     {
         return await _context.Predictions

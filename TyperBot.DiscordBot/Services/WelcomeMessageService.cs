@@ -12,18 +12,21 @@ public class WelcomeMessageService
     private readonly ILogger<WelcomeMessageService> _logger;
     private readonly DiscordSettings _settings;
     private readonly DiscordLookupService _lookupService;
+    private readonly IPredictionsChannelTyperPanelService _typerPanel;
     private bool _welcomeMessagesSent = false;
 
     public WelcomeMessageService(
         DiscordSocketClient client,
         ILogger<WelcomeMessageService> logger,
         IOptions<DiscordSettings> settings,
-        DiscordLookupService lookupService)
+        DiscordLookupService lookupService,
+        IPredictionsChannelTyperPanelService typerPanel)
     {
         _client = client;
         _logger = logger;
         _settings = settings.Value;
         _lookupService = lookupService;
+        _typerPanel = typerPanel;
     }
 
     public async Task SendWelcomeMessagesIfNeededAsync()
@@ -368,6 +371,15 @@ public class WelcomeMessageService
                 var rulesMessage = await channel.SendMessageAsync(embed: rulesEmbed);
                 await rulesMessage.PinAsync();
                 _logger.LogInformation("Player rules welcome message sent and pinned");
+            }
+
+            try
+            {
+                await _typerPanel.RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh typer panel after player welcome messages");
             }
         }
         catch (Exception ex)

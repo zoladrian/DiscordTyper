@@ -18,17 +18,20 @@ public class MatchCardService
     private readonly DiscordSettings _settings;
     private readonly DiscordLookupService _lookupService;
     private readonly IMatchRepository _matchRepository;
+    private readonly IPredictionsChannelTyperPanelService _typerPanel;
 
     public MatchCardService(
         ILogger<MatchCardService> logger,
         IOptions<DiscordSettings> settings,
         DiscordLookupService lookupService,
-        IMatchRepository matchRepository)
+        IMatchRepository matchRepository,
+        IPredictionsChannelTyperPanelService typerPanel)
     {
         _logger = logger;
         _settings = settings.Value;
         _lookupService = lookupService;
         _matchRepository = matchRepository;
+        _typerPanel = typerPanel;
     }
 
     /// <param name="forceImmediateThread">If true, creates the thread and posts the card even when <see cref="Match.ThreadCreationTime"/> is still in the future (admin force-publish).</param>
@@ -84,6 +87,11 @@ public class MatchCardService
 
         var componentBuilder = new ComponentBuilder();
 
+        var roundTypyButton = new ButtonBuilder()
+            .WithCustomId($"{CustomIds.Prediction.RoundTypyKolejka}{match.Id}")
+            .WithLabel("📋 Typy w kolejce")
+            .WithStyle(ButtonStyle.Secondary);
+
         // Only show "Typuj wynik" button if match doesn't have a result yet and is not cancelled
         if (match.Status != MatchStatus.Finished && match.Status != MatchStatus.Cancelled)
         {
@@ -99,6 +107,8 @@ public class MatchCardService
                 .WithButton(predictButton, row: 0)
                 .WithButton(myTypButton, row: 0);
         }
+
+        componentBuilder.WithButton(roundTypyButton, row: 0);
 
         var setResultButton = new ButtonBuilder()
             .WithCustomId($"admin_set_result_{match.Id}")
@@ -183,7 +193,8 @@ public class MatchCardService
                 {
                     thread = predictionsChannel.Threads.FirstOrDefault(t => t.Id == match.ThreadId.Value);
                 }
-                
+
+                var createdNewThread = false;
                 if (thread == null)
                 {
                     var threadName = $"{roundLabel}: {match.HomeTeam} vs {match.AwayTeam}";
@@ -192,20 +203,33 @@ public class MatchCardService
                     {
                         threadName = threadName.Substring(0, 97) + "...";
                     }
-                    
+
                     thread = await predictionsChannel.CreateThreadAsync(
                         name: threadName,
                         type: ThreadType.PublicThread
                     );
-                    
+                    createdNewThread = true;
+
                     // Save ThreadId to database
                     match.ThreadId = thread.Id;
                     await _matchRepository.UpdateAsync(match);
                 }
 
-                var cardMessage = await thread.SendMessageAsync(embed: embed, components: component);
-                
+                await thread.SendMessageAsync(embed: embed, components: component);
+
                 _logger.LogInformation("Match card published in predictions channel - Match ID: {MatchId}, Thread ID: {ThreadId}", match.Id, thread.Id);
+
+                if (createdNewThread)
+                {
+                    try
+                    {
+                        await _typerPanel.RefreshAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Typer panel refresh failed after new match thread");
+                    }
+                }
             }
             else
             {
