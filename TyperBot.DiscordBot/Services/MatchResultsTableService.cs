@@ -2,6 +2,7 @@ using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
@@ -84,12 +85,18 @@ public class MatchResultsTableService
                 p.PlayerScore != null && (p.PlayerScore.Bucket == Bucket.P35 || p.PlayerScore.Bucket == Bucket.P50))
             .ToList();
 
-        var embed = BuildResultsEmbed(match, predictions);
+        SocketGuild? guild = null;
+        if (channel is SocketThreadChannel st)
+            guild = st.Guild;
+        else if (channel is SocketTextChannel txt)
+            guild = txt.Guild;
+
+        var embed = BuildResultsEmbed(match, predictions, guild);
         await channel.SendMessageAsync(embed: embed);
         _logger.LogInformation("Match results table posted — Match ID: {MatchId}, Channel ID: {ChannelId}", match.Id, channel.Id);
     }
 
-    public static Embed BuildResultsEmbed(Match match, IReadOnlyList<Prediction> predictions)
+    public static Embed BuildResultsEmbed(Match match, IReadOnlyList<Prediction> predictions, SocketGuild? guild = null)
     {
         var embed = new EmbedBuilder()
             .WithTitle(DiscordApiLimits.Truncate($"⚽ Wynik meczu: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))
@@ -111,7 +118,7 @@ public class MatchResultsTableService
 
             foreach (var pred in predictions)
             {
-                var playerName = pred.Player.DiscordUsername;
+                var playerName = DiscordDisplayNameHelper.ForPlayerInGuild(pred.Player, guild);
                 if (playerName.Length > 20) playerName = playerName[..17] + "...";
 
                 if (pred.PlayerScore == null)

@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Models;
 using TyperBot.Domain.Enums;
 using TyperBot.Infrastructure.Repositories;
@@ -146,7 +147,7 @@ public class MatchResultHandler
                         $"Nowy wynik: **{home}:{away}**\n\n" +
                         $"Punkty wszystkich graczy zostały przeliczone.")
                     .WithColor(Color.Orange)
-                    .WithFooter($"Zmienione przez: {user.Username}")
+                    .WithFooter($"Zmienione przez: {DiscordDisplayNameHelper.ForDisplay(user)}")
                     .WithCurrentTimestamp()
                     .Build();
 

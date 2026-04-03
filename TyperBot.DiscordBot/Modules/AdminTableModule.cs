@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
+using TyperBot.DiscordBot;
 using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
@@ -301,12 +302,14 @@ public class AdminTableModule : BaseAdminModule
 
             if (!playerScores.Any())
             {
-                await FollowupAsync($"❌ Gracz {discordUser.Username} nie ma jeszcze żadnych wyników w obecnym sezonie.", ephemeral: true);
+                var dn = DiscordDisplayNameHelper.ForDisplay(discordUser);
+                await FollowupAsync($"❌ Gracz {dn} nie ma jeszcze żadnych wyników w obecnym sezonie.", ephemeral: true);
                 return;
             }
 
+            var displayName = DiscordDisplayNameHelper.ForDisplay(discordUser);
             var embed = new EmbedBuilder()
-                .WithTitle($"Wyniki gracza: {discordUser.Username}")
+                .WithTitle($"Wyniki gracza: {displayName}")
                 .WithDescription($"**Sezon:** {season.Name}\n**Suma punktów:** {playerScores.Sum(s => s.Points)}")
                 .WithColor(Color.Blue)
                 .WithCurrentTimestamp();

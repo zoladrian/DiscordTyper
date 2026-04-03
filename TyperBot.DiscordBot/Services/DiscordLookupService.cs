@@ -200,22 +200,58 @@ public class DiscordLookupService
     }
 
     /// <summary>
-    /// Finds the match card message in a thread. The card is the first bot message with an embed.
-    /// GetMessagesAsync(limit) returns most-recent-first, so we need to search further back.
+    /// Finds the match card message in a thread. The card is the oldest bot embed that looks like
+    /// a match card (round label + " vs "), not a reveal/result/admin notice. We page backward because
+    /// the card is usually near the start and <see cref="GetMessagesAsync(int)"/> only returns recent messages.
     /// </summary>
-    public async Task<Discord.IUserMessage?> FindMatchCardMessageAsync(Discord.WebSocket.SocketThreadChannel thread)
+    public async Task<Discord.IUserMessage?> FindMatchCardMessageAsync(SocketThreadChannel thread)
     {
-        // Fetch the oldest messages in the thread (card is typically the very first message)
-        var messages = await thread.GetMessagesAsync(limit: 20).FlattenAsync();
-        var orderedByOldest = messages.OrderBy(m => m.CreatedAt);
+        const int batchSize = 100;
+        const int maxBatches = 40;
 
-        foreach (var msg in orderedByOldest)
+        IUserMessage? oldestCard = null;
+        ulong? beforeId = null;
+
+        for (var batch = 0; batch < maxBatches; batch++)
         {
-            if (msg.Author.Id == _client.CurrentUser.Id && msg is Discord.IUserMessage userMsg && userMsg.Embeds.Any())
-                return userMsg;
+            var page = beforeId == null
+                ? await thread.GetMessagesAsync(batchSize).FlattenAsync()
+                : await thread.GetMessagesAsync(beforeId.Value, Direction.Before, batchSize).FlattenAsync();
+
+            var list = page.ToList();
+            if (list.Count == 0)
+                break;
+
+            foreach (var msg in list)
+            {
+                if (msg.Author.Id != _client.CurrentUser.Id || msg is not IUserMessage userMsg || !userMsg.Embeds.Any())
+                    continue;
+
+                var embed = userMsg.Embeds.First();
+                if (!IsMatchCardEmbed(embed))
+                    continue;
+
+                if (oldestCard == null || userMsg.CreatedAt < oldestCard.CreatedAt)
+                    oldestCard = userMsg;
+            }
+
+            if (list.Count < batchSize)
+                break;
+
+            beforeId = list.Min(m => m.Id);
         }
 
-        return null;
+        return oldestCard;
+    }
+
+    private static bool IsMatchCardEmbed(IEmbed embed)
+    {
+        var title = embed.Title ?? string.Empty;
+        if (title.StartsWith("👁️", StringComparison.Ordinal)) return false;
+        if (title.StartsWith("⚽", StringComparison.Ordinal)) return false;
+        if (title.StartsWith("⚠️", StringComparison.Ordinal)) return false;
+        if (title.StartsWith("🔧", StringComparison.Ordinal)) return false;
+        return title.Contains(" vs ", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<IEnumerable<SocketGuildUser>> GetPlayersWithRoleAsync()

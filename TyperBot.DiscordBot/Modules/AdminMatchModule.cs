@@ -143,13 +143,18 @@ public class AdminMatchModule : BaseAdminModule
         var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
         if (predictionsChannel != null && oldRound != null)
         {
-            var oldRoundLabel = Application.Services.RoundHelper.GetRoundLabel(oldRoundNum);
-            var oldThreadName = $"{oldRoundLabel}: {oldHomeTeam} vs {oldAwayTeam}";
-            threadToUpdate = predictionsChannel.Threads.FirstOrDefault(t => t.Name == oldThreadName);
-            if (threadToUpdate != null)
+            if (match.ThreadId.HasValue)
+                threadToUpdate = await _lookupService.TryGetMatchThreadAsync(match.ThreadId.Value);
+
+            if (threadToUpdate == null)
             {
-                messageToUpdate = await _lookupService.FindMatchCardMessageAsync(threadToUpdate);
+                var oldRoundLabel = Application.Services.RoundHelper.GetRoundLabel(oldRoundNum);
+                var oldThreadName = $"{oldRoundLabel}: {oldHomeTeam} vs {oldAwayTeam}";
+                threadToUpdate = predictionsChannel.Threads.FirstOrDefault(t => t.Name == oldThreadName);
             }
+
+            if (threadToUpdate != null)
+                messageToUpdate = await _lookupService.FindMatchCardMessageAsync(threadToUpdate);
         }
 
         _logger.LogInformation(

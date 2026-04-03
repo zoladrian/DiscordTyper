@@ -1,4 +1,5 @@
 using Discord;
+using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using TyperBot.DiscordBot;
 using TyperBot.Domain.Entities;
@@ -82,6 +83,16 @@ public sealed class MatchPredictionRevealService
         var predictions = await _predictionRepository.GetByMatchIdAsync(match.Id);
         var predictionsList = predictions.Where(p => p.IsValid).ToList();
 
+        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
+        if (predictionsChannel == null)
+            return (false, "❌ Nie znaleziono kanału typowanie — skonfiguruj serwer.");
+
+        var thread = await _lookupService.TryGetMatchThreadAsync(match.ThreadId.Value);
+        if (thread == null)
+            return (false, "❌ Nie znaleziono wątku meczu na Discordzie (mógł zostać usunięty albo bot nie ma do niego dostępu).");
+
+        var guild = thread.Guild;
+
         var tableLines = new List<string>
         {
             "```",
@@ -92,9 +103,11 @@ public sealed class MatchPredictionRevealService
 
         if (predictionsList.Any())
         {
-            foreach (var pred in predictionsList.OrderBy(p => p.Player.DiscordUsername))
+            foreach (var pred in predictionsList.OrderBy(p =>
+                         DiscordDisplayNameHelper.ForPlayerInGuild(p.Player, guild),
+                     StringComparer.OrdinalIgnoreCase))
             {
-                var playerName = pred.Player.DiscordUsername;
+                var playerName = DiscordDisplayNameHelper.ForPlayerInGuild(pred.Player, guild);
                 if (playerName.Length > 19)
                     playerName = playerName.Substring(0, 16) + "...";
                 tableLines.Add($"│ {playerName,-19} │ {pred.HomeTip,2}:{pred.AwayTip,-2} │");
@@ -107,14 +120,6 @@ public sealed class MatchPredictionRevealService
         tableLines.Add("```");
 
         var tableText = string.Join("\n", tableLines);
-
-        var predictionsChannel = await _lookupService.GetPredictionsChannelAsync();
-        if (predictionsChannel == null)
-            return (false, "❌ Nie znaleziono kanału typowanie — skonfiguruj serwer.");
-
-        var thread = await _lookupService.TryGetMatchThreadAsync(match.ThreadId.Value);
-        if (thread == null)
-            return (false, "❌ Nie znaleziono wątku meczu na Discordzie (mógł zostać usunięty albo bot nie ma do niego dostępu).");
 
         var embed = new EmbedBuilder()
             .WithTitle(DiscordApiLimits.Truncate($"👁️ Ujawnione typy: {match.HomeTeam} vs {match.AwayTeam}", DiscordApiLimits.EmbedTitle))

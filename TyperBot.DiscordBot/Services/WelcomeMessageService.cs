@@ -197,28 +197,28 @@ public class WelcomeMessageService
                 .WithColor(Color.Green)
                 .AddField("🎯 Jak typować?",
                     "1. Znajdź wątek meczu w tym kanale (każdy mecz ma swój wątek)\n" +
-                    "2. Kliknij przycisk **\"Typuj\"** na karcie meczu\n" +
-                    "3. Wpisz swój typ (np. 52:38)\n" +
-                    "4. Gotowe! Możesz zmienić typ w każdej chwili przed pierwotną godziną rozpoczęcia meczu", inline: false)
-                .AddField("📊 Sprawdzanie wyników",
-                    "`/moje-typy` - Wszystkie Twoje typy w **aktywnym sezonie**\n" +
-                    "`/moje-typy [numer kolejki]` - Typy tylko z wybranej kolejki\n\n" +
-                    "Widzisz tam:\n" +
-                    "• ✅ Zakończone mecze z wynikami\n" +
-                    "• 🎯 Zdobyte punkty za celne typy\n" +
-                    "• ⏰ Mecze jeszcze bez wyniku", inline: false)
-                .AddField("🏆 Tabele",
-                    "`/tabela-sezonu` - Tabela sezonu (PNG)\n" +
-                    "`/tabela-kolejki [numer]` - Tabela kolejki (PNG)\n\n" +
-                    "Tabele pokazują:\n" +
-                    "• Pozycję każdego gracza\n" +
-                    "• Zdobyte punkty\n" +
-                    "• Liczbę typów i celnych wyników", inline: false)
+                    "2. Na karcie meczu: **Typuj wynik** (modal z typem) albo **Mój typ** (tylko Tobie — czy masz już typ na ten mecz)\n" +
+                    "3. W modalu wpisz punkty obu drużyn (np. 52:38); suma musi wynosić **90**\n" +
+                    "4. Możesz zmienić typ przed pierwotną godziną startu meczu (zgodnie z zasadami poniżej)", inline: false)
+                .AddField("📊 Typy i wyniki (komendy)",
+                    "`/moje-typy` — lista **wszystkich** Twoich typów w **aktywnym sezonie** (ephemeral)\n" +
+                    "`/moje-typy [numer kolejki]` — typy tylko z **jednej kolejki**\n\n" +
+                    "W podglądzie: zakończone mecze z wynikiem i punktami, nadal trwające / przed startem — sam typ.", inline: false)
+                .AddField("🏆 Tabele (PNG, tylko dla Ciebie)",
+                    "`/tabela-sezonu` — ogólna tabela punktów sezonu\n" +
+                    "`/tabela-kolejki [numer]` — tabela po jednej kolejce\n\n" +
+                    "Widzisz m.in. pozycje, punkty, liczbę typów i trafień.", inline: false)
+                .AddField("📈 Statystyki i wykresy (PNG, tylko dla Ciebie)",
+                    "`/pkt-meczu` [mecz z autouzupełniania] — punkty w wybranym meczu i różnica vs poprzedni zakończony mecz w sezonie\n" +
+                    "`/pkt-kolejki` [numer] — punkty zdobyte w kolejce i różnica vs poprzednia kolejka\n" +
+                    "`/wykres-punktow` — skumulowane punkty w czasie (linie wg graczy, cały aktywny sezon)\n" +
+                    "`/rozklad-punktow` — histogram: jak często padła dana liczba punktów z meczu (wszyscy gracze)\n" +
+                    "`/kolowy-rozklad-punktow` — Twój rozkład punktów z meczów na wykresie kołowym\n" +
+                    "`/ping` — szybki test, czy bot odpowiada", inline: false)
                 .AddField("💡 Wskazówki",
-                    "• Typuj przed rozpoczęciem meczu - po starcie nie możesz już zmienić typu\n" +
-                    "• Możesz zmienić typ w każdej chwili przed meczem\n" +
-                    "• Po zatypowaniu pojawi się wiadomość w wątku meczu\n" +
-                    "• Punkty są przyznawane automatycznie po wpisaniu wyniku przez admina", inline: false)
+                    "• W wątku pod kartą czasem pojawi się **krótki komunikat** po zatypowaniu (widoczny dla wszystkich) — używana jest **nazwa wyświetlana na serwerze**, jeśli ją ustawisz\n" +
+                    "• Punkty naliczają się po wpisaniu wyniku przez admina\n" +
+                    "• Pełne zasady typowania i punktacji: drugi przypięty embed **Zasady Typera**", inline: false)
                 .WithFooter("Masz pytania? Skontaktuj się z administratorem")
                 .WithCurrentTimestamp()
                 .Build();
@@ -292,24 +292,21 @@ public class WelcomeMessageService
                     "**0 punktów** - Źle wyznaczony zwycięzca meczu\n\n" +
                     "**Uwaga:** Suma typowanego wyniku musi wynosić 90 punktów. Jeśli suma jest inna, typ zostanie odrzucony i pojawi się publiczna wiadomość w wątku meczu.", inline: false)
                 .AddField("⏰ Kiedy typować?",
-                    "• Typuj **przed pierwotną godziną rozpoczęcia meczu**\n" +
-                    "• Jeśli mecz jest opóźniony, godzina typowania pozostaje taka sama\n" +
-                    "• Po pierwotnej godzinie rozpoczęcia nie możesz już zmienić typu\n" +
-                    "• Dla meczów przełożonych możesz zmienić typ przed pierwotną godziną rozpoczęcia\n" +
-                    "• Każdy mecz ma swój wątek w kanale `#typowanie`\n" +
-                    "• Wątki są tworzone automatycznie 2 dni przed meczem", inline: false)
+                    "• Typuj **do pierwotnej godziny rozpoczęcia meczu** (albo do **własnego deadline’u** ustawionego na karcie — wtedy obowiązuje wcześniejszy czas)\n" +
+                    "• **Przełożony** mecz: okno typowania i tak zwykle zamyka się przy **pierwotnej** godzinie startu (chyba że admin ustawi wcześniejszy **deadline** na karcie)\n" +
+                    "• Po zamknięciu typowania nie zmienisz typu\n" +
+                    "• Każdy mecz ma **osobny wątek** w `#typowanie`\n" +
+                    "• Wątek z kartą pojawia się **automatycznie** według harmonogramu (np. domyślnie środa 8:00 w tygodniu przed kolejką — dokładny czas jest w bazie przy meczu); admin może też **wymusić publikację** z panelu", inline: false)
                 .AddField("📍 Gdzie typować?",
-                    "1. Wejdź do kanału `#typowanie`\n" +
-                    "2. Znajdź wątek z meczem, który Cię interesuje\n" +
-                    "3. W wątku znajdziesz kartę meczu z przyciskiem **\"Typuj\"**\n" +
-                    "4. Kliknij przycisk i wpisz swój typ", inline: false)
+                    "1. Kanał `#typowanie`\n" +
+                    "2. Wątek z nazwą meczu / kolejki\n" +
+                    "3. Karta z przyciskami **Typuj wynik** i **Mój typ** (oraz akcjami admina)", inline: false)
                 .AddField("✅ Co dalej?",
-                    "• Po zatypowaniu pojawi się wiadomość w wątku\n" +
-                    "• Możesz zmienić typ w każdej chwili przed pierwotną godziną rozpoczęcia\n" +
-                    "• Typy są tajne do momentu rozpoczęcia meczu\n" +
-                    "• Po zakończeniu meczu admin wpisze wynik\n" +
-                    "• Punkty są przyznawane automatycznie\n" +
-                    "• Sprawdź swoje wyniki komendą `/moje-typy`", inline: false)
+                    "• Po zatypowaniu często pojawi się **krótka wiadomość** w wątku (dla wszystkich)\n" +
+                    "• **Mój typ** — tylko Tobie pokazuje zapisany wynik lub brak typu\n" +
+                    "• `/moje-typy` — podsumowanie typów w sezonie lub w jednej kolejce\n" +
+                    "• Tabele i wykresy: komendy z pierwszego przypiętego embeda (**Jak używać Typera**)\n" +
+                    "• Po meczu admin wpisuje wynik → punkty naliczane automatycznie", inline: false)
                 .AddField("❓ Częste pytania",
                     "**Czy mogę zmienić typ?**\n" +
                     "Tak, ale tylko przed pierwotną godziną rozpoczęcia meczu. Jeśli mecz jest przełożony, możesz zmienić typ przed pierwotną godziną.\n\n" +
@@ -319,8 +316,8 @@ public class WelcomeMessageService
                     "To zasady żużlowe - każdy mecz ma łącznie 90 punktów do zdobycia (15 biegów × 6 punktów).\n\n" +
                     "**Kiedy dostanę punkty?**\n" +
                     "Automatycznie po wpisaniu wyniku przez admina.\n\n" +
-                    "**Gdzie zobaczę tabelę?**\n" +
-                    "Użyj `/tabela-sezonu` lub `/tabela-kolejki [numer]`", inline: false)
+                    "**Gdzie zobaczę tabelę lub wykresy?**\n" +
+                    "`/tabela-sezonu`, `/tabela-kolejki [numer]` — PNG. Statystyki: `/pkt-meczu`, `/pkt-kolejki`, `/wykres-punktow`, `/rozklad-punktow`, `/kolowy-rozklad-punktow` (opisy przy pierwszym przypięciu).", inline: false)
                 .WithFooter("Powodzenia w typowaniu! 🍀")
                 .WithCurrentTimestamp()
                 .Build();

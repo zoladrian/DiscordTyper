@@ -81,6 +81,54 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         return player;
     }
 
+    /// <summary>Identyfikator do żartów: globalna nazwa wyświetlana, inaczej login (bez zmiany zapisu w bazie).</summary>
+    private static string GimmickKey(SocketGuildUser u)
+    {
+        if (!string.IsNullOrWhiteSpace(u.GlobalName))
+            return u.GlobalName.Trim();
+        return u.Username;
+    }
+
+    private static string ResolveGimmickKey(ulong discordUserId, SocketGuild guild, Domain.Entities.Player? playerFallback)
+    {
+        var gu = guild.GetUser(discordUserId);
+        if (gu != null)
+            return GimmickKey(gu);
+        return playerFallback?.DiscordUsername ?? string.Empty;
+    }
+
+    private async Task<bool> LubiePiwoHasOtherValidPredictionAsync(int matchId, ulong excludeUserId, SocketGuild guild)
+    {
+        var preds = await _predictionRepository.GetByMatchIdAsync(matchId);
+        foreach (var p in preds.Where(x => x.IsValid && x.Player.DiscordUserId != excludeUserId))
+        {
+            var key = ResolveGimmickKey(p.Player.DiscordUserId, guild, p.Player);
+            if (key.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> DidLubiePiwoSubmitBeforeCurrentUserAsync(int matchId, ulong currentUserId, SocketGuild guild)
+    {
+        var preds = (await _predictionRepository.GetByMatchIdAsync(matchId))
+            .Where(p => p.IsValid)
+            .OrderBy(p => p.CreatedAt)
+            .ToList();
+        var idx = preds.FindIndex(p => p.Player.DiscordUserId == currentUserId);
+        if (idx <= 0)
+            return false;
+        for (var i = 0; i < idx; i++)
+        {
+            var key = ResolveGimmickKey(preds[i].Player.DiscordUserId, guild, preds[i].Player);
+            if (key.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     private async Task PostPredictionMessageInThreadAsync(Domain.Entities.Match match, SocketGuildUser user, bool isUpdate)
     {
         try
@@ -124,32 +172,53 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             
             if (thread == null) return;
 
+            var displayName = DiscordDisplayNameHelper.ForDisplay(user);
+            var gk = GimmickKey(user);
+            var guild = user.Guild;
+
             string message;
-            if (isUpdate)
+            if (isUpdate && gk.Equals("ghost_16591", StringComparison.OrdinalIgnoreCase))
+                message = $"{displayName} zmieniła wynik po wytrzeźwieniu";
+            else if (isUpdate && gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase))
+                message = $"{displayName} zmieniła wynik zamiast zająć się dziećmi";
+            else if (!isUpdate && gk.Equals("jahcob88", StringComparison.OrdinalIgnoreCase))
+                message = $"{displayName} הוא קבע את התוצאה";
+            else if (!isUpdate && gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
+                     && Random.Shared.NextDouble() < 0.3
+                     && await DidLubiePiwoSubmitBeforeCurrentUserAsync(match.Id, user.Id, guild))
+                message = "Justynka zatypowała, ale marcinek zrobił to szybciej";
+            else if (!isUpdate && gk.Equals("owen96", StringComparison.OrdinalIgnoreCase) && Random.Shared.NextDouble() < 0.3)
+                message = $"{displayName} zagruntował";
+            else if (isUpdate)
             {
-                // Random message for update
                 var updateMessages = new[]
                 {
-                    $"{user.Username} wydygał i zmienił wynik",
-                    $"{user.Username} obsrał się i zmienił wynik",
-                    $"{user.Username} obsmarkał się i zmienił wynik",
-                    $"{user.Username} obsrał zbroje i zmienił wynik"
+                    $"{displayName} wydygał i zmienił wynik",
+                    $"{displayName} obsrał się i zmienił wynik",
+                    $"{displayName} obsmarkał się i zmienił wynik",
+                    $"{displayName} obsrał zbroje i zmienił wynik"
                 };
                 message = updateMessages[Random.Shared.Next(updateMessages.Length)];
             }
             else
             {
-                // Random message for new prediction
                 var newMessages = new[]
                 {
-                    $"{user.Username} obstawił",
-                    $"{user.Username} zatypował",
-                    $"{user.Username} wpisał wynik",
-                    $"{user.Username} postawil",
-                    $"{user.Username} zatypował wynik"
+                    $"{displayName} obstawił",
+                    $"{displayName} zatypował",
+                    $"{displayName} wpisał wynik",
+                    $"{displayName} postawil",
+                    $"{displayName} zatypował wynik"
                 };
                 message = newMessages[Random.Shared.Next(newMessages.Length)];
             }
+
+            if (gk.Equals("renkarenkemyje", StringComparison.OrdinalIgnoreCase))
+                message += " z powiatu Dzierżoniowskiego";
+            if (!isUpdate && gk.Equals("agness88", StringComparison.OrdinalIgnoreCase))
+                message += " zamiast machać tyłkiem na siłowni";
+            if (isUpdate && gk.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase))
+                message += " po wytrzeźwieniu";
 
             await thread.SendMessageAsync(message);
             _logger.LogInformation(
@@ -162,8 +231,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    /// <summary>Posts the public "invalid input" thread message while the interaction scope is still active.</summary>
-    private async Task TryPostInvalidPredictionShameAsync(int matchId, SocketGuildUser user)
+    /// <summary>Publiczna wiadomość „imbecyl” — zły format liczb albo suma ≠ 90.</summary>
+    private async Task TryPostImbecylShameAsync(int matchId, SocketGuildUser user, string logReasonTag)
     {
         try
         {
@@ -183,13 +252,18 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 thread = predictionsChannel.Threads.FirstOrDefault(t => t.Name == threadName);
             }
 
-            if (thread != null)
-            {
-                await thread.SendMessageAsync($"{user.Username} próbował zatypować jak skończony imbecyl");
-                _logger.LogInformation(
-                    "Typ odrzucony — nieprawidłowy format liczb (modal). User: {Username} (ID: {UserId}), MatchId: {MatchId}",
-                    user.Username, user.Id, matchId);
-            }
+            if (thread == null) return;
+
+            var appendMarcinek = GimmickKey(user).Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
+                && await LubiePiwoHasOtherValidPredictionAsync(matchId, user.Id, user.Guild);
+            var baseText = $"{DiscordDisplayNameHelper.ForDisplay(user)} próbował zatypować jak skończony imbecyl";
+            if (appendMarcinek)
+                baseText += " a marcinek nie";
+
+            await thread.SendMessageAsync(baseText);
+            _logger.LogInformation(
+                "Typ odrzucony — {Tag}. User: {Username} (ID: {UserId}), MatchId: {MatchId}",
+                logReasonTag, user.Username, user.Id, matchId);
         }
         catch (Exception ex)
         {
@@ -354,7 +428,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         {
             await RespondAsync("❌ Wprowadź prawidłowe liczby dla obu wyników. Typ nie został zapisany.", ephemeral: true);
             // Must await: interaction scope (and DbContext) ends when handler returns — no fire-and-forget Task.Run.
-            await TryPostInvalidPredictionShameAsync(matchId, user!);
+            await TryPostImbecylShameAsync(matchId, user!, "nieprawidłowy format liczb (modal)");
             return;
         }
 
@@ -371,10 +445,13 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         var (isValid, errorMessage) = await _predictionService.ValidatePrediction(user!.Id, matchId, homeTip, awayTip);
         if (!isValid)
         {
+            var reasonCode = ValidationRejectionCodeForLog(errorMessage);
             _logger.LogInformation(
                 "Typ odrzucony po walidacji — User: {DiscordUserId}, MatchId: {MatchId}, Powód: {ReasonCode}",
-                user!.Id, matchId, ValidationRejectionCodeForLog(errorMessage));
+                user!.Id, matchId, reasonCode);
             await FollowupAsync($"❌ {errorMessage}", ephemeral: true);
+            if (reasonCode == "sum_not_90")
+                await TryPostImbecylShameAsync(matchId, user!, "suma ≠ 90");
             return;
         }
 
