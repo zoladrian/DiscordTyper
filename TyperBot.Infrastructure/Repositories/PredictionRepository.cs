@@ -75,6 +75,7 @@ public class PredictionRepository : IPredictionRepository
         return await _context.Predictions
             .AsNoTracking()
             .AsSplitQuery()
+            .Include(p => p.PlayerScore)
             .Include(p => p.Match)
                 .ThenInclude(m => m.Round)
             .Where(p => p.PlayerId == playerId && matchIdList.Contains(p.MatchId))
