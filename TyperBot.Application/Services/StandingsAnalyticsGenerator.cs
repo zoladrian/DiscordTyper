@@ -10,6 +10,11 @@ namespace TyperBot.Application.Services;
 /// </summary>
 public sealed class StandingsAnalyticsGenerator
 {
+    private readonly IPlayerDisplayNameResolver _displayNames;
+
+    public StandingsAnalyticsGenerator(IPlayerDisplayNameResolver displayNames) =>
+        _displayNames = displayNames ?? throw new ArgumentNullException(nameof(displayNames));
+
     private const int DeltaTableWidth = 820;
     private const int RowHeight = 38;
     private const int TitleBarHeight = 52;
@@ -140,7 +145,7 @@ public sealed class StandingsAnalyticsGenerator
         return sum;
     }
 
-    public static List<AnalyticsDeltaRow> BuildMatchDeltaRows(Match target, Match? previous, List<Player> players)
+    public List<AnalyticsDeltaRow> BuildMatchDeltaRows(Match target, Match? previous, List<Player> players)
     {
         var sorted = players.Where(x => x.IsActive).ToList();
         sorted.Sort((a, b) =>
@@ -161,13 +166,13 @@ public sealed class StandingsAnalyticsGenerator
             var cur = PointsInMatch(p, target.Id);
             int? prevPts = previous == null ? null : PointsInMatch(p, previous.Id);
             var delta = prevPts.HasValue ? cur - prevPts.Value : (int?)null;
-            list.Add(new AnalyticsDeltaRow(p.DiscordUsername, cur, delta));
+            list.Add(new AnalyticsDeltaRow(_displayNames.GetDisplayName(p), cur, delta));
         }
 
         return list;
     }
 
-    public static List<AnalyticsDeltaRow> BuildRoundDeltaRows(Round target, Round? previousRound, List<Player> players)
+    public List<AnalyticsDeltaRow> BuildRoundDeltaRows(Round target, Round? previousRound, List<Player> players)
     {
         var roundFinishedIds = (target.Matches ?? Enumerable.Empty<Match>())
             .Where(IsFinishedWithScore)
@@ -192,7 +197,7 @@ public sealed class StandingsAnalyticsGenerator
             var cur = PointsInRound(p, target);
             int? prevPts = previousRound == null ? null : PointsInRound(p, previousRound);
             var delta = prevPts.HasValue ? cur - prevPts.Value : (int?)null;
-            list.Add(new AnalyticsDeltaRow(p.DiscordUsername, cur, delta));
+            list.Add(new AnalyticsDeltaRow(_displayNames.GetDisplayName(p), cur, delta));
         }
 
         return list;
@@ -554,7 +559,7 @@ public sealed class StandingsAnalyticsGenerator
         {
             var pl = active[pi];
             if (!cumByPlayer.TryGetValue(pl.Id, out var cum)) continue;
-            string nick = Ellipsize(pl.DiscordUsername, legFont, 140f);
+            string nick = Ellipsize(_displayNames.GetDisplayName(pl), legFont, 140f);
             endNickRows.Add((cum[^1], nick, colors[pi]));
         }
 
@@ -593,7 +598,7 @@ public sealed class StandingsAnalyticsGenerator
         {
             using var sq = new SKPaint { Color = colors[pi], IsAntialias = true };
             c.DrawRoundRect(new SKRect(legX, legY - 8f, legX + 12f, legY), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
-            string nm = Ellipsize(active[pi].DiscordUsername, legFont, ChartMarginRight - 36f);
+            string nm = Ellipsize(_displayNames.GetDisplayName(active[pi]), legFont, ChartMarginRight - 36f);
             using var nickPaint = new SKPaint { Color = colors[pi], IsAntialias = true };
             c.DrawText(nm, legX + 18f, legY, legFont, nickPaint);
             legY += 14f;
@@ -650,7 +655,7 @@ public sealed class StandingsAnalyticsGenerator
         return columns;
     }
 
-    public static List<PointsHistogramRow> BuildSeasonPointsHistogramRows(
+    private List<PointsHistogramRow> BuildSeasonPointsHistogramRows(
         List<Player> players,
         HashSet<int> finishedMatchIds,
         IReadOnlyList<int> columns)
@@ -679,7 +684,7 @@ public sealed class StandingsAnalyticsGenerator
                     counts[idx]++;
             }
 
-            list.Add(new PointsHistogramRow(pl.DiscordUsername, counts));
+            list.Add(new PointsHistogramRow(_displayNames.GetDisplayName(pl), counts));
         }
 
         return list;
@@ -722,7 +727,7 @@ public sealed class StandingsAnalyticsGenerator
         if (matchIds.Count == 0)
             return RenderPlayerPointsPieMessage(
                 season.Name,
-                player.DiscordUsername,
+                _displayNames.GetDisplayName(player),
                 "Brak zakończonych meczów z wynikiem w sezonie.");
 
         var counts = BuildSinglePlayerSeasonPointCounts(player, matchIds, columns);
@@ -737,10 +742,10 @@ public sealed class StandingsAnalyticsGenerator
         if (total == 0)
             return RenderPlayerPointsPieMessage(
                 season.Name,
-                player.DiscordUsername,
+                _displayNames.GetDisplayName(player),
                 "Brak zaliczonych typów w zakończonych meczach tego sezonu.");
 
-        return RenderPlayerPointsPie(season.Name, player.DiscordUsername, slices, total, matchIds.Count);
+        return RenderPlayerPointsPie(season.Name, _displayNames.GetDisplayName(player), slices, total, matchIds.Count);
     }
 
     public byte[] GenerateSeasonPointsHistogramPng(Season season, List<Player> players)

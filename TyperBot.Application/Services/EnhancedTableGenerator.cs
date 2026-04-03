@@ -8,13 +8,16 @@ public class EnhancedTableGenerator
 {
     private readonly TableGenerator _tableGenerator;
     private readonly ISeasonRepository _seasonRepository;
+    private readonly IPlayerDisplayNameResolver _displayNames;
 
     public EnhancedTableGenerator(
         TableGenerator tableGenerator,
-        ISeasonRepository seasonRepository)
+        ISeasonRepository seasonRepository,
+        IPlayerDisplayNameResolver displayNames)
     {
         _tableGenerator = tableGenerator;
         _seasonRepository = seasonRepository;
+        _displayNames = displayNames;
     }
 
     public Task<(TableFormat format, string? textTable, byte[]? imageBytes)> GenerateSeasonTableAsync(
@@ -74,7 +77,7 @@ public class EnhancedTableGenerator
             var trafioneWyniki = playerScores.Count(s => s.Bucket == Bucket.P35 || s.Bucket == Bucket.P50);
             var predCount = playerScores.Count;
 
-            allScores.Add((player.DiscordUsername, totalPoints, predCount, trafioneWyniki));
+            allScores.Add((_displayNames.GetDisplayName(player), totalPoints, predCount, trafioneWyniki));
         }
 
         var sortedScores = allScores;

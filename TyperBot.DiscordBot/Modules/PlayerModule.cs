@@ -353,7 +353,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         var ordered = StandingsAnalyticsGenerator.OrderFinishedMatches(seasonFull);
         var prev = StandingsAnalyticsGenerator.GetPreviousFinishedMatch(ordered, match);
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
-        var rows = StandingsAnalyticsGenerator.BuildMatchDeltaRows(match, prev, players);
+        var rows = _analyticsGenerator.BuildMatchDeltaRows(match, prev, players);
         var title = $"{match.HomeTeam} vs {match.AwayTeam}";
         var bytes = _analyticsGenerator.GenerateMatchDeltaTablePng(seasonFull.Name, title, rows,
             $"Poprzedni mecz: {(prev == null ? "brak" : $"{prev.HomeTeam} vs {prev.AwayTeam}")}");
@@ -389,7 +389,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
         var prevRound = StandingsAnalyticsGenerator.GetPreviousRound(seasonFull, round);
         var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
-        var rows = StandingsAnalyticsGenerator.BuildRoundDeltaRows(round, prevRound, players);
+        var rows = _analyticsGenerator.BuildRoundDeltaRows(round, prevRound, players);
         var roundLabel = RoundHelper.GetRoundLabel(numer);
         var bytes = _analyticsGenerator.GenerateRoundDeltaTablePng(seasonFull.Name, roundLabel, rows,
             prevRound == null ? "Brak poprzedniej kolejki." : $"vs {RoundHelper.GetRoundLabel(prevRound.Number)}.");

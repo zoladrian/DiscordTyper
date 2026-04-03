@@ -7,6 +7,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddScoped<IPlayerDisplayNameResolver, DbUsernameDisplayNameResolver>();
         services.AddScoped<ScoreCalculator>();
         services.AddScoped<PredictionService>();
         services.AddScoped<RoundManager>();

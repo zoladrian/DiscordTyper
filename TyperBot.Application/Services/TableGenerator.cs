@@ -9,6 +9,13 @@ namespace TyperBot.Application.Services;
 /// </summary>
 public class TableGenerator
 {
+    private readonly IPlayerDisplayNameResolver _displayNames;
+
+    public TableGenerator(IPlayerDisplayNameResolver displayNames)
+    {
+        _displayNames = displayNames;
+    }
+
     private const int TableWidth = 880;
     private const int RowHeight = 40;
     private const int TitleBarHeight = 56;
@@ -361,7 +368,7 @@ public class TableGenerator
         return set;
     }
 
-    private static List<StandingsRow> CalculateSeasonRows(List<Player> players, Season season)
+    private List<StandingsRow> CalculateSeasonRows(List<Player> players, Season season)
     {
         var seasonMatchIds = ResolveSeasonMatchIds(season);
         var filterBySeason = seasonMatchIds.Count > 0;
@@ -373,14 +380,14 @@ public class TableGenerator
                 .Where(p => p.IsValid && (!filterBySeason || seasonMatchIds.Contains(p.MatchId)))
                 .ToList();
             var scored = predsInSeason.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            list.Add(BuildRow(player.DiscordUsername, scored));
+            list.Add(BuildRow(_displayNames.GetDisplayName(player), scored));
         }
 
         list.Sort(CompareStandingsRows);
         return list;
     }
 
-    private static List<StandingsRow> CalculateRoundRows(List<Player> players, Round round)
+    private List<StandingsRow> CalculateRoundRows(List<Player> players, Round round)
     {
         var roundMatchIds = (round.Matches ?? Array.Empty<Match>()).Select(m => m.Id).ToHashSet();
         var list = new List<StandingsRow>();
@@ -391,7 +398,7 @@ public class TableGenerator
                 .Where(p => roundMatchIds.Contains(p.MatchId) && p.IsValid)
                 .ToList();
             var scored = predsInRound.Where(p => p.PlayerScore != null).Select(p => p.PlayerScore!).ToList();
-            list.Add(BuildRow(player.DiscordUsername, scored));
+            list.Add(BuildRow(_displayNames.GetDisplayName(player), scored));
         }
 
         list.Sort(CompareStandingsRows);

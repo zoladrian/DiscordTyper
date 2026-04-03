@@ -10,16 +10,19 @@ namespace TyperBot.Tests.Services;
 
 public class EnhancedTableGeneratorTests
 {
-    private readonly TableGenerator _tableGenerator = new();
+    private readonly IPlayerDisplayNameResolver _displayNames = new DbUsernameDisplayNameResolver();
+    private readonly TableGenerator _tableGenerator;
     private readonly Mock<ISeasonRepository> _seasonRepository;
     private readonly EnhancedTableGenerator _enhancedGenerator;
 
     public EnhancedTableGeneratorTests()
     {
+        _tableGenerator = new TableGenerator(_displayNames);
         _seasonRepository = new Mock<ISeasonRepository>();
         _enhancedGenerator = new EnhancedTableGenerator(
             _tableGenerator,
-            _seasonRepository.Object);
+            _seasonRepository.Object,
+            _displayNames);
     }
 
     [Fact]

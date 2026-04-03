@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using TyperBot.Application;
+using TyperBot.Application.Services;
 using TyperBot.DiscordBot.Autocomplete;
 using TyperBot.DiscordBot.Models;
 using TyperBot.DiscordBot.Services;
@@ -103,6 +104,8 @@ builder.Services.AddInfrastructure(connectionString);
 
 // Register application services
 builder.Services.AddApplication();
+// Nadpisuje DbUsernameDisplayNameResolver — tabele/wykresy: nick serwera → globalna → login (jak wiadomości)
+builder.Services.AddScoped<IPlayerDisplayNameResolver, DiscordGuildPlayerDisplayNameResolver>();
 
 // Configure Discord client (explicit client factory so Gateway config is always applied)
 var discordConfig = new DiscordSocketConfig
