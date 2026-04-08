@@ -164,8 +164,10 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             
             if (thread == null) return;
 
-            var displayName = DiscordDisplayNameHelper.ForDisplay(user);
             var gk = DiscordDisplayNameHelper.ForGimmickMatch(user);
+            var displayName = gk.Equals("stanch99", StringComparison.OrdinalIgnoreCase)
+                ? "T-Rex 3"
+                : DiscordDisplayNameHelper.ForDisplay(user);
             var guild = user.Guild;
             var isFeminine = gk.Equals("agness88", StringComparison.OrdinalIgnoreCase)
                           || gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
@@ -231,6 +233,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 message += " zamiast machać tyłkiem na siłowni";
             if (isUpdate && gk.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase))
                 message += " po wytrzeźwieniu";
+            if (!isUpdate && gk.Equals("paciao", StringComparison.OrdinalIgnoreCase))
+                message += " za hajs starego";
 
             await thread.SendMessageAsync(message);
             _logger.LogInformation(
