@@ -16,6 +16,12 @@ namespace TyperBot.DiscordBot.Modules;
 
 public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 {
+    /// <summary>Szansa easter egga przy pierwszym typie w wątku meczu.</summary>
+    private const double MatchThreadEasterEggChance = 0.3;
+
+    /// <summary>Szansa easter egga przy zmianie typu (wyższa niż przy pierwszym typie).</summary>
+    private const double MatchThreadEasterEggChanceOnUpdate = 0.5;
+
     private readonly ILogger<PredictionModule> _logger;
     private readonly DiscordSettings _settings;
     private readonly DiscordLookupService _lookupService;
@@ -174,17 +180,21 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                           || gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase);
 
             string message;
-            if (isUpdate && gk.Equals("ghost_16591", StringComparison.OrdinalIgnoreCase))
+            if (isUpdate && gk.Equals("ghost_16591", StringComparison.OrdinalIgnoreCase)
+                && Random.Shared.NextDouble() < MatchThreadEasterEggChanceOnUpdate)
                 message = $"{displayName} zmieniła wynik po wytrzeźwieniu";
-            else if (isUpdate && gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase))
+            else if (isUpdate && gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase)
+                     && Random.Shared.NextDouble() < MatchThreadEasterEggChanceOnUpdate)
                 message = $"{displayName} zmieniła wynik zamiast zająć się dziećmi";
-            else if (!isUpdate && gk.Equals("jahcob88", StringComparison.OrdinalIgnoreCase))
+            else if (!isUpdate && gk.Equals("jahcob88", StringComparison.OrdinalIgnoreCase)
+                     && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
                 message = $"{displayName} הוא קבע את התוצאה";
             else if (!isUpdate && gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
-                     && Random.Shared.NextDouble() < 0.3
+                     && Random.Shared.NextDouble() < MatchThreadEasterEggChance
                      && await DidLubiePiwoSubmitBeforeCurrentUserAsync(match.Id, user.Id, guild))
                 message = "Justynka zatypowała, ale marcinek zrobił to szybciej";
-            else if (!isUpdate && gk.Equals("owen96", StringComparison.OrdinalIgnoreCase) && Random.Shared.NextDouble() < 0.3)
+            else if (!isUpdate && gk.Equals("owen96", StringComparison.OrdinalIgnoreCase)
+                     && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
                 message = $"{displayName} zagruntował";
             else if (isUpdate)
             {
@@ -227,13 +237,17 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 message = newMessages[Random.Shared.Next(newMessages.Length)];
             }
 
-            if (gk.Equals("renkarenkemyje", StringComparison.OrdinalIgnoreCase))
+            if (gk.Equals("renkarenkemyje", StringComparison.OrdinalIgnoreCase)
+                && Random.Shared.NextDouble() < (isUpdate ? MatchThreadEasterEggChanceOnUpdate : MatchThreadEasterEggChance))
                 message += " z powiatu Dzierżoniowskiego";
-            if (!isUpdate && gk.Equals("agness88", StringComparison.OrdinalIgnoreCase))
+            if (!isUpdate && gk.Equals("agness88", StringComparison.OrdinalIgnoreCase)
+                && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
                 message += " zamiast machać tyłkiem na siłowni";
-            if (isUpdate && gk.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase))
+            if (isUpdate && gk.Equals("lubie_piwo", StringComparison.OrdinalIgnoreCase)
+                && Random.Shared.NextDouble() < MatchThreadEasterEggChanceOnUpdate)
                 message += " po wytrzeźwieniu";
-            if (!isUpdate && gk.Equals("paciao", StringComparison.OrdinalIgnoreCase))
+            if (!isUpdate && gk.Equals("paciao", StringComparison.OrdinalIgnoreCase)
+                && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
                 message += " za hajs starego";
 
             await thread.SendMessageAsync(message);
