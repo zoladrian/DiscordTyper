@@ -81,19 +81,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         return player;
     }
 
-    /// <summary>Identyfikator do żartów: globalna nazwa wyświetlana, inaczej login (bez zmiany zapisu w bazie).</summary>
-    private static string GimmickKey(SocketGuildUser u)
-    {
-        if (!string.IsNullOrWhiteSpace(u.GlobalName))
-            return u.GlobalName.Trim();
-        return u.Username;
-    }
-
     private static string ResolveGimmickKey(ulong discordUserId, SocketGuild guild, Domain.Entities.Player? playerFallback)
     {
         var gu = guild.GetUser(discordUserId);
         if (gu != null)
-            return GimmickKey(gu);
+            return DiscordDisplayNameHelper.ForGimmickMatch(gu);
         return playerFallback?.DiscordUsername ?? string.Empty;
     }
 
@@ -173,8 +165,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             if (thread == null) return;
 
             var displayName = DiscordDisplayNameHelper.ForDisplay(user);
-            var gk = GimmickKey(user);
+            var gk = DiscordDisplayNameHelper.ForGimmickMatch(user);
             var guild = user.Guild;
+            var isFeminine = gk.Equals("agness88", StringComparison.OrdinalIgnoreCase)
+                          || gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
+                          || gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase);
 
             string message;
             if (isUpdate && gk.Equals("ghost_16591", StringComparison.OrdinalIgnoreCase))
@@ -191,25 +186,42 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 message = $"{displayName} zagruntował";
             else if (isUpdate)
             {
-                var updateMessages = new[]
-                {
-                    $"{displayName} wydygał i zmienił wynik",
-                    $"{displayName} obsrał się i zmienił wynik",
-                    $"{displayName} obsmarkał się i zmienił wynik",
-                    $"{displayName} obsrał zbroje i zmienił wynik"
-                };
+                var updateMessages = isFeminine
+                    ? new[]
+                    {
+                        $"{displayName} wydygała i zmieniła wynik",
+                        $"{displayName} obsrała się i zmieniła wynik",
+                        $"{displayName} obsmarkała się i zmieniła wynik",
+                        $"{displayName} obsrała zbroje i zmieniła wynik"
+                    }
+                    : new[]
+                    {
+                        $"{displayName} wydygał i zmienił wynik",
+                        $"{displayName} obsrał się i zmienił wynik",
+                        $"{displayName} obsmarkał się i zmienił wynik",
+                        $"{displayName} obsrał zbroje i zmienił wynik"
+                    };
                 message = updateMessages[Random.Shared.Next(updateMessages.Length)];
             }
             else
             {
-                var newMessages = new[]
-                {
-                    $"{displayName} obstawił",
-                    $"{displayName} zatypował",
-                    $"{displayName} wpisał wynik",
-                    $"{displayName} postawil",
-                    $"{displayName} zatypował wynik"
-                };
+                var newMessages = isFeminine
+                    ? new[]
+                    {
+                        $"{displayName} obstawiła",
+                        $"{displayName} zatypowała",
+                        $"{displayName} wpisała wynik",
+                        $"{displayName} postawiła",
+                        $"{displayName} zatypowała wynik"
+                    }
+                    : new[]
+                    {
+                        $"{displayName} obstawił",
+                        $"{displayName} zatypował",
+                        $"{displayName} wpisał wynik",
+                        $"{displayName} postawil",
+                        $"{displayName} zatypował wynik"
+                    };
                 message = newMessages[Random.Shared.Next(newMessages.Length)];
             }
 
@@ -254,9 +266,15 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
 
             if (thread == null) return;
 
-            var appendMarcinek = GimmickKey(user).Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
+            var gk = DiscordDisplayNameHelper.ForGimmickMatch(user);
+            var appendMarcinek = gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
                 && await LubiePiwoHasOtherValidPredictionAsync(matchId, user.Id, user.Guild);
-            var baseText = $"{DiscordDisplayNameHelper.ForDisplay(user)} próbował zatypować jak skończony imbecyl";
+            var isFeminine = gk.Equals("agness88", StringComparison.OrdinalIgnoreCase)
+                          || gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
+                          || gk.Equals("anetaa2137", StringComparison.OrdinalIgnoreCase);
+            var baseText = isFeminine
+                ? $"{DiscordDisplayNameHelper.ForDisplay(user)} próbowała zatypować jak skończona imbecylka"
+                : $"{DiscordDisplayNameHelper.ForDisplay(user)} próbował zatypować jak skończony imbecyl";
             if (appendMarcinek)
                 baseText += " a marcinek nie";
 
