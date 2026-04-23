@@ -423,36 +423,22 @@ public sealed class StandingsAnalyticsGenerator
     }
 
     /// <summary>
-    /// Znak wodny w górnej części karty Landrynki: skala jednakowa (contain), cała grafika, wyśrodkowanie,
-    /// delikatna przezroczystość — nie zastępuje nagłówka, leży pod warstwami z gradientem.
+    /// Mini-korona obok nicku lidera (1. miejsce): jednakowa skala, stała wysokość wizualna.
     /// </summary>
-    private static void DrawLandrynkiUpperBackgroundCrown(SKCanvas canvas, float zoneWidth, float zoneHeight)
+    private static void DrawLandrynkiLeaderCrownIcon(SKCanvas canvas, float leftX, float rowCenterY, float iconHeight)
     {
         var bmp = GetLandrynkiCrownBitmap();
-        if (bmp == null || bmp.Width <= 0 || bmp.Height <= 0 || zoneHeight <= 1f)
+        if (bmp == null || bmp.Width <= 0 || bmp.Height <= 0)
             return;
 
-        const float padX = 28f;
-        const float padY = 16f;
-        float availW = Math.Max(1f, zoneWidth - 2f * padX);
-        float availH = Math.Max(1f, zoneHeight - 2f * padY);
-        float scale = Math.Min(availW / bmp.Width, availH / bmp.Height);
-        if (scale <= 0f)
-            return;
-
-        float dw = bmp.Width * scale;
-        float dh = bmp.Height * scale;
-        float x = (zoneWidth - dw) / 2f;
-        float y = padY + (availH - dh) / 2f;
-
-        var dest = new SKRect(x, y, x + dw, y + dh);
+        float scale = iconHeight / bmp.Height;
+        float cw = bmp.Width * scale;
+        float ch = iconHeight;
+        float top = rowCenterY - ch / 2f;
+        var dest = new SKRect(leftX, top, leftX + cw, top + ch);
         using var image = SKImage.FromBitmap(bmp);
-        using var wm = new SKPaint
-        {
-            IsAntialias = true,
-            Color = new SKColor(255, 255, 255, 52),
-        };
-        canvas.DrawImage(image, dest, wm);
+        using var p = new SKPaint { IsAntialias = true };
+        canvas.DrawImage(image, dest, p);
     }
 
     public byte[] GenerateSeasonCumulativeChartPng(Season season, List<Player> players)
@@ -626,36 +612,68 @@ public sealed class StandingsAnalyticsGenerator
             c.DrawPath(path, stroke);
         }
 
-        // Etykiety nicków przy ostatnim punkcie — przy tym samym wyniku układane pionowo
-        var endNickRows = new List<(int PointsTotal, string Nick, SKColor Color)>();
+        // Etykiety nicków przy ostatnim punkcie — rozsuwanie pionowe, gdy idealne Y są zbyt blisko
+        // (wcześniej tylko identyczna suma punktów była grupowana; bliskie wartości nachodziły).
+        var endLabels = new List<(string Nick, SKColor Color, float IdealBaseline)>();
         for (var pi = 0; pi < active.Count; pi++)
         {
             var pl = active[pi];
             if (!cumByPlayer.TryGetValue(pl.Id, out var cum)) continue;
             string nick = Ellipsize(_displayNames.GetDisplayName(pl), legFont, 200f);
-            endNickRows.Add((cum[^1], nick, colors[pi]));
+            float yNorm = cum[^1] / (float)maxY;
+            float ideal = plotB - yNorm * plotH + 4f;
+            endLabels.Add((nick, colors[pi], ideal));
         }
 
-        float lineStep = legFont.Size * 1.22f;
-        float minY = plotT + legFont.Size + 2f;
-        float maxYText = plotB - 4f;
-        foreach (var grp in endNickRows.GroupBy(r => r.PointsTotal).OrderBy(g => g.Key))
+        float minLabelY = plotT + legFont.Size + 2f;
+        float maxLabelY = plotB - 4f;
+
+        endLabels.Sort((a, b) => a.IdealBaseline.CompareTo(b.IdealBaseline));
+
+        int nl = endLabels.Count;
+        if (nl > 0)
         {
-            var ordered = grp.OrderBy(r => r.Nick, StringComparer.OrdinalIgnoreCase).ToList();
-            int n = ordered.Count;
-            float yNorm = grp.Key / (float)maxY;
-            float baseLine = plotB - yNorm * plotH + 4f;
-            float totalStack = (n - 1) * lineStep;
-            float startY = baseLine - totalStack / 2f;
-            if (startY < minY)
-                startY = minY;
-            if (n > 1 && startY + totalStack > maxYText)
-                startY = Math.Max(minY, maxYText - totalStack);
-            for (var i = 0; i < n; i++)
+            var posY = new float[nl];
+            float gap = legFont.Size * 1.22f;
+            const float gapFloor = 9f;
+
+            for (var attempt = 0; attempt < 18; attempt++)
             {
-                float yText = startY + i * lineStep;
-                yText = Math.Clamp(yText, minY, maxYText);
-                var row = ordered[i];
+                posY[0] = Math.Max(endLabels[0].IdealBaseline, minLabelY);
+                for (var i = 1; i < nl; i++)
+                    posY[i] = Math.Max(endLabels[i].IdealBaseline, posY[i - 1] + gap);
+
+                for (var pan = 0; pan < 16; pan++)
+                {
+                    if (posY[nl - 1] > maxLabelY)
+                    {
+                        float d = posY[nl - 1] - maxLabelY;
+                        for (var i = 0; i < nl; i++)
+                            posY[i] -= d;
+                        continue;
+                    }
+
+                    if (posY[0] < minLabelY)
+                    {
+                        float d = minLabelY - posY[0];
+                        for (var i = 0; i < nl; i++)
+                            posY[i] += d;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (posY[0] >= minLabelY && posY[nl - 1] <= maxLabelY)
+                    break;
+
+                gap = Math.Max(gapFloor, gap * 0.88f);
+            }
+
+            for (var i = 0; i < nl; i++)
+            {
+                float yText = Math.Clamp(posY[i], minLabelY, maxLabelY);
+                var row = endLabels[i];
                 using var np = new SKPaint { Color = row.Color, IsAntialias = true };
                 c.DrawText(row.Nick, labelX, yText, legFont, np);
             }
@@ -747,16 +765,10 @@ public sealed class StandingsAnalyticsGenerator
         SkiaChrome.PushClippedCard(c, m, m, DeltaTableWidth, h, rad);
         c.Clear(LandTableCanvasBg);
 
-        float upperBackgroundH = Math.Max(
-            TitleBarHeight + HeaderHeight,
-            Math.Min(h * 0.40f, TitleBarHeight + HeaderHeight + RowHeight * 5));
-        DrawLandrynkiUpperBackgroundCrown(c, DeltaTableWidth, upperBackgroundH);
-
-        const byte landHeadOverlayA = 200;
         SkiaChrome.FillLinearGradientRect(c,
             new SKRect(0, 0, DeltaTableWidth, TitleBarHeight),
-            new SKColor(0xC8, 0x20, 0x88, landHeadOverlayA),
-            LandPinkTop.WithAlpha(landHeadOverlayA));
+            new SKColor(0xC8, 0x20, 0x88),
+            LandPinkTop);
         using var tfB = Bold();
         using var fTitle = new SKFont(tfB, 18f);
         using var fSub = new SKFont(Body(), 11f);
@@ -768,16 +780,15 @@ public sealed class StandingsAnalyticsGenerator
         float titleBaseline = TitleBarHeight / 2f + 6f;
         c.DrawText(title, (DeltaTableWidth - tw) / 2f, titleBaseline, fTitle, white);
 
-        const string sub = "Ranking wg liczby zakończonych meczów bez ważnego typu (wyżej = więcej)";
+        const string sub = "Ranking wg liczby zakończonych meczów bez ważnego typu";
         string subEll = sub.Length > 96 ? sub[..93] + "…" : sub;
         float sw = fSub.MeasureText(subEll);
         c.DrawText(subEll, (DeltaTableWidth - sw) / 2f, TitleBarHeight - 8f, fSub, grey);
 
-        const byte landColHeadA = 205;
         SkiaChrome.FillLinearGradientRect(c,
             new SKRect(0, TitleBarHeight, DeltaTableWidth, TitleBarHeight + HeaderHeight),
-            SkiaChrome.Darken(LandPinkTop, 40).WithAlpha(landColHeadA),
-            SkiaChrome.Darken(LandPinkTop, 18).WithAlpha(landColHeadA));
+            SkiaChrome.Darken(LandPinkTop, 40),
+            SkiaChrome.Darken(LandPinkTop, 18));
 
         using var fH = new SKFont(tfB, 11f);
         using var hWhite = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -786,6 +797,9 @@ public sealed class StandingsAnalyticsGenerator
         DrawCellCentered(c, hMiss, x2, TitleBarHeight, x3 - x2, HeaderHeight, fH, hWhite);
 
         using var fBody = new SKFont(Body(), 13f);
+        const float namePad = 6f;
+        const float crownIconH = 17f;
+        const float crownGap = 7f;
 
         for (var i = 0; i < rows.Count; i++)
         {
@@ -801,9 +815,26 @@ public sealed class StandingsAnalyticsGenerator
             float nw = fBody.MeasureText(nr);
             c.DrawText(nr, x0 + (x1 - x0 - nw) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
 
-            string name = Ellipsize(rows[i].PlayerName, fBody, x2 - x1 - 12f);
-            float nameW = fBody.MeasureText(name);
-            c.DrawText(name, x1 + (x2 - x1 - nameW) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
+            float baseline = y + RowHeight / 2f + 5f;
+            float colInnerW = x2 - x1 - 2f * namePad;
+            if (i == 0 && GetLandrynkiCrownBitmap() is { Width: > 0, Height: > 0 } crownBmp)
+            {
+                float crownW = crownBmp.Width * (crownIconH / crownBmp.Height);
+                float nameMaxW = Math.Max(20f, colInnerW - crownW - crownGap);
+                string name = Ellipsize(rows[i].PlayerName, fBody, nameMaxW);
+                float nameW = fBody.MeasureText(name);
+                float blockW = crownW + crownGap + nameW;
+                float blockLeft = x1 + namePad + (colInnerW - blockW) / 2f;
+                float rowMid = y + RowHeight / 2f;
+                DrawLandrynkiLeaderCrownIcon(c, blockLeft, rowMid, crownIconH);
+                c.DrawText(name, blockLeft + crownW + crownGap, baseline, fBody, txt);
+            }
+            else
+            {
+                string name = Ellipsize(rows[i].PlayerName, fBody, colInnerW);
+                float nameW = fBody.MeasureText(name);
+                c.DrawText(name, x1 + namePad + (colInnerW - nameW) / 2f, baseline, fBody, txt);
+            }
 
             string mc = rows[i].MissedCount.ToString();
             float mw = fBody.MeasureText(mc);
