@@ -16,10 +16,10 @@ public class MatchManagementServiceTests
     [InlineData(0, 90, true, null)]
     [InlineData(90, 0, true, null)]
     [InlineData(50, 40, true, null)]
+    [InlineData(44, 45, true, null)]
+    [InlineData(46, 45, true, null)]
     [InlineData(-1, 91, false, "Wyniki nie mogą być ujemne.")]
     [InlineData(45, -1, false, "Wyniki nie mogą być ujemne.")]
-    [InlineData(44, 45, false, "Suma wyników musi wynosić 90 (aktualnie: 89).")]
-    [InlineData(46, 45, false, "Suma wyników musi wynosić 90 (aktualnie: 91).")]
     public void ValidateMatchResult_ReturnsExpected(
         int home,
         int away,

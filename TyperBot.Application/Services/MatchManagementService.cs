@@ -79,11 +79,6 @@ public class MatchManagementService
             return (false, "Wyniki nie mogą być ujemne.");
         }
 
-        if (homeScore + awayScore != 90)
-        {
-            return (false, $"Suma wyników musi wynosić 90 (aktualnie: {homeScore + awayScore}).");
-        }
-
         return (true, null);
     }
 

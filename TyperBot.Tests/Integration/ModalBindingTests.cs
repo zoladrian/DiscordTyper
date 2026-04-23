@@ -210,8 +210,8 @@ public class ModalBindingTests : IDisposable
             (home: 45, away: 45, shouldPass: true),   // Sum = 90 ✓
             (home: 50, away: 40, shouldPass: true),   // Sum = 90 ✓
             (home: 60, away: 30, shouldPass: true),   // Sum = 90 ✓
-            (home: 50, away: 50, shouldPass: false),  // Sum = 100 ✗
-            (home: 45, away: 40, shouldPass: false),  // Sum = 85 ✗
+            (home: 50, away: 50, shouldPass: true),   // Sum = 100 ✓
+            (home: 45, away: 40, shouldPass: true),   // Sum = 85 ✓
             (home: -5, away: 95, shouldPass: false),  // Negative ✗
             (home: 50, away: -10, shouldPass: false), // Negative ✗
         };
