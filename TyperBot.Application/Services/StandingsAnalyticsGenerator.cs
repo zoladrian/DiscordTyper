@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Reflection;
 using SkiaSharp;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
@@ -392,55 +391,6 @@ public sealed class StandingsAnalyticsGenerator
         return name + ell;
     }
 
-    private static SKBitmap? _landrynkiCrownBitmap;
-    private static readonly object LandrynkiCrownLock = new();
-
-    /// <summary>PNG korony (alfa) osadzony w assembly — używany wyłącznie w tabeli Landrynki.</summary>
-    private static SKBitmap? GetLandrynkiCrownBitmap()
-    {
-        lock (LandrynkiCrownLock)
-        {
-            if (_landrynkiCrownBitmap != null)
-                return _landrynkiCrownBitmap;
-
-            var asm = typeof(StandingsAnalyticsGenerator).Assembly;
-            using var stream = asm.GetManifestResourceStream("TyperBot.Application.Assets.landrynki_crown_watermark.png")
-                ?? asm.GetManifestResourceStream("TyperBot.Application.landrynki_crown_watermark.png")
-                ?? OpenEmbeddedStreamBySuffix(asm, "landrynki_crown_watermark.png");
-            if (stream == null)
-                return null;
-
-            _landrynkiCrownBitmap = SKBitmap.Decode(stream);
-            return _landrynkiCrownBitmap;
-        }
-    }
-
-    private static Stream? OpenEmbeddedStreamBySuffix(Assembly asm, string fileSuffix)
-    {
-        var name = asm.GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith(fileSuffix, StringComparison.OrdinalIgnoreCase));
-        return name == null ? null : asm.GetManifestResourceStream(name);
-    }
-
-    /// <summary>
-    /// Mini-korona obok nicku lidera (1. miejsce): jednakowa skala, stała wysokość wizualna.
-    /// </summary>
-    private static void DrawLandrynkiLeaderCrownIcon(SKCanvas canvas, float leftX, float rowCenterY, float iconHeight)
-    {
-        var bmp = GetLandrynkiCrownBitmap();
-        if (bmp == null || bmp.Width <= 0 || bmp.Height <= 0)
-            return;
-
-        float scale = iconHeight / bmp.Height;
-        float cw = bmp.Width * scale;
-        float ch = iconHeight;
-        float top = rowCenterY - ch / 2f;
-        var dest = new SKRect(leftX, top, leftX + cw, top + ch);
-        using var image = SKImage.FromBitmap(bmp);
-        using var p = new SKPaint { IsAntialias = true };
-        canvas.DrawImage(image, dest, p);
-    }
-
     public byte[] GenerateSeasonCumulativeChartPng(Season season, List<Player> players)
     {
         var points = OrderFinishedMatchesWithRoundNumbers(season);
@@ -702,10 +652,7 @@ public sealed class StandingsAnalyticsGenerator
         if (rows.Count == 0)
             return null;
 
-        var nFin = ResolveSeasonFinishedMatchIds(season).Count;
-        var footer =
-            $"{season.Name}  •  Zakończone mecze z wynikiem: {nFin}  •  Liczba w kolumnie = mecze bez ważnego typu";
-        return RenderLandrynkiTable(rows, footer);
+        return RenderLandrynkiTable(rows);
     }
 
     /// <summary>Do testów — ta sama logika co <see cref="TryGenerateLandrynkiTablePng"/> bez resolvera Discord.</summary>
@@ -745,13 +692,13 @@ public sealed class StandingsAnalyticsGenerator
         return list;
     }
 
-    private byte[] RenderLandrynkiTable(IReadOnlyList<LandrynkiBarEntry> rows, string footer)
+    private byte[] RenderLandrynkiTable(IReadOnlyList<LandrynkiBarEntry> rows)
     {
         const float x0 = 0f, x1 = 52f, x2 = 560f, x3 = DeltaTableWidth;
         const string hMiss = "OPUSZCZONE";
         int n = rows.Count;
         int dataY = TitleBarHeight + HeaderHeight;
-        int h = dataY + n * RowHeight + FooterHeight;
+        int h = dataY + n * RowHeight;
 
         float m = SkiaChrome.CardMargin;
         float rad = SkiaChrome.CardRadius;
@@ -787,8 +734,8 @@ public sealed class StandingsAnalyticsGenerator
 
         SkiaChrome.FillLinearGradientRect(c,
             new SKRect(0, TitleBarHeight, DeltaTableWidth, TitleBarHeight + HeaderHeight),
-            SkiaChrome.Darken(LandPinkTop, 40),
-            SkiaChrome.Darken(LandPinkTop, 18));
+            new SKColor(0x74, 0x16, 0x58),
+            new SKColor(0x9E, 0x22, 0x76));
 
         using var fH = new SKFont(tfB, 11f);
         using var hWhite = new SKPaint { Color = SKColors.White, IsAntialias = true };
@@ -798,8 +745,6 @@ public sealed class StandingsAnalyticsGenerator
 
         using var fBody = new SKFont(Body(), 13f);
         const float namePad = 6f;
-        const float crownIconH = 17f;
-        const float crownGap = 7f;
 
         for (var i = 0; i < rows.Count; i++)
         {
@@ -817,24 +762,9 @@ public sealed class StandingsAnalyticsGenerator
 
             float baseline = y + RowHeight / 2f + 5f;
             float colInnerW = x2 - x1 - 2f * namePad;
-            if (i == 0 && GetLandrynkiCrownBitmap() is { Width: > 0, Height: > 0 } crownBmp)
-            {
-                float crownW = crownBmp.Width * (crownIconH / crownBmp.Height);
-                float nameMaxW = Math.Max(20f, colInnerW - crownW - crownGap);
-                string name = Ellipsize(rows[i].PlayerName, fBody, nameMaxW);
-                float nameW = fBody.MeasureText(name);
-                float blockW = crownW + crownGap + nameW;
-                float blockLeft = x1 + namePad + (colInnerW - blockW) / 2f;
-                float rowMid = y + RowHeight / 2f;
-                DrawLandrynkiLeaderCrownIcon(c, blockLeft, rowMid, crownIconH);
-                c.DrawText(name, blockLeft + crownW + crownGap, baseline, fBody, txt);
-            }
-            else
-            {
-                string name = Ellipsize(rows[i].PlayerName, fBody, colInnerW);
-                float nameW = fBody.MeasureText(name);
-                c.DrawText(name, x1 + namePad + (colInnerW - nameW) / 2f, baseline, fBody, txt);
-            }
+            string name = Ellipsize(rows[i].PlayerName, fBody, colInnerW);
+            float nameW = fBody.MeasureText(name);
+            c.DrawText(name, x1 + namePad + (colInnerW - nameW) / 2f, baseline, fBody, txt);
 
             string mc = rows[i].MissedCount.ToString();
             float mw = fBody.MeasureText(mc);
@@ -842,7 +772,6 @@ public sealed class StandingsAnalyticsGenerator
         }
 
         DrawLandrynkiGrid(c, TitleBarHeight, HeaderHeight, dataY, n * RowHeight, x1, x2);
-        DrawFooter(c, h, footer);
 
         SkiaChrome.PopClippedCard(c, m, m, DeltaTableWidth, h, rad);
 
