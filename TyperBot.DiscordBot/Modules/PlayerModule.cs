@@ -64,6 +64,13 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         await _executor.ExecuteSeasonChartAsync(Context);
     }
 
+    [SlashCommand("tabela-landrynek", "PNG: ranking zakończonych meczów bez ważnego typu (tylko gdy są dane)")]
+    public async Task PlayerLandrynkiTableAsync()
+    {
+        await DeferAsync(ephemeral: true);
+        await _executor.ExecuteLandrynkiTableAsync(Context);
+    }
+
     [SlashCommand("rozklad-punktow", "PNG: ile razy dostałeś daną liczbę punktów w meczu — cały aktywny sezon (wszyscy gracze)")]
     public async Task PlayerSeasonPointsHistogramAsync()
     {

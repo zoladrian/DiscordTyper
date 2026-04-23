@@ -215,6 +215,7 @@ public class WelcomeMessageService
                     "`/pkt-meczu` [mecz z autouzupełniania] — punkty w wybranym meczu i różnica vs poprzedni zakończony mecz w sezonie\n" +
                     "`/pkt-kolejki` [numer] — punkty zdobyte w kolejce i różnica vs poprzednia kolejka\n" +
                     "`/wykres-punktow` — skumulowane punkty w czasie (linie wg graczy, cały aktywny sezon)\n" +
+                    "`/tabela-landrynek` — sam ranking „Landrynki” (gdy są zakończone mecze i ktoś bez ważnego typu)\n" +
                     "`/rozklad-punktow` — histogram: jak często padła dana liczba punktów z meczu (wszyscy gracze)\n" +
                     "`/kolowy-rozklad-punktow` — Twój rozkład punktów z meczów na wykresie kołowym\n" +
                     "`/ping` — szybki test, czy bot odpowiada", inline: false)
@@ -320,7 +321,7 @@ public class WelcomeMessageService
                     "**Kiedy dostanę punkty?**\n" +
                     "Automatycznie po wpisaniu wyniku przez admina.\n\n" +
                     "**Gdzie zobaczę tabelę lub wykresy?**\n" +
-                    "`/tabela-sezonu`, `/tabela-kolejki [numer]` — PNG. Statystyki: `/pkt-meczu`, `/pkt-kolejki`, `/wykres-punktow`, `/rozklad-punktow`, `/kolowy-rozklad-punktow` (opisy przy pierwszym przypięciu).", inline: false)
+                    "`/tabela-sezonu`, `/tabela-kolejki [numer]` — PNG. Statystyki: `/pkt-meczu`, `/pkt-kolejki`, `/wykres-punktow` (+ opcjonalnie `/tabela-landrynek`), `/rozklad-punktow`, `/kolowy-rozklad-punktow` (opisy przy pierwszym przypięciu).", inline: false)
                 .WithFooter("Powodzenia w typowaniu! 🍀")
                 .WithCurrentTimestamp()
                 .Build();

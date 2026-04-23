@@ -370,6 +370,31 @@ public sealed class PlayerCommandExecutor
             text: $"Wykres punktów (cały sezon) — {seasonFull.Name}", ephemeral: true);
     }
 
+    public async Task ExecuteLandrynkiTableAsync(SocketInteractionContext ctx)
+    {
+        var season = await _seasonRepository.GetActiveSeasonAsync();
+        if (season == null)
+        {
+            await ctx.Interaction.FollowupAsync("Brak aktywnego sezonu.", ephemeral: true);
+            return;
+        }
+
+        var seasonFull = await _seasonRepository.GetByIdWithRoundsAndMatchesAsync(season.Id) ?? season;
+        var players = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        var landrynki = _analyticsGenerator.TryGenerateLandrynkiTablePng(seasonFull, players);
+        if (landrynki == null)
+        {
+            await ctx.Interaction.FollowupAsync(
+                "Tabela Landrynek jest dostępna dopiero gdy jest co najmniej jeden zakończony mecz z wynikiem **oraz** ktoś ma przynajmniej jeden taki mecz bez ważnego typu.",
+                ephemeral: true);
+            return;
+        }
+
+        await using var landStream = new MemoryStream(landrynki, writable: false);
+        await ctx.Interaction.FollowupWithFileAsync(landStream, $"tabela_landrynek_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png",
+            text: $"Tabela Landrynek — {seasonFull.Name}", ephemeral: true);
+    }
+
     public async Task ExecuteSeasonPointsHistogramAsync(SocketInteractionContext ctx)
     {
         var season = await _seasonRepository.GetActiveSeasonAsync();

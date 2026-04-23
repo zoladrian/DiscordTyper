@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Reflection;
 using SkiaSharp;
 using TyperBot.Domain.Entities;
 using TyperBot.Domain.Enums;
@@ -5,8 +7,7 @@ using TyperBot.Domain.Enums;
 namespace TyperBot.Application.Services;
 
 /// <summary>
-/// PNG: tabele punktów mecz/kolejka z deltą, histogram rozkładu punktów w całym sezonie, wykres skumulowanych punktów (cały sezon), wykres kołowy rozkładu punktów jednego gracza.
-/// Bez emoji w grafice.
+/// PNG: tabele punktów mecz/kolejka z deltą, histogram rozkładu punktów w całym sezonie, wykres skumulowanych punktów (cały sezon), wykres kołowy rozkładu punktów jednego gracza, tabela „Landrynki”.
 /// </summary>
 public sealed class StandingsAnalyticsGenerator
 {
@@ -21,10 +22,10 @@ public sealed class StandingsAnalyticsGenerator
     private const int HeaderHeight = 48;
     private const int FooterHeight = 36;
 
-    private const int ChartWidth = 1100;
-    private const int ChartHeight = 720;
+    private const int ChartWidth = 1240;
+    private const int ChartHeight = 780;
     private const int ChartMarginLeft = 56;
-    private const int ChartMarginRight = 220;
+    private const int ChartMarginRight = 168;
     private const int ChartMarginTop = 56;
     private const int ChartMarginBottom = 72;
 
@@ -50,6 +51,15 @@ public sealed class StandingsAnalyticsGenerator
     private static readonly SKColor GridColor = new(0xD8, 0xDC, 0xE6);
     private static readonly SKColor RoundBand = new(0xE4, 0xE8, 0xF5);
     private static readonly SKColor AxisLine = new(0x8E, 0x94, 0xA3);
+
+    /// <summary>Dokładnie referencyjny magenta (#FF00FF) — tylko 1. miejsce w Landrynkach.</summary>
+    private static readonly SKColor LandPinkTop = new(0xFF, 0x00, 0xFF);
+
+    /// <summary>Bardzo wyblakły róż przy ostatnim miejscu (malejąca saturacja przy H≈300°).</summary>
+    private static readonly SKColor LandPinkBottomRow = ColorFromHsv(300f, 0.026f, 1f);
+
+    /// <summary>Jasne tło za kartą PNG (neutralne, prawie biel).</summary>
+    private static readonly SKColor LandTableCanvasBg = new(0xFF, 0xFE, 0xFF);
 
     /// <summary>
     /// S, V w zakresie 0–1. Własna konwersja — <see cref="SKColor.FromHsv"/> w SkiaSharp bywa źle interpretowana (prawie czarne kolory, szare wykresy).
@@ -382,6 +392,69 @@ public sealed class StandingsAnalyticsGenerator
         return name + ell;
     }
 
+    private static SKBitmap? _landrynkiCrownBitmap;
+    private static readonly object LandrynkiCrownLock = new();
+
+    /// <summary>PNG korony (alfa) osadzony w assembly — używany wyłącznie w tabeli Landrynki.</summary>
+    private static SKBitmap? GetLandrynkiCrownBitmap()
+    {
+        lock (LandrynkiCrownLock)
+        {
+            if (_landrynkiCrownBitmap != null)
+                return _landrynkiCrownBitmap;
+
+            var asm = typeof(StandingsAnalyticsGenerator).Assembly;
+            using var stream = asm.GetManifestResourceStream("TyperBot.Application.Assets.landrynki_crown_watermark.png")
+                ?? asm.GetManifestResourceStream("TyperBot.Application.landrynki_crown_watermark.png")
+                ?? OpenEmbeddedStreamBySuffix(asm, "landrynki_crown_watermark.png");
+            if (stream == null)
+                return null;
+
+            _landrynkiCrownBitmap = SKBitmap.Decode(stream);
+            return _landrynkiCrownBitmap;
+        }
+    }
+
+    private static Stream? OpenEmbeddedStreamBySuffix(Assembly asm, string fileSuffix)
+    {
+        var name = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith(fileSuffix, StringComparison.OrdinalIgnoreCase));
+        return name == null ? null : asm.GetManifestResourceStream(name);
+    }
+
+    /// <summary>
+    /// Znak wodny w górnej części karty Landrynki: skala jednakowa (contain), cała grafika, wyśrodkowanie,
+    /// delikatna przezroczystość — nie zastępuje nagłówka, leży pod warstwami z gradientem.
+    /// </summary>
+    private static void DrawLandrynkiUpperBackgroundCrown(SKCanvas canvas, float zoneWidth, float zoneHeight)
+    {
+        var bmp = GetLandrynkiCrownBitmap();
+        if (bmp == null || bmp.Width <= 0 || bmp.Height <= 0 || zoneHeight <= 1f)
+            return;
+
+        const float padX = 28f;
+        const float padY = 16f;
+        float availW = Math.Max(1f, zoneWidth - 2f * padX);
+        float availH = Math.Max(1f, zoneHeight - 2f * padY);
+        float scale = Math.Min(availW / bmp.Width, availH / bmp.Height);
+        if (scale <= 0f)
+            return;
+
+        float dw = bmp.Width * scale;
+        float dh = bmp.Height * scale;
+        float x = (zoneWidth - dw) / 2f;
+        float y = padY + (availH - dh) / 2f;
+
+        var dest = new SKRect(x, y, x + dw, y + dh);
+        using var image = SKImage.FromBitmap(bmp);
+        using var wm = new SKPaint
+        {
+            IsAntialias = true,
+            Color = new SKColor(255, 255, 255, 52),
+        };
+        canvas.DrawImage(image, dest, wm);
+    }
+
     public byte[] GenerateSeasonCumulativeChartPng(Season season, List<Player> players)
     {
         var points = OrderFinishedMatchesWithRoundNumbers(season);
@@ -559,7 +632,7 @@ public sealed class StandingsAnalyticsGenerator
         {
             var pl = active[pi];
             if (!cumByPlayer.TryGetValue(pl.Id, out var cum)) continue;
-            string nick = Ellipsize(_displayNames.GetDisplayName(pl), legFont, 140f);
+            string nick = Ellipsize(_displayNames.GetDisplayName(pl), legFont, 200f);
             endNickRows.Add((cum[^1], nick, colors[pi]));
         }
 
@@ -588,23 +661,6 @@ public sealed class StandingsAnalyticsGenerator
             }
         }
 
-        // Legend column
-        float legX = plotR + 12f;
-        float legY = plotT;
-        using var legTitle = new SKFont(Bold(), 11f);
-        c.DrawText("Legenda:", legX, legY, legTitle, black);
-        legY += 20f;
-        for (var pi = 0; pi < active.Count; pi++)
-        {
-            using var sq = new SKPaint { Color = colors[pi], IsAntialias = true };
-            c.DrawRoundRect(new SKRect(legX, legY - 8f, legX + 12f, legY), SkiaChrome.LegendChipRadius, SkiaChrome.LegendChipRadius, sq);
-            string nm = Ellipsize(_displayNames.GetDisplayName(active[pi]), legFont, ChartMarginRight - 36f);
-            using var nickPaint = new SKPaint { Color = colors[pi], IsAntialias = true };
-            c.DrawText(nm, legX + 18f, legY, legFont, nickPaint);
-            legY += 14f;
-            if (legY > plotB - 8f) break;
-        }
-
         string foot = $"{season.Name}  •  Cały sezon  •  Mecze: {points.Count}  •  Gracze: {active.Count}";
         using var ff = new SKFont(Body(), 10f);
         using var fp = new SKPaint { Color = FooterText, IsAntialias = true };
@@ -616,6 +672,206 @@ public sealed class StandingsAnalyticsGenerator
         using var img = surface.Snapshot();
         using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
         return enc.ToArray();
+    }
+
+    /// <summary>
+    /// Tabela „Landrynki”: aktywni gracze z co najmniej jednym zakończonym meczem bez ważnego typu.
+    /// Zwraca <c>null</c>, gdy brak zakończonych meczów z wynikiem albo wszyscy mają pełne typy.
+    /// </summary>
+    public byte[]? TryGenerateLandrynkiTablePng(Season season, List<Player> players)
+    {
+        var rows = BuildLandrynkiBarEntries(season, players, _displayNames.GetDisplayName);
+        if (rows.Count == 0)
+            return null;
+
+        var nFin = ResolveSeasonFinishedMatchIds(season).Count;
+        var footer =
+            $"{season.Name}  •  Zakończone mecze z wynikiem: {nFin}  •  Liczba w kolumnie = mecze bez ważnego typu";
+        return RenderLandrynkiTable(rows, footer);
+    }
+
+    /// <summary>Do testów — ta sama logika co <see cref="TryGenerateLandrynkiTablePng"/> bez resolvera Discord.</summary>
+    public static List<LandrynkiBarEntry> BuildLandrynkiBarEntries(
+        Season season,
+        IEnumerable<Player> players,
+        Func<Player, string> getDisplayName)
+    {
+        var finishedIds = ResolveSeasonFinishedMatchIds(season);
+        if (finishedIds.Count == 0)
+            return new List<LandrynkiBarEntry>();
+
+        var list = new List<LandrynkiBarEntry>();
+        foreach (var p in players.Where(x => x.IsActive))
+        {
+            var missed = 0;
+            foreach (var mid in finishedIds)
+            {
+                var hasValid = (p.Predictions ?? Enumerable.Empty<Prediction>())
+                    .Any(pr => pr.MatchId == mid && pr.IsValid);
+                if (!hasValid)
+                    missed++;
+            }
+
+            if (missed > 0)
+                list.Add(new LandrynkiBarEntry(getDisplayName(p), missed));
+        }
+
+        list.Sort((a, b) =>
+        {
+            var c = b.MissedCount.CompareTo(a.MissedCount);
+            return c != 0
+                ? c
+                : string.Compare(a.PlayerName, b.PlayerName, StringComparison.OrdinalIgnoreCase);
+        });
+
+        return list;
+    }
+
+    private byte[] RenderLandrynkiTable(IReadOnlyList<LandrynkiBarEntry> rows, string footer)
+    {
+        const float x0 = 0f, x1 = 52f, x2 = 560f, x3 = DeltaTableWidth;
+        const string hMiss = "OPUSZCZONE";
+        int n = rows.Count;
+        int dataY = TitleBarHeight + HeaderHeight;
+        int h = dataY + n * RowHeight + FooterHeight;
+
+        float m = SkiaChrome.CardMargin;
+        float rad = SkiaChrome.CardRadius;
+        int outW = (int)(DeltaTableWidth + 2 * m);
+        int outH = (int)(h + 2 * m);
+
+        using var surface = SKSurface.Create(new SKImageInfo(outW, outH));
+        var c = surface.Canvas;
+        c.Clear(SkiaChrome.PageBackground);
+        SkiaChrome.DrawCardDropShadow(c, m, m, DeltaTableWidth, h, rad);
+        SkiaChrome.PushClippedCard(c, m, m, DeltaTableWidth, h, rad);
+        c.Clear(LandTableCanvasBg);
+
+        float upperBackgroundH = Math.Max(
+            TitleBarHeight + HeaderHeight,
+            Math.Min(h * 0.40f, TitleBarHeight + HeaderHeight + RowHeight * 5));
+        DrawLandrynkiUpperBackgroundCrown(c, DeltaTableWidth, upperBackgroundH);
+
+        const byte landHeadOverlayA = 200;
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, 0, DeltaTableWidth, TitleBarHeight),
+            new SKColor(0xC8, 0x20, 0x88, landHeadOverlayA),
+            LandPinkTop.WithAlpha(landHeadOverlayA));
+        using var tfB = Bold();
+        using var fTitle = new SKFont(tfB, 18f);
+        using var fSub = new SKFont(Body(), 11f);
+        using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
+        using var grey = new SKPaint { Color = new SKColor(0xF8, 0xE8, 0xF4), IsAntialias = true };
+
+        const string title = "Tabela Landrynek";
+        float tw = fTitle.MeasureText(title);
+        float titleBaseline = TitleBarHeight / 2f + 6f;
+        c.DrawText(title, (DeltaTableWidth - tw) / 2f, titleBaseline, fTitle, white);
+
+        const string sub = "Ranking wg liczby zakończonych meczów bez ważnego typu (wyżej = więcej)";
+        string subEll = sub.Length > 96 ? sub[..93] + "…" : sub;
+        float sw = fSub.MeasureText(subEll);
+        c.DrawText(subEll, (DeltaTableWidth - sw) / 2f, TitleBarHeight - 8f, fSub, grey);
+
+        const byte landColHeadA = 205;
+        SkiaChrome.FillLinearGradientRect(c,
+            new SKRect(0, TitleBarHeight, DeltaTableWidth, TitleBarHeight + HeaderHeight),
+            SkiaChrome.Darken(LandPinkTop, 40).WithAlpha(landColHeadA),
+            SkiaChrome.Darken(LandPinkTop, 18).WithAlpha(landColHeadA));
+
+        using var fH = new SKFont(tfB, 11f);
+        using var hWhite = new SKPaint { Color = SKColors.White, IsAntialias = true };
+        DrawCellCentered(c, "NR", x0, TitleBarHeight, x1 - x0, HeaderHeight, fH, hWhite);
+        DrawCellCentered(c, "UCZESTNIK", x1, TitleBarHeight, x2 - x1, HeaderHeight, fH, hWhite);
+        DrawCellCentered(c, hMiss, x2, TitleBarHeight, x3 - x2, HeaderHeight, fH, hWhite);
+
+        using var fBody = new SKFont(Body(), 13f);
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            float y = dataY + i * RowHeight;
+            var rowBg = LandRowFill(i, rows.Count);
+            using var rp = new SKPaint { Color = rowBg, IsAntialias = true };
+            c.DrawRect(0, y, DeltaTableWidth, RowHeight, rp);
+
+            var txtCol = LandTextOn(rowBg);
+            using var txt = new SKPaint { Color = txtCol, IsAntialias = true };
+
+            string nr = (i + 1).ToString();
+            float nw = fBody.MeasureText(nr);
+            c.DrawText(nr, x0 + (x1 - x0 - nw) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
+
+            string name = Ellipsize(rows[i].PlayerName, fBody, x2 - x1 - 12f);
+            float nameW = fBody.MeasureText(name);
+            c.DrawText(name, x1 + (x2 - x1 - nameW) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
+
+            string mc = rows[i].MissedCount.ToString();
+            float mw = fBody.MeasureText(mc);
+            c.DrawText(mc, x2 + (x3 - x2 - mw) / 2f, y + RowHeight / 2f + 5f, fBody, txt);
+        }
+
+        DrawLandrynkiGrid(c, TitleBarHeight, HeaderHeight, dataY, n * RowHeight, x1, x2);
+        DrawFooter(c, h, footer);
+
+        SkiaChrome.PopClippedCard(c, m, m, DeltaTableWidth, h, rad);
+
+        using var img = surface.Snapshot();
+        using var enc = img.Encode(SKEncodedImageFormat.Png, 100);
+        return enc.ToArray();
+    }
+
+    /// <summary>
+    /// Skala koloru w HSV: stały odcień magenta (~300°), saturacja od 1 (dokładnie #FF00FF) do ~0.026 (prawie biel).
+    /// Unika szarego „pasa” przy prostym lerpie RGB magenta→biały.
+    /// </summary>
+    private static SKColor LandRowFill(int rowIndex, int totalRows)
+    {
+        if (totalRows <= 1)
+            return LandPinkTop;
+
+        if (rowIndex == 0)
+            return LandPinkTop;
+        if (rowIndex == totalRows - 1)
+            return LandPinkBottomRow;
+
+        float u = rowIndex / (float)(totalRows - 1);
+        u = Math.Clamp(u, 0f, 1f);
+
+        const float hue = 300f;
+        const float satTop = 1f;
+        const float satBottom = 0.026f;
+
+        float s = satTop + (satBottom - satTop) * u;
+        return ColorFromHsv(hue, s, 1f);
+    }
+
+    private static SKColor LandTextOn(SKColor bg)
+    {
+        int lum = (299 * bg.Red + 587 * bg.Green + 114 * bg.Blue) / 1000;
+        return lum < 150 ? SKColors.White : new SKColor(0x22, 0x0C, 0x1C);
+    }
+
+    private static void DrawLandrynkiGrid(SKCanvas c, float titleH, float headH, float dataY, float dataH, float x1, float x2)
+    {
+        float yTop = titleH;
+        float yBot = dataY + dataH;
+        using var pen = new SKPaint
+        {
+            Color = new SKColor(0xC8, 0x5A, 0x9A),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1,
+            IsAntialias = true
+        };
+        c.DrawRect(0.5f, yTop + 0.5f, DeltaTableWidth - 1f, yBot - yTop - 0.5f, pen);
+        c.DrawLine(x1, yTop, x1, yBot, pen);
+        c.DrawLine(x2, yTop, x2, yBot, pen);
+        c.DrawLine(0, titleH + headH, DeltaTableWidth, titleH + headH, pen);
+        for (var i = 0; i * RowHeight < dataH; i++)
+        {
+            float y = dataY + i * RowHeight;
+            if (i > 0)
+                c.DrawLine(0, y, DeltaTableWidth, y, pen);
+        }
     }
 
     public static HashSet<int> ResolveSeasonFinishedMatchIds(Season season)
@@ -1153,5 +1409,7 @@ public sealed class StandingsAnalyticsGenerator
 }
 
 public sealed record AnalyticsDeltaRow(string PlayerName, int PointsCurrent, int? DeltaVsPrevious);
+
+public sealed record LandrynkiBarEntry(string PlayerName, int MissedCount);
 
 public sealed record PointsHistogramRow(string PlayerName, int[] CountsByColumnIndex);
