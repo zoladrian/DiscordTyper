@@ -17,6 +17,7 @@ public sealed class MatchPredictionRevealService
     private readonly ILogger<MatchPredictionRevealService> _logger;
     private readonly IMatchRepository _matchRepository;
     private readonly IPredictionRepository _predictionRepository;
+    private readonly IPlayerRepository _playerRepository;
     private readonly DiscordLookupService _lookupService;
     private readonly MatchCardService _matchCardService;
     private readonly RevealedPredictionsTableImageGenerator _revealTablePng;
@@ -25,6 +26,7 @@ public sealed class MatchPredictionRevealService
         ILogger<MatchPredictionRevealService> logger,
         IMatchRepository matchRepository,
         IPredictionRepository predictionRepository,
+        IPlayerRepository playerRepository,
         DiscordLookupService lookupService,
         MatchCardService matchCardService,
         RevealedPredictionsTableImageGenerator revealTablePng)
@@ -32,6 +34,7 @@ public sealed class MatchPredictionRevealService
         _logger = logger;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
+        _playerRepository = playerRepository;
         _lookupService = lookupService;
         _matchCardService = matchCardService;
         _revealTablePng = revealTablePng;
@@ -140,6 +143,10 @@ public sealed class MatchPredictionRevealService
             await using var stream = new MemoryStream(pngBytes, writable: false);
             revealMessage = await thread.SendFileAsync(stream, $"ujawnione_typy_{match.Id}.png", embed: embed);
             await revealMessage.PinAsync();
+
+            var easterEggMessage = await BuildNoTipEasterEggMessageAsync(predictionsList, guild);
+            if (!string.IsNullOrWhiteSpace(easterEggMessage))
+                await thread.SendMessageAsync(easterEggMessage);
         }
         catch (Exception ex)
         {
@@ -165,5 +172,35 @@ public sealed class MatchPredictionRevealService
         }
 
         return (true, "✅ Typy zostały ujawnione i przypięte w wątku meczu. Karta meczu została zaktualizowana.");
+    }
+
+    private async Task<string?> BuildNoTipEasterEggMessageAsync(IReadOnlyList<Prediction> predictionsList, SocketGuild guild)
+    {
+        var activePlayers = (await _playerRepository.GetActivePlayersAsync()).ToList();
+        if (activePlayers.Count == 0)
+            return null;
+
+        var typedPlayerIds = predictionsList
+            .Select(p => p.PlayerId)
+            .ToHashSet();
+
+        var noTipNames = activePlayers
+            .Where(p => !typedPlayerIds.Contains(p.Id))
+            .Select(p => DiscordDisplayNameHelper.ForPlayerInGuild(p, guild))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return BuildNoTipEasterEggMessage(noTipNames);
+    }
+
+    public static string? BuildNoTipEasterEggMessage(IReadOnlyList<string> noTipNames)
+    {
+        if (noTipNames.Count == 0)
+            return null;
+
+        var playersText = string.Join(", ", noTipNames);
+        return noTipNames.Count == 1
+            ? $"Informacja: dla gracza {playersText} punkty za ten mecz będą liczone z mnożnikiem x2."
+            : $"Informacja: dla graczy {playersText} punkty za ten mecz będą liczone z mnożnikiem x2.";
     }
 }

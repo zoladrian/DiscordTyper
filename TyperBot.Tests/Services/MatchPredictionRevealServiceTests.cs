@@ -58,4 +58,34 @@ public class MatchPredictionRevealServiceTests
         };
         MatchPredictionRevealService.GetRevealBlockers(m, DateTimeOffset.UtcNow).Should().BeEmpty();
     }
+
+    [Fact]
+    public void BuildNoTipEasterEggMessage_WhenOnePlayer_UsesSingularForm()
+    {
+        var msg = MatchPredictionRevealService.BuildNoTipEasterEggMessage(new[] { "Kowal" });
+
+        msg.Should().NotBeNull();
+        msg.Should().Contain("Kowal");
+        msg.Should().Contain("dla gracza");
+        msg.Should().Contain("mnożnikiem x2");
+    }
+
+    [Fact]
+    public void BuildNoTipEasterEggMessage_WhenManyPlayers_UsesPluralForm()
+    {
+        var msg = MatchPredictionRevealService.BuildNoTipEasterEggMessage(new[] { "Kowal", "Nowak" });
+
+        msg.Should().NotBeNull();
+        msg.Should().Contain("Kowal, Nowak");
+        msg.Should().Contain("dla graczy");
+        msg.Should().Contain("mnożnikiem x2");
+    }
+
+    [Fact]
+    public void BuildNoTipEasterEggMessage_WhenNoPlayers_ReturnsNull()
+    {
+        var msg = MatchPredictionRevealService.BuildNoTipEasterEggMessage(Array.Empty<string>());
+
+        msg.Should().BeNull();
+    }
 }

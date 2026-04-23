@@ -114,15 +114,14 @@
 
 ---
 
-### 7. ✅ Verified Sum 90 Rule Enforcement
-**Problem:** Need to ensure all match results and predictions enforce `home + away == 90`.
+### 7. ✅ Sum 90 rule (predictions vs match results)
+**Clarification:** **Player predictions (typy)** must still sum to **90** (`PredictionService`). **Official match results** entered by admin use `ValidateMatchResult`, which only requires **non-negative** scores — real totals may differ from 90.
 
 **Solution:**
-- Demo data seeder already enforces sum = 90 for all seeded data ✅
-- `HandleSetResultModalAsync` validates sum = 90 with clear Polish error message ✅
-- Logs all validation failures ✅
+- Demo data seeder still uses sum = 90 for seeded demo predictions/results (synthetic data consistency) ✅
+- Set-result flow rejects negative scores only ✅
 
-**Status:** ✅ COMPLETE - Sum 90 rule is enforced everywhere
+**Status:** ✅ COMPLETE — sum 90 for typy; arbitrary valid totals for rzeczywisty wynik meczu
 
 ---
 
@@ -147,8 +146,7 @@ dotnet test
 - ✅ AdminCommandsEndToEndTests.AdminDaneTestowe_ShouldCreateDemoData
 - ✅ AdminCommandsEndToEndTests.CreateMatch_WithValidParameters_ShouldSucceed
 - ✅ AdminCommandsEndToEndTests.SetMatchResult_WithValidResult_ShouldCalculateScores
-- ✅ AdminCommandsEndToEndTests.ModalInput_SumNot90_ShouldBeRejected
-- ✅ AdminCommandsEndToEndTests.ModalInput_SumIs90_ShouldBeAccepted
+- ✅ `MatchManagementServiceTests` / modal binding tests for set-result validation (non-negative; any sum for results)
 - ✅ AdminCommandsEndToEndTests.CreateKolejka_WithMultipleMatches_ShouldCreateAllMatches
 
 ---
@@ -215,31 +213,23 @@ Click **Submit**
 [INF] Modal kolejka received - User: YourName, KolejkaNum: '1', MatchCount: '4', Guild: [ID]
 ```
 
-### 4. Test Match Result Validation (Sum 90 Rule)
+### 4. Test Match Result Validation (official result)
 
-Create a match, then try to set result:
+Create a match, then set result:
 
-**Test Invalid Sum:**
-- Home: `50`, Away: `50` (sum = 100)
-
-**Expected:**
-```
-❌ Suma punktów obu drużyn musi wynosić 90 (np. 50:40, 46:44, 45:45).
-```
-
-**Check Logs:**
-```
-[WRN] Nieprawidłowa suma punktów w wyniku - Użytkownik: ..., Mecz ID: X, Wynik: 50:50, Suma: 100
-```
-
-**Test Valid Sum:**
-- Home: `50`, Away: `40` (sum = 90)
+**Any non-negative totals (example):**
+- Home: `46`, Away: `42` (sum = 88 — valid for a real meeting)
 
 **Expected:**
 ```
-✅ Wynik ustawiony: **50:40**
+✅ Wynik ustawiony: **46:42**
 Punkty obliczone!
 ```
+
+**Negative score (should fail):**
+- Home: `-1`, Away: `91`
+
+**Expected:** ephemeral error containing **„Wyniki nie mogą być ujemne.”**
 
 ### 5. Test Other Modals
 - ✅ Add individual match → Should work (parameter names fixed)
@@ -290,8 +280,8 @@ Punkty obliczone!
 Run the bot and test:
 1. ✅ `/admin-dane-testowe` - Should create demo data
 2. ✅ `/panel-admina` → `"➕ Dodaj kolejkę"` - Should work without errors
-3. ✅ Set match result with invalid sum - Should show clear error message
-4. ✅ Set match result with valid sum (90) - Should calculate scores
+3. ✅ Set match result with arbitrary valid totals — scores should save and recalculate
+4. ✅ (Separate flow) Player typ with sum ≠ 90 — prediction rejected per `PredictionService`
 
 **If any issues occur, check logs for detailed debugging information (now comprehensive).**
 

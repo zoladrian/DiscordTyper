@@ -106,9 +106,7 @@ You'll see:
 1. Click 🏁 button
 2. Enter home team score
 3. Enter away team score
-4. ⚠️ **Important**: Scores must sum to exactly 90!
-   - Valid: 50:40, 46:44, 45:45, 52:38, etc.
-   - Invalid: 50:41 (sum = 91), 45:40 (sum = 85)
+4. Enter the **actual match totals** as they happened (walkovers, rain-shortened meetings, etc. are allowed). Only **non-negative integers** are required — they **do not** need to add up to 90. (The **90** rule applies to **player predictions**, not to the official result you save as admin.)
 5. Submit
 
 Result processing happens automatically:
@@ -178,7 +176,7 @@ When you see round numbers, they display as:
 2. Click **⚙ Zarządzaj kolejką**
 3. Select the round that was played
 4. For each finished match, click **🏁 Wynik**
-5. Enter scores (must sum to 90!)
+5. Enter the real scores (any valid non-negative totals)
 6. Tables generate automatically
 
 ### Scenario 3: Fixing a Mistake
@@ -217,9 +215,9 @@ Common errors you might see:
 - You're trying to create a round that already exists
 - Solution: Use "⚙ Zarządzaj kolejką" to edit it instead
 
-**"Suma punktów obu drużyn musi wynosić 90."**
-- The result scores don't add up to 90
-- Solution: Check your math and re-enter (e.g., 50:40, not 50:41)
+**Prediction / typing errors (sum must be 90 for a *typ*, not for the saved match result):**
+- If a **player** sees a message like sum must be **90**, that refers to their **prediction** (home + away tips = 90). They should adjust the typ (e.g. 50:40), not the admin match result flow.
+- If an **admin** sees **"Wyniki nie mogą być ujemne."** when setting the match result, one of the entered scores is negative — re-enter with zero or positive integers only.
 
 **"Drużyna domowa i wyjazdowa muszą być różne."**
 - You selected the same team for both home and away
@@ -238,8 +236,7 @@ Common errors you might see:
    - Players can submit predictions early
 
 2. **Check twice before entering results**
-   - Results are immutable once submitted
-   - Ensure scores are correct and sum to 90
+   - Enter the **real** totals from the meeting; the bot accepts any non-negative pair for the official result (no sum-to-90 rule for that).
 
 3. **Generate tables regularly**
    - After each kolejka is complete

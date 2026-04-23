@@ -112,14 +112,14 @@ Action buttons for each match:
 - **✏️ Edytuj #{matchId}** - Edit match details (only if not finished)
 - **🏁 Wynik #{matchId}** - Enter result (only if no result yet)
 
-#### 4. Match Result Entry with Sum=90 Validation
+#### 4. Match Result Entry (official result)
 
 When admin enters match result:
 - Modal with two fields: home score, away score
 - **Validation enforced:**
   - Both scores must be non-negative integers
-  - **Sum must equal exactly 90**
-  - Error message (Polish): "Suma punktów obu drużyn musi wynosić 90 (np. 50:40, 46:44, 45:45)"
+  - **No requirement that home + away equals 90** (real match totals may differ)
+  - Error message for negative values (Polish): "Wyniki nie mogą być ujemne."
 - On success:
   - Result saved
   - All predictions scored automatically
@@ -176,12 +176,11 @@ New methods:
 
 Enhanced `DemoDataSeeder` (`TyperBot.Application/Services/DemoDataSeeder.cs`):
 
-**Sum=90 Rule Enforcement:**
-- All match results: `awayScore = 90 - homeScore`
-- All predictions: `awayTip = 90 - homeTip`
-- **Validation checks** after calculation:
-  - Throws `InvalidOperationException` if sum ≠ 90
-  - Ensures data integrity at seeding time
+**Sum=90 in demo data (synthetic consistency):**
+- Seeded match results and predictions use totals that sum to 90 for predictable demo scoring
+- **Validation checks** after calculation in seeder:
+  - Throws `InvalidOperationException` if seeded sum ≠ 90
+  - Does **not** apply to manually entered official results in production
 
 **Benefits:**
 - Demo data now produces realistic scoring
@@ -263,7 +262,8 @@ Examples in UI:
 **Polish Error Messages:**
 Examples:
 - "Kolejka o takim numerze już istnieje. Możesz ją edytować z panelu '⚙ Zarządzaj kolejką'."
-- "Suma punktów obu drużyn musi wynosić 90 (np. 50:40, 46:44, 45:45)."
+- (Player typ) sum ≠ 90: message from `PredictionService` (e.g. sum must be 90 for the prediction)
+- (Admin result) negative score: "Wyniki nie mogą być ujemne."
 - "Drużyna domowa i wyjazdowa muszą być różne."
 - "Wybierz wszystkie pola (drużyny, datę, godzinę) przed zatwierdzeniem."
 
@@ -289,8 +289,8 @@ The existing schema supports all new features:
    - [ ] Select existing kolejka
    - [ ] View match details panel
    - [ ] Edit match (teams, date, time)
-   - [ ] Enter result with sum=90
-   - [ ] Try to enter result with sum≠90 (should fail)
+   - [ ] Enter official result with any valid non-negative totals (sum may differ from 90)
+   - [ ] Try a player typ with sum≠90 (should fail as invalid prediction)
 
 3. **Table Generation:**
    - [ ] Generate season table
@@ -306,8 +306,8 @@ The existing schema supports all new features:
 
 5. **Demo Data:**
    - [ ] Run `/admin-dane-testowe`
-   - [ ] Verify all predictions sum to 90
-   - [ ] Verify all results sum to 90
+   - [ ] Verify all seeded demo predictions sum to 90
+   - [ ] Verify seeded demo match results sum to 90 (demo seeder only)
    - [ ] Verify non-zero points in standings
 
 6. **Edge Cases:**
@@ -333,12 +333,12 @@ The existing schema supports all new features:
    - Implemented kolejka creation flow (~300 lines)
    - Implemented kolejka management flow (~200 lines)
    - Added table generation handlers (~150 lines)
-   - Enhanced result validation with sum=90 check
+   - Match result validation: non-negative scores (real totals)
    - Updated round labels throughout
 
 3. `TyperBot.Application/Services/DemoDataSeeder.cs`
-   - Added sum=90 enforcement for match results
-   - Added sum=90 enforcement for predictions
+   - Demo seeder: sum=90 for synthetic match results and predictions
+   - Player predictions: sum=90 enforcement via `PredictionService`
    - Added validation checks
 
 4. `TyperBot.Application/Services/TableGenerator.cs`
@@ -377,7 +377,7 @@ Potential improvements for future consideration:
 3. Match scheduling templates
 4. Automatic kolejka progression
 5. Bulk match editing
-6. Match result editing (currently immutable)
+6. Richer batch / undo flows for match results
 7. Undo/redo for match operations
 
 ## Compliance with Requirements
@@ -392,7 +392,7 @@ All requirements from the specification have been implemented:
 ✅ B.1-B.5. Full CRUD operations on kolejka matches
 ✅ C. Table generation from admin panel
 ✅ C.1-C.2. Season and kolejka table buttons with partial completion support
-✅ D.1. Sum=90 rule enforced everywhere
+✅ D.1. Sum=90 for player typy; official match results accept real non-negative totals
 ✅ D.2. No duplicate kolejka constraint
 ✅ D.3. Comprehensive logging on failures
 ✅ E. Polish UI throughout

@@ -249,12 +249,12 @@ dotnet test
 
 ### Critical Test Cases Verified:
 1. ✅ Demo data seeder creates expected entities (1 season, 18 rounds, 72 matches, 5 players)
-2. ✅ All match results obey sum = 90 rule
-3. ✅ All predictions obey sum = 90 rule
+2. ✅ Official match results may be any non-negative totals (real-world scores)
+3. ✅ Player predictions (typy) still enforce sum = 90
 4. ✅ PlayerScore entities have PlayerId set correctly
 5. ✅ Multiple seeder runs clean up previous data
 6. ✅ Match creation with valid parameters succeeds
-7. ✅ Match result validation enforces sum = 90
+7. ✅ Match result validation: non-negative integers only
 8. ✅ Score calculation works correctly
 
 ---
@@ -296,12 +296,10 @@ dotnet run --project TyperBot.DiscordBot
 ```bash
 # In Discord:
 # 1. Create a match (should work now with fixed modal parameters)
-# 2. Try to set result to 50:50 (sum = 100)
-# Expected: "❌ Suma punktów obu drużyn musi wynosić 90 (np. 50:40, 46:44, 45:45)."
-# Expected in logs: "Nieprawidłowa suma punktów w wyniku - ..., Suma: 100"
+# 2. Set result to e.g. 46:42 (sum ≠ 90 is OK for the official result)
+# Expected: "✅ Wynik ustawiony: **46:42**\nPunkty obliczone!"
 
-# 3. Set result to 50:40 (sum = 90)
-# Expected: "✅ Wynik ustawiony: **50:40**\nPunkty obliczone!"
+# 3. Player typ must still sum to 90 (separate modal / PredictionService)
 ```
 
 ---
@@ -363,7 +361,7 @@ dotnet run --project TyperBot.DiscordBot
 - [x] Enhanced global exception handling
 - [x] Verified all 59 existing tests pass
 - [x] Verified demo data seeder creates correct counts
-- [x] Verified sum = 90 rule enforcement
+- [x] Verified sum = 90 for predictions; match results accept real totals
 - [x] Documented all fixes and testing procedures
 
 **Status:** ✅ ALL FIXES COMPLETE AND TESTED

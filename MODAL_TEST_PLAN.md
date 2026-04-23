@@ -90,7 +90,7 @@ Kroki:
 1. /panel-admina
 2. Ustaw wynik
 3. Wybierz mecz
-4. Wypełnij wyniki (50:40)
+4. Wypełnij **rzeczywisty** wynik (np. 50:40 lub 46:42 — suma nie musi być 90)
 5. Zatwierdź
 
 Oczekiwany rezultat:

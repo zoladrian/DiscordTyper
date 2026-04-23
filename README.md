@@ -82,6 +82,7 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
 
 **Important Rules:**
 - Sum of predicted scores must equal 90 points (speedway rules: 15 races × 6 points)
+- Official **match results** set by admins are the real totals: **non-negative** scores only; they **do not** need to sum to 90 (e.g. re-runs, forfeits, or other cases where the meeting total differs).
 - If sum ≠ 90, prediction is rejected and a public warning message is posted in the match thread
 - Penalty for sum ≠ 90 is already included in difference calculation (when calculating scores for valid predictions)
 - Predictions are secret until match start time or manually revealed by admin
