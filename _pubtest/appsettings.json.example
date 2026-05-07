@@ -25,6 +25,7 @@
     "GuildId": 0,
     "PlayerRoleName": "Typer",
     "AdminRoleName": "Admin",
+    "EnablePredictionThreadMessages": false,
     "Channels": {
       "PredictionsChannel": "typowanie",
       "ResultsChannel": "wyniki-typera",

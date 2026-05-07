@@ -44,6 +44,7 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
        "GuildId": 123456789012345678,
        "PlayerRoleName": "Typer",
        "AdminRoleName": "TyperAdmin",
+       "EnablePredictionThreadMessages": false,
        "Channels": {
          "PredictionsChannel": "typowanie",
          "ResultsChannel": "wyniki-typera",

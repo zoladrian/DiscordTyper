@@ -685,8 +685,11 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             "Typ zapisany poprawnie — User: {DiscordUserId}, MatchId: {MatchId}, Aktualizacja: {IsUpdate}",
             user.Id, matchId, isUpdate);
 
-        // Post normal message in match thread
-        await PostPredictionMessageInThreadAsync(match2, user, isUpdate);
+        if (_settings.EnablePredictionThreadMessages)
+        {
+            // Optional public thread message after prediction save/update.
+            await PostPredictionMessageInThreadAsync(match2, user, isUpdate);
+        }
     }
 }
 
