@@ -114,7 +114,7 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var success = await _nicknameRoastService.TryChangeNicknameByUsernameAsync(
-                Context.Guild.Users,
+                Context.Guild,
                 targetUsername,
                 newNickname);
 

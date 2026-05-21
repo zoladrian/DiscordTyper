@@ -60,4 +60,29 @@ public class NicknameRoastServiceTests
             x => x.ModifyAsync(It.IsAny<Action<GuildUserProperties>>(), It.IsAny<RequestOptions?>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task TryChangeNicknameByUsernameAsync_WhenMatchesByNickname_ReturnsTrue()
+    {
+        // Arrange
+        var service = new NicknameRoastService();
+        var user = new Mock<IGuildUser>();
+        user.SetupGet(x => x.Username).Returns("differentUsername");
+        user.SetupGet(x => x.Nickname).Returns("agness88");
+        user.SetupGet(x => x.GlobalName).Returns((string?)null);
+        user.Setup(x => x.ModifyAsync(It.IsAny<Action<GuildUserProperties>>(), It.IsAny<RequestOptions?>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await service.TryChangeNicknameByUsernameAsync(
+            new[] { user.Object },
+            "agness88",
+            "Cwelinica");
+
+        // Assert
+        result.Should().BeTrue();
+        user.Verify(
+            x => x.ModifyAsync(It.IsAny<Action<GuildUserProperties>>(), It.IsAny<RequestOptions?>()),
+            Times.Once);
+    }
 }
