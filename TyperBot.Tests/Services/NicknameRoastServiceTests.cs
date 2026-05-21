@@ -85,4 +85,60 @@ public class NicknameRoastServiceTests
             x => x.ModifyAsync(It.IsAny<Action<GuildUserProperties>>(), It.IsAny<RequestOptions?>()),
             Times.Once);
     }
+
+    [Fact]
+    public async Task EnsureRoleByUsernameAsync_WhenUserMissingRole_AddsRole()
+    {
+        // Arrange
+        var service = new NicknameRoastService();
+        var role = new Mock<IRole>();
+        role.SetupGet(x => x.Id).Returns(123UL);
+        role.SetupGet(x => x.Name).Returns("Wysiedleniec");
+
+        var user = new Mock<IGuildUser>();
+        user.SetupGet(x => x.Username).Returns("pajdoniusz");
+        user.SetupGet(x => x.RoleIds).Returns(Array.Empty<ulong>());
+        user.Setup(x => x.AddRoleAsync(It.IsAny<IRole>(), It.IsAny<RequestOptions?>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await service.EnsureRoleByUsernameAsync(
+            new[] { user.Object },
+            new[] { role.Object },
+            "pajdoniusz",
+            123UL);
+
+        // Assert
+        result.Should().BeTrue();
+        user.Verify(
+            x => x.AddRoleAsync(It.Is<IRole>(r => r.Id == 123UL), It.IsAny<RequestOptions?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task EnsureRoleByUsernameAsync_WhenUserAlreadyHasRole_DoesNotAddAgain()
+    {
+        // Arrange
+        var service = new NicknameRoastService();
+        var role = new Mock<IRole>();
+        role.SetupGet(x => x.Id).Returns(777UL);
+        role.SetupGet(x => x.Name).Returns("Wysiedleniec");
+
+        var user = new Mock<IGuildUser>();
+        user.SetupGet(x => x.Username).Returns("pajdoniusz");
+        user.SetupGet(x => x.RoleIds).Returns(new[] { 777UL });
+
+        // Act
+        var result = await service.EnsureRoleByUsernameAsync(
+            new[] { user.Object },
+            new[] { role.Object },
+            "pajdoniusz",
+            777UL);
+
+        // Assert
+        result.Should().BeTrue();
+        user.Verify(
+            x => x.AddRoleAsync(It.IsAny<IRole>(), It.IsAny<RequestOptions?>()),
+            Times.Never);
+    }
 }

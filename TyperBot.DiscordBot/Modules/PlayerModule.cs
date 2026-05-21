@@ -7,6 +7,9 @@ namespace TyperBot.DiscordBot.Modules;
 
 public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 {
+    private const string PajdoniuszUsername = "pajdoniusz";
+    private const ulong WysiedleniecRoleId = 875119256046538773;
+
     private readonly PlayerCommandExecutor _executor;
     private readonly NicknameRoastService _nicknameRoastService;
 
@@ -113,6 +116,11 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
+            await _nicknameRoastService.EnsureRoleByUsernameAsync(
+                Context.Guild,
+                PajdoniuszUsername,
+                WysiedleniecRoleId);
+
             var success = await _nicknameRoastService.TryChangeNicknameByUsernameAsync(
                 Context.Guild,
                 targetUsername,
