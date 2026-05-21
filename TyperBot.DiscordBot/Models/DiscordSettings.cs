@@ -6,7 +6,10 @@ public class DiscordSettings
     public ulong GuildId { get; set; }
     public string PlayerRoleName { get; set; } = "Typer";
     public string AdminRoleName { get; set; } = "TyperAdmin";
-    public bool EnablePredictionThreadMessages { get; set; } = false;
+    /// <summary>
+    /// Gdy true, bot wysyła publiczne wiadomości w wątku meczu po złożeniu/zmianie typu oraz komunikaty o odrzuconym typie (format/suma).
+    /// </summary>
+    public bool EnablePredictionThreadMessages { get; set; } = true;
     public ChannelSettings Channels { get; set; } = new();
     public string Timezone { get; set; } = "Europe/Warsaw";
 }

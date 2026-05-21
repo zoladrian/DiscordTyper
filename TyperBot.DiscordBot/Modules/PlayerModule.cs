@@ -8,8 +8,13 @@ namespace TyperBot.DiscordBot.Modules;
 public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly PlayerCommandExecutor _executor;
+    private readonly NicknameRoastService _nicknameRoastService;
 
-    public PlayerModule(PlayerCommandExecutor executor) => _executor = executor;
+    public PlayerModule(PlayerCommandExecutor executor, NicknameRoastService nicknameRoastService)
+    {
+        _executor = executor;
+        _nicknameRoastService = nicknameRoastService;
+    }
 
     [SlashCommand("moje-typy", "Wyświetl swoje typy: cały aktywny sezon lub jedna kolejka")]
     public async Task MyPredictionsAsync(
@@ -84,5 +89,40 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
         await _executor.ExecutePlayerSeasonPointsPieAsync(Context);
+    }
+
+    [SlashCommand("zgnoj-justynke", "Zmienia nick użytkownika justynkaaa na Piździnka")]
+    public async Task RoastJustynkaAsync()
+    {
+        await RoastUserAsync("justynkaaa", "Piździnka", "Justynke");
+    }
+
+    [SlashCommand("zgnoj-cyganice", "Zmienia nick użytkownika agness88 na Cwelinica")]
+    public async Task RoastCyganicaAsync()
+    {
+        await RoastUserAsync("agness88", "Cwelinica", "Cyganice");
+    }
+
+    private async Task RoastUserAsync(string targetUsername, string newNickname, string targetDisplay)
+    {
+        if (Context.Guild == null)
+        {
+            await RespondAsync("Ta komenda działa tylko na serwerze.", ephemeral: true);
+            return;
+        }
+
+        var success = await _nicknameRoastService.TryChangeNicknameByUsernameAsync(
+            Context.Guild.Users,
+            targetUsername,
+            newNickname);
+
+        if (!success)
+        {
+            await RespondAsync($"Nie znaleziono użytkownika `{targetUsername}`.", ephemeral: true);
+            return;
+        }
+
+        var invokerNick = DiscordDisplayNameHelper.ForDisplay(Context.User);
+        await RespondAsync($"{invokerNick} zgnoił {targetDisplay}");
     }
 }

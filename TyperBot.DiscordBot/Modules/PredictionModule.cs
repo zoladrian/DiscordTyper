@@ -171,9 +171,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             if (thread == null) return;
 
             var gk = DiscordDisplayNameHelper.ForGimmickMatch(user);
-            var displayName = gk.Equals("stanch99", StringComparison.OrdinalIgnoreCase)
-                ? "T-Rex 3"
-                : DiscordDisplayNameHelper.ForDisplay(user);
+            var displayName = DiscordDisplayNameHelper.ForDisplay(user);
             var guild = user.Guild;
             var isFeminine = gk.Equals("agness88", StringComparison.OrdinalIgnoreCase)
                           || gk.Equals("justynkaaa", StringComparison.OrdinalIgnoreCase)
@@ -195,7 +193,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
                 message = "Justynka zatypowała, ale marcinek zrobił to szybciej";
             else if (!isUpdate && gk.Equals("owen96", StringComparison.OrdinalIgnoreCase)
                      && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
-                message = $"{displayName} zagruntował";
+                message = $"{displayName} zagruntował, żeby stancha dupa bolała";
             else if (isUpdate)
             {
                 var updateMessages = isFeminine
@@ -249,6 +247,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             if (!isUpdate && gk.Equals("paciao", StringComparison.OrdinalIgnoreCase)
                 && Random.Shared.NextDouble() < MatchThreadEasterEggChance)
                 message += " za hajs starego";
+            if (gk.Equals("stanch99", StringComparison.OrdinalIgnoreCase))
+                message += ", żeby owena dupa bolała";
 
             await thread.SendMessageAsync(message);
             _logger.LogInformation(
@@ -266,6 +266,9 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     {
         try
         {
+            if (!_settings.EnablePredictionThreadMessages)
+                return;
+
             var match = await _matchRepository.GetByIdAsync(matchId);
             if (match == null) return;
 

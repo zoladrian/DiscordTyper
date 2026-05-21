@@ -140,6 +140,7 @@ builder.Services.AddSingleton<AdminMatchCreationStateService>();
 builder.Services.AddSingleton<IPredictionsChannelTyperPanelService, PredictionsChannelTyperPanelService>();
 builder.Services.AddSingleton<WelcomeMessageService>();
 builder.Services.AddScoped<PlayerCommandExecutor>();
+builder.Services.AddScoped<NicknameRoastService>();
 builder.Services.AddScoped<MatchCardService>();
 builder.Services.AddScoped<MatchPredictionRevealService>();
 builder.Services.AddScoped<MatchResultsTableService>();

@@ -12,7 +12,7 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
 - **Auto-Channel Creation**: Bot creates required channels on first run
 - **Automatic Reminders**: Reminders for matches without results (3 hours after start)
 - **Prediction Reveal**: Admins can reveal predictions after match start time
-- **Public Warnings**: Public messages when players try invalid predictions (sum ≠ 90)
+- **Public thread messages**: Optional “X zatypował” style messages after a prediction (toggle `Discord:EnablePredictionThreadMessages`); same flag controls public “imbecyl” warnings for rejected invalid attempts (sum ≠ 90, bad format).
 
 ## Architecture
 
@@ -44,7 +44,7 @@ A Discord bot built in C# (.NET 9) for managing a community speedway-match predi
        "GuildId": 123456789012345678,
        "PlayerRoleName": "Typer",
        "AdminRoleName": "TyperAdmin",
-       "EnablePredictionThreadMessages": false,
+       "EnablePredictionThreadMessages": true,
        "Channels": {
          "PredictionsChannel": "typowanie",
          "ResultsChannel": "wyniki-typera",
