@@ -29,6 +29,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     private readonly IPlayerRepository _playerRepository;
     private readonly IMatchRepository _matchRepository;
     private readonly IPredictionRepository _predictionRepository;
+    private readonly PredictionThreadMessageToggleService _predictionMessageToggleService;
 
     public PredictionModule(
         ILogger<PredictionModule> logger,
@@ -37,7 +38,8 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         PredictionService predictionService,
         IPlayerRepository playerRepository,
         IMatchRepository matchRepository,
-        IPredictionRepository predictionRepository)
+        IPredictionRepository predictionRepository,
+        PredictionThreadMessageToggleService predictionMessageToggleService)
     {
         _logger = logger;
         _settings = settings.Value;
@@ -46,6 +48,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
         _playerRepository = playerRepository;
         _matchRepository = matchRepository;
         _predictionRepository = predictionRepository;
+        _predictionMessageToggleService = predictionMessageToggleService;
     }
 
     private bool HasPlayerRole(SocketGuildUser? user)
@@ -266,7 +269,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
     {
         try
         {
-            if (!_settings.EnablePredictionThreadMessages)
+            if (!_predictionMessageToggleService.IsEnabled)
                 return;
 
             var match = await _matchRepository.GetByIdAsync(matchId);
@@ -688,7 +691,7 @@ public class PredictionModule : InteractionModuleBase<SocketInteractionContext>
             "Typ zapisany poprawnie — User: {DiscordUserId}, MatchId: {MatchId}, Aktualizacja: {IsUpdate}",
             user.Id, matchId, isUpdate);
 
-        if (_settings.EnablePredictionThreadMessages)
+        if (_predictionMessageToggleService.IsEnabled)
         {
             // Optional public thread message after prediction save/update.
             await PostPredictionMessageInThreadAsync(match2, user, isUpdate);

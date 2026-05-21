@@ -139,6 +139,7 @@ builder.Services.AddSingleton<DiscordLookupService>();
 builder.Services.AddSingleton<AdminMatchCreationStateService>();
 builder.Services.AddSingleton<IPredictionsChannelTyperPanelService, PredictionsChannelTyperPanelService>();
 builder.Services.AddSingleton<WelcomeMessageService>();
+builder.Services.AddSingleton<PredictionThreadMessageToggleService>();
 builder.Services.AddScoped<PlayerCommandExecutor>();
 builder.Services.AddScoped<NicknameRoastService>();
 builder.Services.AddScoped<MatchCardService>();

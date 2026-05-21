@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TyperBot.Application.Services;
 using TyperBot.DiscordBot.Models;
+using TyperBot.DiscordBot.Services;
 
 namespace TyperBot.DiscordBot.Modules;
 
@@ -12,14 +13,17 @@ public class AdminUtilityModule : BaseAdminModule
 {
     private readonly ILogger<AdminUtilityModule> _logger;
     private readonly DemoDataSeeder _demoDataSeeder;
+    private readonly PredictionThreadMessageToggleService _predictionThreadMessageToggleService;
 
     public AdminUtilityModule(
         ILogger<AdminUtilityModule> logger,
         IOptions<DiscordSettings> settings,
-        DemoDataSeeder demoDataSeeder) : base(settings.Value)
+        DemoDataSeeder demoDataSeeder,
+        PredictionThreadMessageToggleService predictionThreadMessageToggleService) : base(settings.Value)
     {
         _logger = logger;
         _demoDataSeeder = demoDataSeeder;
+        _predictionThreadMessageToggleService = predictionThreadMessageToggleService;
     }
 
     [SlashCommand("admin-dane-testowe", "Wypełnij bazę danych danymi testowymi (tylko dla adminów)")]
@@ -58,5 +62,21 @@ public class AdminUtilityModule : BaseAdminModule
     public async Task HandleCancelActionAsync(string matchIdStr)
     {
         await RespondAsync("❌ Akcja anulowana.", ephemeral: true);
+    }
+
+    [SlashCommand("admin-wiadomosci-typowania", "Włącz lub wyłącz publiczne wiadomości o złożeniu/zmianie typu")]
+    public async Task TogglePredictionThreadMessagesAsync(
+        [Summary(description: "true = włącz, false = wyłącz")] bool wlaczone)
+    {
+        var user = Context.User as SocketGuildUser;
+        if (!IsAdmin(user))
+        {
+            await RespondWithErrorAsync("Nie masz uprawnień do użycia tej komendy.");
+            return;
+        }
+
+        _predictionThreadMessageToggleService.SetEnabled(wlaczone);
+        var status = wlaczone ? "włączone" : "wyłączone";
+        await RespondWithSuccessAsync($"Publiczne wiadomości o typowaniu są teraz **{status}**.");
     }
 }
