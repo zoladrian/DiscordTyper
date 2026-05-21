@@ -111,18 +111,25 @@ public class PlayerModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var success = await _nicknameRoastService.TryChangeNicknameByUsernameAsync(
-            Context.Guild.Users,
-            targetUsername,
-            newNickname);
-
-        if (!success)
+        try
         {
-            await RespondAsync($"Nie znaleziono użytkownika `{targetUsername}`.", ephemeral: true);
-            return;
-        }
+            var success = await _nicknameRoastService.TryChangeNicknameByUsernameAsync(
+                Context.Guild.Users,
+                targetUsername,
+                newNickname);
 
-        var invokerNick = DiscordDisplayNameHelper.ForDisplay(Context.User);
-        await RespondAsync($"{invokerNick} zgnoił {targetDisplay}");
+            if (!success)
+            {
+                await RespondAsync($"Nie znaleziono użytkownika `{targetUsername}`.", ephemeral: true);
+                return;
+            }
+
+            var invokerNick = DiscordDisplayNameHelper.ForDisplay(Context.User);
+            await RespondAsync($"{invokerNick} zgnoił {targetDisplay}");
+        }
+        catch
+        {
+            await RespondAsync("Nie udało się zmienić nicku.", ephemeral: true);
+        }
     }
 }
